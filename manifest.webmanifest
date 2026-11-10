@@ -1,0 +1,14 @@
+{
+  "name": "AUREVIA COPILOT",
+  "short_name": "AUREVIA",
+  "description": "Copilote d'analyse multi-marchés et de gestion du risque",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#070b18",
+  "theme_color": "#070b18",
+  "icons": [
+    { "src": "/assets/aurevia-app-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

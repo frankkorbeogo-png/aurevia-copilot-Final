@@ -1,0 +1,42 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/market-data"
+  to = "/.netlify/functions/market-data"
+  status = 200
+
+[[redirects]]
+  from = "/api/ai-analysis"
+  to = "/.netlify/functions/ai-analysis"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+[[redirects]]
+  from = "/api/service-status"
+  to = "/.netlify/functions/service-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/telegram-webhook"
+  to = "/.netlify/functions/telegram-webhook"
+  status = 200
+
+[[redirects]]
+  from = "/api/telegram-notify"
+  to = "/.netlify/functions/telegram-notify"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin"
+  to = "/.netlify/functions/admin-api"
+  status = 200

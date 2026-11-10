@@ -1,0 +1,13 @@
+{
+  "name": "aurevia-copilot",
+  "version": "2.2.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

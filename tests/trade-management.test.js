@@ -1,0 +1,45 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary} from '../trade-management.js';
+
+test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
+test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
+test('position unique crée une seule fiche parent et les enfants partagent le groupe',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'SELL',lot:.1,entry:4000,stopLoss:4010,takeProfits:[{price:3990},{price:3980}]});assert.equal(new Set(g.children.map(x=>x.groupId)).size,1);assert.equal(g.children.reduce((s,x)=>s+x.lot,0),.1);});
+test('calcule le PnL BUY/SELL à partir du volume réellement clôturé',()=>{assert.deepEqual(calculateClosePnl({direction:'BUY',entry:4000,exit:4010,volume:.1,contractSize:100}),{gross:100,fees:0,net:100});assert.deepEqual(calculateClosePnl({direction:'SELL',entry:4000,exit:4010,volume:.1,contractSize:100}),{gross:-100,fees:0,net:-100});});
+test('clôture partielle conserve le volume restant et cumule le résultat',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4020}]});recordPartialClose(g,g.children[0].id,{volume:.04,exit:4010,contractSize:100});assert.equal(g.children[0].remainingLot,.06);assert.equal(g.children[0].realizedPnl,40);assert.equal(groupSummary(g).status,'OPEN');});
+test('refuse de clôturer plus que le volume restant',()=>{const g=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4020}]});assert.throws(()=>recordPartialClose(g,g.children[0].id,{volume:.11,exit:4010,contractSize:100}));});
+import {saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
+test('journal lié : une fiche pour position unique, une par trade séparé',()=>{
+  const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+  const unique=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});saveTradeGroup(unique);
+  const separate=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'SELL',lot:.1,entry:4000,stopLoss:4010,takeProfits:[{price:3990},{price:3980}]});saveTradeGroup(separate);
+  const journal=loadLinkedJournal();assert.equal(journal.filter(x=>x.groupId===unique.id).length,1);assert.equal(journal.filter(x=>x.groupId===separate.id).length,2);
+  delete globalThis.localStorage;
+});
+test('les six ordres en attente sont validés avec leurs prix de déclenchement et limite',()=>{for(const orderType of ['BUY LIMIT','BUY STOP','SELL LIMIT','SELL STOP']){const direction=orderType.startsWith('BUY')?'BUY':'SELL';assert.equal(createTradeGroup({instrument:'XAU/USD',direction,lot:.1,entry:4000,stopLoss:direction==='BUY'?3990:4010,takeProfits:[{price:direction==='BUY'?4020:3980}],orderType,triggerPrice:orderType.includes('STOP')?4001:null}).orderType,orderType);}assert.throws(()=>createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4020}],orderType:'BUY STOP LIMIT',triggerPrice:4001}));assert.equal(createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000.5,stopLoss:3990,takeProfits:[{price:4020}],orderType:'BUY STOP LIMIT',triggerPrice:4001,limitPrice:4000.5}).orderType,'BUY STOP LIMIT');assert.equal(createTradeGroup({instrument:'XAU/USD',direction:'SELL',lot:.1,entry:4000.5,stopLoss:4010,takeProfits:[{price:3980}],orderType:'SELL STOP LIMIT',triggerPrice:4000,limitPrice:4000.5}).orderType,'SELL STOP LIMIT');});
+
+
+test('répartit le reliquat de volume sur les derniers TP (0,10 en trois parts)', () => {
+  assert.deepEqual(splitVolume(0.10, 3, 0.01), [0.03, 0.03, 0.04]);
+});
+
+test('rejette un mode de gestion inconnu', () => {
+  assert.throws(() => createTradeGroup({mode:'other',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]}), /Mode de gestion invalide/);
+});
+
+test('un ordre LIMIT utilise son prix d’entrée sans exiger un déclencheur STOP', () => {
+  const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010}],orderType:'BUY LIMIT'});
+  assert.equal(group.triggerPrice,null);
+  assert.equal(group.limitPrice,2000);
+});
+
+test('un ordre STOP exige un prix de déclenchement', () => {
+  assert.throws(() => createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY STOP'}), /prix de déclenchement/);
+});
+
+test('refuse un lot qui ne respecte pas le pas broker',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.105,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]}),/pas de volume/));
+test('refuse une clôture partielle hors pas broker',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.throws(()=>recordPartialClose(g,g.children[0].id,{volume:.015,exit:2005,contractSize:100}),/pas broker/);});
+
+test('les identifiants de position restent au format UUID compatible Supabase',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.match(g.id,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);assert.match(g.children[0].id,/^[0-9a-f-]{36}$/i);});
+
+test('un ordre BUY STOP LIMIT refuse un prix limite au-dessus du déclenchement',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2010,stopLoss:1990,takeProfits:[{price:2020}],orderType:'BUY STOP LIMIT',triggerPrice:2005,limitPrice:2010}),/prix limite/));
