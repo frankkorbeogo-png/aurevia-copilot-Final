@@ -45,3 +45,11 @@
   from = "/api/admin"
   to = "/.netlify/functions/admin-api"
   status = 200
+
+[[redirects]]
+  from = "/api/session"
+  to = "/.netlify/functions/session-api"
+  status = 200
+
+[functions."trade-watch"]
+schedule = "@every 1m"

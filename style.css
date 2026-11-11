@@ -96,12 +96,12 @@
 /* AUREVIA COPILOT — identité visuelle premium + ciel galactique animé */
 :root{--bg:#070b18;--bg2:#0a1020;--panel:#101729;--panel2:#151e34;--line:#263653;--line2:#405b86;--purple:#8874ed;--purple2:#5147a5;--purple-soft:#b6a9ff;--gold:#d8d9ed}
 body{background:radial-gradient(ellipse at 52% 0%,#172348 0%,transparent 42%),linear-gradient(135deg,#060a16 0%,#090f20 48%,#0b1022 100%);}
-.space-scene{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse at 70% 32%,#17264b55,transparent 48%),#070b18}
+.space-scene{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse at 22% 26%,#164d9366,transparent 42%),radial-gradient(ellipse at 82% 58%,#6624a866,transparent 46%),radial-gradient(ellipse at 50% 78%,#087d8b44,transparent 38%),#030611}
 #galaxyCanvas{position:absolute;inset:0;width:100%;height:100%;opacity:.8}
 .space-nebula{position:absolute;border-radius:50%;filter:blur(72px);mix-blend-mode:screen;opacity:.2;will-change:transform}
-.nebula-a{width:52vw;height:36vw;left:8%;top:12%;background:radial-gradient(ellipse,#3b4eb8 0%,#35236f 38%,transparent 72%);animation:nebulaDrift 38s ease-in-out infinite alternate}
-.nebula-b{width:46vw;height:40vw;right:-8%;top:28%;background:radial-gradient(ellipse,#59358d 0%,#252c72 42%,transparent 72%);animation:nebulaDrift 47s ease-in-out infinite alternate-reverse}
-.nebula-c{width:35vw;height:30vw;left:38%;bottom:-18%;background:radial-gradient(ellipse,#263e86 0%,#42236d 42%,transparent 72%);animation:nebulaDrift 54s ease-in-out infinite alternate}
+.nebula-a{width:52vw;height:36vw;left:8%;top:12%;background:radial-gradient(ellipse,#22b7e8 0%,#3342a8 34%,#642b9d 58%,transparent 74%);animation:nebulaDrift 38s ease-in-out infinite alternate}
+.nebula-b{width:46vw;height:40vw;right:-8%;top:28%;background:radial-gradient(ellipse,#bd39d8 0%,#6333b7 36%,#164b99 60%,transparent 75%);animation:nebulaDrift 47s ease-in-out infinite alternate-reverse}
+.nebula-c{width:35vw;height:30vw;left:38%;bottom:-18%;background:radial-gradient(ellipse,#19a9b9 0%,#3652b9 36%,#782b9e 62%,transparent 76%);animation:nebulaDrift 54s ease-in-out infinite alternate}
 .space-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 25%,#03061177 100%)}
 @keyframes nebulaDrift{from{transform:translate3d(-2%,1%,0) scale(.96) rotate(-4deg)}to{transform:translate3d(3%,-2%,0) scale(1.08) rotate(5deg)}}
 .topbar{background:linear-gradient(100deg,#070b18f2,#10182ced 65%,#080d1bf0);border-bottom-color:#45558b88}
@@ -320,4 +320,20 @@ th,td,.table-wrap table,table{font-size:14px}
   .space-nebula{opacity:.06;filter:blur(70px)}
   #galaxyCanvas{opacity:.92}
 }
+@media(prefers-reduced-motion:reduce){.space-nebula{animation:none!important}}
+/* AUREVIA V2.2.9 — console d'administration */
+#page-admin[hidden]{display:none!important}
+.admin-stats{grid-template-columns:repeat(auto-fit,minmax(112px,1fr))}
+.admin-state{display:inline-flex;align-items:center;padding:4px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.admin-state.is-online{color:#91efbd;background:#153527;border:1px solid #286a48}
+.admin-state.is-offline{color:#c2b6cb;background:#251d2c;border:1px solid #4a3a54}
+.danger-btn{border-color:#8d394d;color:#ffc3ce;background:#351722}
+@media(max-width:760px){#page-admin .panel-head{align-items:flex-start;flex-direction:column}#page-admin .panel input[type=search]{max-width:none;width:calc(100% - 28px);margin:0 14px 10px}.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.table-actions{min-width:150px}}
+
+/* V2.3 — profondeur de nébuleuse cyan/violet, mouvement doux et centre lisible */
+.space-scene{background-color:#02040c;background-image:radial-gradient(ellipse at 50% 48%,#080c1b 0%,#050816 48%,#02040c 100%)}
+.space-nebula{transform-style:preserve-3d;filter:blur(84px) saturate(1.35);opacity:.24}
+.nebula-a{animation-duration:62s}.nebula-b{animation-duration:74s}.nebula-c{animation-duration:88s}
+#galaxyCanvas{opacity:.68;mix-blend-mode:screen}
+@media(max-width:720px){.space-nebula{filter:blur(54px) saturate(1.2);opacity:.13}#galaxyCanvas{opacity:.42}}
 @media(prefers-reduced-motion:reduce){.space-nebula{animation:none!important}}

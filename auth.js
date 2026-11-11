@@ -5,20 +5,91 @@ let supabase=null;
 async function ensureClient(){if(!supabase){const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.119.0');supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});}return supabase;}
 async function ensureUser(){await ensureClient();const {data,error}=await supabase.auth.getUser();if(error)throw new Error(error.message);currentUser=data.user||null;return currentUser;}
 const $=id=>document.getElementById(id);
-let currentUser=null,currentProfile=null;
+let currentUser=null,currentProfile=null,adminVerified=false,sessionReady=false,heartbeatTimer=null,profileRefreshSequence=0;
+window.__aureviaAdminVerified=null;
 function showStatus(message,isError=false){const el=$('authStatus');if(el){el.textContent=message;el.dataset.state=isError?'error':'ok';}}
-async function refreshProfile(){await ensureClient();if(!currentUser){currentProfile=null;const link=document.querySelector('[data-page="admin"]');if(link)link.hidden=true;document.getElementById('adminUnlocked')?.setAttribute('hidden','');document.getElementById('adminLocked')?.removeAttribute('hidden');return;}const {data,error}=await supabase.from('profiles').select('display_name,role').eq('id',currentUser.id).maybeSingle();if(error){currentProfile=null;const link=document.querySelector('[data-page="admin"]');if(link)link.hidden=true;document.getElementById('adminUnlocked')?.setAttribute('hidden','');document.getElementById('adminLocked')?.removeAttribute('hidden');showStatus('Session active, mais profil non accessible selon les règles de sécurité.',true);return;}currentProfile=data;const adminLink=document.querySelector('[data-page="admin"]');const isAdmin=currentProfile?.role==='admin';if(adminLink)adminLink.hidden=false;document.getElementById('adminUnlocked')?.toggleAttribute('hidden',!isAdmin);document.getElementById('adminLocked')?.toggleAttribute('hidden',isAdmin);window.dispatchEvent(new CustomEvent('aurevia:adminchange',{detail:{isAdmin}}));const role=$('profileRole');if(role)role.textContent=currentProfile?.role==='admin'?'Administrateur':'Utilisateur';const name=$('profileName');if(name)name.textContent=currentProfile?.display_name||currentUser.email||'Compte connecté';const display=$('profileDisplayName');if(display&&document.activeElement!==display)display.value=currentProfile?.display_name||'';}
-function render(){const logged=Boolean(currentUser);$('authSignedOut')?.toggleAttribute('hidden',logged);$('authSignedIn')?.toggleAttribute('hidden',!logged);const adminLink=document.querySelector('[data-page="admin"]');if(adminLink)adminLink.hidden=!logged;if(!logged){document.getElementById('adminUnlocked')?.setAttribute('hidden','');document.getElementById('adminLocked')?.removeAttribute('hidden');}if(logged)refreshProfile();}
+function setAdminVisibility(isAdmin){
+ adminVerified=Boolean(isAdmin);window.__aureviaAdminVerified=adminVerified;
+ const link=document.querySelector('[data-page="admin"]');if(link)link.hidden=!adminVerified;
+ $('page-admin')?.toggleAttribute('hidden',!adminVerified);
+ $('adminUnlocked')?.toggleAttribute('hidden',!adminVerified);
+ window.dispatchEvent(new CustomEvent('aurevia:adminchange',{detail:{isAdmin:adminVerified}}));
+}
+async function sessionRequest(action,accessToken=null){
+ const token=accessToken||await getAnalysisAccessToken();if(!token)throw new Error('Session Google absente.');
+ const response=await fetch('/api/session',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({action}),cache:'no-store'});
+ const data=await response.json().catch(()=>({error:'Réponse du service de session illisible.'}));
+ if(!response.ok){const error=new Error(data.error||'La session AUREVIA n’a pas pu être vérifiée.');error.code=data.code||null;error.status=response.status;throw error;}
+ return data;
+}
+function stopHeartbeat(){if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;}}
+async function forceLocalSignOut(message){
+ stopHeartbeat();sessionReady=false;setAdminVisibility(false);currentUser=null;currentProfile=null;
+ try{await supabase?.auth.signOut({scope:'local'});}catch{}
+ render();if(message)showStatus(message,true);
+}
+function startHeartbeat(){
+ stopHeartbeat();heartbeatTimer=setInterval(async()=>{
+  if(!currentUser||!sessionReady)return;
+  try{await sessionRequest('heartbeat');}
+  catch(error){await forceLocalSignOut(error.code==='SESSION_REPLACED'?'Votre compte a été connecté sur un autre appareil ou votre session a été révoquée. Vous avez été déconnecté.':'La protection de session est indisponible. Reconnectez-vous après vérification du service.');}
+ },30000);
+}
+async function verifyAdminAccess(accessToken=null){
+ if(!currentUser||!sessionReady){setAdminVisibility(false);return false;}
+ try{
+  const token=accessToken||await getAnalysisAccessToken();if(!token){setAdminVisibility(false);return false;}
+  const response=await fetch('/api/admin?verify=1',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+  if(!response.ok){setAdminVisibility(false);return false;}
+  const result=await response.json().catch(()=>null);
+  const allowed=result?.ok===true&&result?.isAdmin===true&&result?.user?.id===currentUser.id;
+  setAdminVisibility(allowed);return allowed;
+ }catch{setAdminVisibility(false);return false;}
+}
+async function refreshProfile(){
+ const sequence=++profileRefreshSequence;
+ if(!currentUser||!sessionReady){currentProfile=null;setAdminVisibility(false);return;}
+ await ensureClient();
+ const {data,error}=await supabase.from('profiles').select('display_name').eq('id',currentUser.id).maybeSingle();
+ if(sequence!==profileRefreshSequence)return;
+ if(error){currentProfile=null;setAdminVisibility(false);showStatus('Session active, mais profil non accessible. Vérifiez la migration de sécurité des sessions.',true);return;}
+ currentProfile=data;
+ const isAdmin=await verifyAdminAccess();if(sequence!==profileRefreshSequence)return;
+ const role=$('profileRole');if(role)role.textContent=isAdmin?'Administrateur':'Utilisateur';
+ const name=$('profileName');if(name)name.textContent=currentProfile?.display_name||currentUser.email||'Compte connecté';
+ const display=$('profileDisplayName');if(display&&document.activeElement!==display)display.value=currentProfile?.display_name||'';
+}
+function render(){
+ const logged=Boolean(currentUser&&sessionReady);
+ $('authSignedOut')?.toggleAttribute('hidden',logged);$('authSignedIn')?.toggleAttribute('hidden',!logged);
+ if(!logged){currentProfile=null;setAdminVisibility(false);return;}
+ if(adminVerified)setAdminVisibility(true);else{document.querySelector('[data-page=\"admin\"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');}
+ refreshProfile().catch(()=>setAdminVisibility(false));
+}
+async function activateSession(session,action){
+ if(!session?.access_token){sessionReady=false;render();return;}
+ try{
+  await sessionRequest(action,session.access_token);sessionReady=true;currentUser=session.user||currentUser;render();startHeartbeat();
+ }catch(error){
+  await forceLocalSignOut(error.code==='SESSION_REPLACED'?'Une autre session est déjà active sur ce compte. Cette session a été déconnectée.':'Mise à jour de sécurité requise : la protection des sessions n’est pas disponible. Le compte reste déconnecté jusqu’à son activation côté serveur.');
+ }
+}
 export async function initAuth(){
  if(!$('authForm'))return;
  try{await ensureClient();}catch(error){showStatus('Service de compte indisponible : '+error.message,true);return;}
- const {data}=await supabase.auth.getSession();currentUser=data.session?.user||null;render();
- supabase.auth.onAuthStateChange((event,session)=>{currentUser=session?.user||null;render();if(event==='SIGNED_IN'||event==='SIGNED_OUT')window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}}));});
- $('authForm').addEventListener('submit',async e=>{e.preventDefault();const email=$('authEmail').value.trim(),password=$('authPassword').value;showStatus('Connexion en cours…');const {data,error}=await supabase.auth.signInWithPassword({email,password});if(error){showStatus(error.message,true);return;}currentUser=data.user;render();showStatus('Connexion réussie.');});
- $('signUpBtn')?.addEventListener('click',async()=>{const email=$('authEmail').value.trim(),password=$('authPassword').value;if(!email||password.length<8){showStatus('Renseignez un e-mail et un mot de passe de 8 caractères minimum.',true);return;}showStatus('Création du compte…');const {error}=await supabase.auth.signUp({email,password,options:{emailRedirectTo:location.origin}});showStatus(error?.message||'Compte créé. Vérifiez votre e-mail si la confirmation est activée.',Boolean(error));});
- $('googleAuthBtn')?.addEventListener('click',async()=>{const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin}});if(error)showStatus(error.message,true);});
- $('signOutBtn')?.addEventListener('click',async()=>{const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}currentUser=null;currentProfile=null;render();showStatus('Déconnexion effectuée.');});
+ const {data,error}=await supabase.auth.getSession();
+ if(error){showStatus('Impossible de lire la session Google.',true);return;}
+ currentUser=data.session?.user||null;
+ if(data.session)await activateSession(data.session,'heartbeat');else render();
+ supabase.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_OUT'){stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);render();window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}}));return;}
+  if(event==='SIGNED_IN'){currentUser=session?.user||null;sessionReady=false;adminVerified=false;window.__aureviaAdminVerified=null;document.querySelector('[data-page=\"admin\"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');activateSession(session,'claim').then(()=>window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}})));return;}
+  if(event==='TOKEN_REFRESHED'&&session){currentUser=session.user||currentUser;activateSession(session,'heartbeat');}
+ });
+ $('googleAuthBtn')?.addEventListener('click',async()=>{const btn=$('googleAuthBtn');btn.disabled=true;showStatus('Redirection sécurisée vers Google…');const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin,queryParams:{prompt:'select_account'}}});if(error){showStatus('Connexion Google impossible : '+error.message,true);btn.disabled=false;}});
+ $('signOutBtn')?.addEventListener('click',async()=>{try{await sessionRequest('end');}catch{}const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}currentUser=null;currentProfile=null;sessionReady=false;setAdminVisibility(false);render();showStatus('Déconnexion effectuée.');});
 }
+
 export async function createTelegramPairingCode(){
  await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de lier Telegram.');
  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const bytes=new Uint8Array(8);crypto.getRandomValues(bytes);const code=Array.from(bytes,b=>alphabet[b%alphabet.length]).join('');

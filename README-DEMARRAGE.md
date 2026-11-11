@@ -1,4 +1,4 @@
-# AUREVIA COPILOT V2.2 MAJ
+# AUREVIA COPILOT V2.2.9
 
 Application web responsive d'analyse multi-marchés, de préparation des ordres, de gestion du risque, de suivi manuel des positions et de journalisation.
 
@@ -17,10 +17,11 @@ Le fichier `netlify.toml` lance `npm run build`, publie uniquement `dist/` et co
 1. Créer un nouveau site Netlify depuis le dépôt Git ou avec la Netlify CLI.
 2. Conserver `netlify.toml`, `package.json` et `scripts/build.mjs` à la racine du dépôt.
 3. Netlify exécute `npm run build` et publie uniquement `dist/`.
-4. Ajouter les variables d'environnement serveur ci-dessous dans les paramètres du site.
-5. Déployer le site et vérifier `/api/service-status`.
-6. Ajouter l'URL HTTPS finale dans Supabase Auth > URL Configuration (Site URL et Redirect URLs).
-7. Configurer le webhook Telegram après le déploiement si les notifications sont activées.
+4. Appliquer d’abord la migration V2.2.9 dans un environnement contrôlé et vérifier les fonctions/RLS. Ne pas modifier la base de production avant validation.
+5. Ajouter les variables d'environnement serveur ci-dessous dans les paramètres du site.
+6. Déployer uniquement après autorisation distincte, puis vérifier `/api/service-status` et `/api/session`.
+7. Ajouter l'URL HTTPS finale dans Supabase Auth > URL Configuration (Site URL et Redirect URLs).
+8. Configurer le webhook Telegram après le déploiement si les notifications sont activées.
 
 Aucun déploiement n'est effectué depuis ce dossier : il faut un accès authentifié au compte Netlify et l'URL définitive du site.
 
@@ -37,7 +38,6 @@ Aucun déploiement n'est effectué depuis ce dossier : il faut un accès authent
 | `TELEGRAM_BOT_TOKEN` | Bot privé `@AureviaCopilotBot` |
 | `TELEGRAM_WEBHOOK_SECRET` | Validation du webhook entrant Telegram |
 | `INTERNAL_NOTIFY_SECRET` | Facultatif, pour les appels internes serveur-à-serveur |
-| `AUREVIA_BOOTSTRAP_ADMIN_EMAIL` | Adresse exacte du premier administrateur ; initialisation unique, puis supprimer cette variable |
 
 Ne jamais placer de clé secrète dans `index.html`, les fichiers JavaScript du navigateur ou un dépôt public. La clé Supabase publishable utilisée par le navigateur n'est pas une clé service-role ; les données sont protégées par RLS.
 
@@ -54,7 +54,11 @@ Les annonces économiques sont visibles via le widget calendrier externe ; leur 
 
 Projet associé : `Aurevia-copilot` (`imkwbizyblzuevkodzqc`). La migration `20261110170930_add_trading_position_tracking` est déjà enregistrée sur le projet. Elle crée les tables de groupes, positions et clôtures, étend le journal et applique des politiques RLS propriétaires.
 
-Les rôles sont gérés côté serveur. Aucun utilisateur ne peut s'accorder le rôle administrateur depuis le navigateur. La console Admin permet la supervision, la liste des comptes, la suspension/réactivation, l’attribution/révocation des rôles et la publication d’annonces. Les opérations sont vérifiées côté serveur, journalisées et la table privée d’administrateurs reste inaccessible depuis le navigateur. Le premier administrateur est initialisé une seule fois via `AUREVIA_BOOTSTRAP_ADMIN_EMAIL`, après authentification du compte correspondant. Après cette initialisation, supprimer la variable de bootstrap. Les migrations `20261110193242_secure_admin_console_and_indexes` et `20261110193341_admin_audit_listing.sql` ajoutent les fonctions de privilège, l’audit privé, la lecture des audits et les index manquants ; elles sont appliquées au projet Supabase associé. Les utilisateurs ne peuvent modifier que leur nom affiché et leur avatar ; la colonne `profiles.role` est protégée par des privilèges SQL distincts.
+Les rôles sont gérés côté serveur. Le propriétaire `frankkorbeogo@gmail.com` a déjà été provisionné dans `app_private.admin_users` lors d'une opération antérieure ; la version V2.2.9 ne recrée pas ce compte et ne fournit aucun parcours de promotion. L’API contrôle l’appartenance à la table privée `app_private.admin_users` ; `profiles.role` n’est pas utilisé comme autorité d’accès. La console est cachée par défaut, et les routes/actions sont revalidées côté serveur. Elle permet la recherche serveur de comptes, l’affichage des emails, dates d’inscription/connexion, heartbeat, statut en ligne et session active, la suspension/réactivation, la révocation de session, la suppression confirmée des comptes non administrateurs, les statistiques, la configuration des services, les annonces avec expiration et la consultation de l’audit privé.
+
+**Migration requise avant déploiement V2.2.9 :** `supabase/migrations/20261111180000_single_session_and_admin_console_v229.sql`. Elle crée le registre privé de session unique, les fonctions de heartbeat/contrôle, les RPC d’administration et renforce les politiques RLS des tables personnelles. Cette migration est fournie dans l’archive mais n’a pas été appliquée au projet de production. Ne pas déployer le code V2.2.9 avant d’avoir relu et appliqué cette migration dans un environnement contrôlé, puis vérifié les politiques et fonctions. Elle ne doit pas être exécutée automatiquement par Netlify. Les migrations `20261110193242_secure_admin_console_and_indexes` et `20261110193341_admin_audit_listing.sql` existent déjà dans l’historique antérieur du projet ; ne pas les réappliquer. Les utilisateurs ne peuvent modifier que les champs de profil autorisés ; la colonne `profiles.role` reste protégée.
+
+La session unique utilise `auth.sessions.created_at` plutôt que le champ `iat` du JWT : le rafraîchissement d’un ancien token ne lui permet pas de reprendre la session d’un appareil plus récent. Le heartbeat client est émis toutes les 30 secondes ; le statut « en ligne » est calculé sur 90 secondes et la session active sur 2 minutes. La révocation distante bloque le heartbeat et les accès RLS personnels à la prochaine requête. Elle ne révoque pas les jetons Supabase auprès de tous les services externes qui ne consultent pas cette protection ; les routes privées AUREVIA et les politiques RLS couvertes par la migration sont contrôlées.
 
 Après le déploiement, vérifier l'URL de redirection OAuth Supabase. Les avertissements de performance sur quelques clés étrangères et index non utilisés sont consignés dans `docs/AUDIT_2026-11-10.md` ; aucun index n'a été supprimé sur la base d'un simple avertissement.
 
@@ -83,3 +87,8 @@ Le manifeste fournit les icônes standard 192×192 et 512×512, une icône maska
 - M30 : structure intermédiaire et BOS/CHoCH.
 - M15 : unité centrale de l’analyse technique et de la confluence.
 - M5 ou M1 : déclencheur d’entrée après sweep/reclaim et confirmation.
+
+
+## Identité Google pendant l’authentification
+
+Le logo affiché dans l’écran de connexion AUREVIA est intégré au site. Pour afficher également le logo et le nom AUREVIA sur l’écran Google, suivre `docs/GOOGLE_OAUTH_BRANDING.md` et téléverser `assets/aurevia-google-oauth-logo.jpg` dans Google Auth Platform → Branding. Le logo de l’écran Google se configure dans Google Cloud, pas dans le stockage Supabase.

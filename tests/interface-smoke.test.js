@@ -9,7 +9,7 @@ test('le badge flottant de marque n’est pas présent dans la navigation',()=>{
 test('le service worker met en cache les modules locaux requis',()=>{for(const file of ['app.js','analysis.js','confluence.js','fibonacci.js','volume-profile.js','trade-management.js','galaxy.js'])assert.ok(sw.includes(`/${file}`));});
 test('les écrans ne demandent aucune clé API à l’utilisateur',()=>{assert.doesNotMatch(html,/GROQ_API_KEY|TWELVEDATA_API_KEY|TELEGRAM_BOT_TOKEN|SUPABASE_SERVICE_ROLE_KEY/);});
 
-test('la console admin est verrouillée par défaut et ne montre les statuts qu’après autorisation',()=>{assert.match(html,/id="adminLocked"/);assert.match(html,/id="adminUnlocked" hidden/);assert.match(html,/data-page="admin"[^>]*hidden/);});
+test('la console admin et son contenu sont masqués jusqu’à la vérification serveur',()=>{assert.match(html,/id="page-admin" hidden/);assert.match(html,/id="adminUnlocked" hidden/);assert.match(html,/data-page="admin"[^>]*hidden/);assert.doesNotMatch(html,/id="adminBootstrap"/);});
 
 test('la superposition cosmique ne casse pas le header sticky ni la sidebar fixe',async()=>{const css=await readFile(new URL('../style.css',import.meta.url),'utf8');assert.match(css,/\.topbar\{[^}]*position:sticky/);assert.match(css,/\.sidebar\{[^}]*position:fixed/);assert.doesNotMatch(css,/body> :not\(\.space-scene\):not\(\.ambient\)\{position:relative/);assert.match(css,/\.mobile-nav\{display:none!important\}/);assert.doesNotMatch(html,/class="mobile-nav"/);assert.match(css,/padding-bottom:15px!important/);});
 test('les onze rubriques sont des pages sœurs et non imbriquées dans Marchés',()=>{assert.match(html,/ne constitue jamais un signal d’entrée\.<\/p><\/section><\/section><\/section><section class="page-view" data-page-view="risque"/);});
@@ -45,3 +45,14 @@ test('aucun appel Twelve Data automatique au démarrage : analyse uniquement à 
   assert.match(init,/Données en attente/);
   assert.match(app,/refreshBtn[^]*loadAnalysis\(\)/);
 });
+
+test('inscription et connexion utilisateur passent exclusivement par Google',async()=>{
+  const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
+  assert.match(html,/id="googleAuthBtn"/);
+  assert.doesNotMatch(html,/id="authEmail"|id="authPassword"|id="signUpBtn"/);
+  assert.doesNotMatch(auth,/signInWithPassword|\.auth\.signUp\(|signInWithOtp|resetPasswordForEmail/);
+  assert.match(auth,/signInWithOAuth\(\{provider:'google'/);
+});
+
+test('le parcours Google seul force le choix du compte et la marque OAuth est documentée',async()=>{const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');const guide=await readFile(new URL('../docs/GOOGLE_OAUTH_BRANDING.md',import.meta.url),'utf8');assert.match(auth,/queryParams:\{prompt:'select_account'\}/);assert.match(guide,/Google Auth Platform – Branding/);assert.match(guide,/assets\/aurevia-google-oauth-logo\.jpg/);});
+test('le statut administrateur vient du backend et non du rôle local du profil',async()=>{const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');const api=await readFile(new URL('../netlify/functions/admin-api.mjs',import.meta.url),'utf8');assert.match(auth,/\/api\/admin\?verify=1/);assert.match(api,/aurevia_is_admin/);assert.doesNotMatch(auth,/select\('display_name,role'\)/);});

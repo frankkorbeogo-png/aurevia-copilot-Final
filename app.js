@@ -1,6 +1,6 @@
 import { loadInstrumentAnalysis, getAnalysisState } from './analysis.js';
 import { calculatePositionRisk } from './risk.js';
-import { initJournal, addJournalTrade, renderJournal, loadJournalTrades } from './journal.js';
+import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
 import { initEconomicCalendar } from './news.js';
 import { initAuth, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, sendTelegramTest, updateDisplayName, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken } from './auth.js';
 import { createTradeGroup, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, groupSummary } from './trade-management.js';
@@ -207,15 +207,58 @@ async function loadServiceStatus(){
 }
 
 
-async function adminRequest(payload=null,query=''){const token=await getAnalysisAccessToken();if(!token)throw new Error('Connectez-vous pour continuer.');const response=await fetch('/api/admin'+query,{method:payload?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(payload?{'content-type':'application/json'}:{})},body:payload?JSON.stringify(payload):undefined,cache:'no-store'});const data=await response.json().catch(()=>({error:'Réponse serveur illisible.'}));if(!response.ok)throw new Error(data.error||'Action administrateur impossible.');return data;}
-function renderAdminUsers(users){const host=$('adminUsersRows');if(!host)return;const rows=(users||[]).filter(u=>{const q=($('adminUserSearch')?.value||'').toLowerCase();return !q||String(u.email||'').toLowerCase().includes(q)||String(u.display_name||'').toLowerCase().includes(q);});host.innerHTML=rows.length?rows.map(u=>{const suspended=Boolean(u.banned_until&&new Date(u.banned_until)>new Date());return `<tr><td>${escapeText(u.display_name||u.email||u.id)}<small>${escapeText(u.email||'')}</small></td><td>${u.created_at?new Date(u.created_at).toLocaleDateString():'—'}</td><td>${u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString():'Jamais'}</td><td>${u.role==='admin'?'Administrateur':'Utilisateur'}</td><td>${suspended?'Suspendu':'Actif'}</td><td><div class="table-actions">${u.role==='admin'?`<button class="small-btn" data-admin-action="revoke_admin" data-user="${u.id}">Retirer admin</button>`:`<button class="small-btn" data-admin-action="grant_admin" data-user="${u.id}">Promouvoir</button>`}${suspended?`<button class="small-btn" data-admin-action="activate" data-user="${u.id}">Réactiver</button>`:`<button class="small-btn" data-admin-action="suspend" data-user="${u.id}">Suspendre</button>`}</div></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty-cell">Aucun compte correspondant.</td></tr>';
- host.querySelectorAll('[data-admin-action]').forEach(btn=>btn.addEventListener('click',async()=>{const action=btn.dataset.adminAction,user_id=btn.dataset.user;if(!confirm(`Confirmer l’action « ${action} » ?`))return;btn.disabled=true;try{await adminRequest({action,user_id});await loadAdminConsole();}catch(e){alert(e.message);btn.disabled=false;}}));}
-
-function renderAdminAnnouncements(items){const host=$('adminAnnouncementsRows');if(!host)return;host.innerHTML=items?.length?items.map(a=>`<tr><td>${escapeText(a.title)}</td><td>${escapeText(a.category)}</td><td>${a.is_published?'Publiée':'Brouillon'}</td><td><button class="small-btn" data-announcement-toggle="${a.id}" data-published="${a.is_published?'true':'false'}">${a.is_published?'Dépublier':'Publier'}</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty-cell">Aucune annonce.</td></tr>';host.querySelectorAll('[data-announcement-toggle]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await adminRequest({action:'announcement_publish',announcement_id:btn.dataset.announcementToggle,is_published:btn.dataset.published!=='true'});await loadAdminConsole(adminPage);}catch(e){alert(e.message);btn.disabled=false;}}));}
+async function adminRequest(payload=null,query=''){
+ const token=await getAnalysisAccessToken();if(!token)throw new Error('Connectez-vous pour continuer.');
+ const response=await fetch('/api/admin'+query,{method:payload?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(payload?{'content-type':'application/json'}:{})},body:payload?JSON.stringify(payload):undefined,cache:'no-store'});
+ const data=await response.json().catch(()=>({error:'Réponse serveur illisible.'}));
+ if(!response.ok){const error=new Error(data.error||'Action administrateur impossible.');error.status=response.status;error.code=data.code||null;throw error;}
+ return data;
+}
+function renderAdminUsers(users){
+ const host=$('adminUsersRows');if(!host)return;
+ host.innerHTML=(users||[]).length?users.map(u=>{
+  const suspended=Boolean(u.banned_until&&new Date(u.banned_until)>new Date());
+  const online=Boolean(u.online),active=Boolean(u.session_active);
+  const lastSeen=u.last_seen?new Date(u.last_seen).toLocaleString():'—';
+  const sessionLabel=active?'Session active':'Aucune session active';
+  return `<tr><td>${escapeText(u.display_name||u.email||u.id)}<small>${escapeText(u.email||'')}</small></td><td>${u.created_at?new Date(u.created_at).toLocaleDateString():'—'}</td><td>${u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString():'Jamais'}</td><td>${escapeText(lastSeen)}${u.user_agent?`<small>${escapeText(u.user_agent.slice(0,90))}</small>`:''}</td><td><span class="admin-state ${online?'is-online':'is-offline'}">${online?'En ligne':'Hors ligne'}</span><small>${escapeText(sessionLabel)}</small></td><td>${u.role==='admin'?'Administrateur':'Utilisateur'}</td><td><div class="table-actions">${suspended?`<button class="small-btn" data-admin-action="activate" data-user="${u.id}">Réactiver</button>`:`<button class="small-btn" data-admin-action="suspend" data-user="${u.id}">Suspendre</button>`}${active?`<button class="small-btn" data-admin-action="revoke_session" data-user="${u.id}">Déconnecter</button>`:''}<button class="small-btn danger-btn" data-admin-action="delete_user" data-user="${u.id}" data-email="${escapeText(u.email||'')}">Supprimer</button></div></td></tr>`;
+ }).join(''):'<tr><td colspan="7" class="empty-cell">Aucun compte correspondant.</td></tr>';
+ host.querySelectorAll('[data-admin-action]').forEach(btn=>btn.addEventListener('click',async()=>{
+  const action=btn.dataset.adminAction,user_id=btn.dataset.user,email=btn.dataset.email||'';
+  const message=action==='delete_user'?`Supprimer définitivement le compte ${email||user_id} et ses données liées ? Cette action est irréversible.`:action==='revoke_session'?`Déconnecter à distance ${email||user_id} ? La session sera refusée lors du prochain contrôle.`:`Confirmer l’action « ${action} » pour ${email||user_id} ?`;
+  if(!confirm(message))return;
+  btn.disabled=true;
+  try{await adminRequest({action,user_id});await loadAdminConsole(adminPage,adminSearchValue);}
+  catch(error){alert(error.message);btn.disabled=false;}
+ }));
+}
+function renderAdminAnnouncements(items){
+ const host=$('adminAnnouncementsRows');if(!host)return;
+ host.innerHTML=items?.length?items.map(a=>{
+  const expired=Boolean(a.ends_at&&new Date(a.ends_at)<=new Date());
+  const status=expired?'Expirée':a.is_published?'Publiée':'Brouillon';
+  return `<tr><td>${escapeText(a.title)}</td><td>${escapeText(a.category)}</td><td>${status}</td><td>${a.ends_at?new Date(a.ends_at).toLocaleString():'Sans expiration'}</td><td><div class="table-actions"><button class="small-btn" data-announcement-toggle="${a.id}" data-published="${a.is_published?'true':'false'}">${a.is_published?'Dépublier':'Publier'}</button>${!expired?`<button class="small-btn" data-announcement-expire="${a.id}">Expirer</button>`:''}</div></td></tr>`;
+ }).join(''):'<tr><td colspan="5" class="empty-cell">Aucune annonce.</td></tr>';
+ host.querySelectorAll('[data-announcement-toggle]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await adminRequest({action:'announcement_publish',announcement_id:btn.dataset.announcementToggle,is_published:btn.dataset.published!=='true'});await loadAdminConsole(adminPage,adminSearchValue);}catch(error){alert(error.message);btn.disabled=false;}}));
+ host.querySelectorAll('[data-announcement-expire]').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm('Expirer immédiatement cette annonce globale ?'))return;btn.disabled=true;try{await adminRequest({action:'announcement_expire',announcement_id:btn.dataset.announcementExpire});await loadAdminConsole(adminPage,adminSearchValue);}catch(error){alert(error.message);btn.disabled=false;}}));
+}
 function renderAdminAudit(items){const host=$('adminAuditRows');if(!host)return;host.innerHTML=items?.length?items.map(a=>`<tr><td>${a.created_at?new Date(a.created_at).toLocaleString():'—'}</td><td>${escapeText(a.action)}</td><td>${escapeText(a.actor_id||'—')}</td><td>${escapeText(a.target_user_id||'—')}</td><td>${escapeText(JSON.stringify(a.details||{}))}</td></tr>`).join(''):'<tr><td colspan="5" class="empty-cell">Aucune action enregistrée.</td></tr>';}
-
-let adminUsersCache=[],adminPage=1,adminHasMore=false;
-async function loadAdminConsole(page=adminPage){try{adminPage=Math.max(1,page);const data=await adminRequest(null,`?page=${adminPage}`);adminHasMore=Boolean(data.pagination?.has_more);$('adminUsersPage').textContent=`Page ${adminPage}`;$('adminUsersPrev').disabled=adminPage<=1;$('adminUsersNext').disabled=!adminHasMore;$('adminUnlocked')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');$('adminStatProfiles').textContent=data.stats?.profiles??'—';$('adminStatTrades').textContent=data.stats?.trading_journal??'—';$('adminStatPositions').textContent=data.stats?.trading_position_groups??'—';$('adminStatTelegram').textContent=data.stats?.telegram_connections??'—';adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();}catch(error){$('adminUnlocked')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');if($('adminBootstrapStatus'))$('adminBootstrapStatus').textContent=error.message;}}
+let adminUsersCache=[],adminPage=1,adminHasMore=false,adminSearchValue='',adminSearchTimer=null;
+async function loadAdminConsole(page=adminPage,search=adminSearchValue){
+ try{
+  adminPage=Math.max(1,page);adminSearchValue=String(search||'').trim();
+  const query=new URLSearchParams({page:String(adminPage)});if(adminSearchValue)query.set('q',adminSearchValue);
+  const data=await adminRequest(null,`?${query.toString()}`);
+  adminHasMore=Boolean(data.pagination?.has_more);$('adminUsersPage').textContent=`Page ${adminPage} · ${data.pagination?.total??0} compte(s)`;$('adminUsersPrev').disabled=adminPage<=1;$('adminUsersNext').disabled=!adminHasMore;
+  $('adminUnlocked')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
+  const stats=data.stats||{};$('adminStatProfiles').textContent=stats.profiles??'—';$('adminStatOnline').textContent=stats.users_online??'—';$('adminStatSessions').textContent=stats.active_sessions??'—';$('adminStatSuspended').textContent=stats.suspended??'—';$('adminStatTrades').textContent=stats.trading_journal??'—';$('adminStatPositions').textContent=stats.trading_position_groups??'—';$('adminStatTelegram').textContent=stats.telegram_connections??'—';
+  adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();
+ }catch(error){
+  $('adminUnlocked')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
+  if(error.status===403||error.status===409){window.__aureviaAdminVerified=false;document.querySelector('[data-page="admin"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');if(location.hash==='#admin')history.replaceState(null,'','#accueil');}
+  if($('adminUsersNote'))$('adminUsersNote').textContent=error.message;
+ }
+}
 
 async function loadTelegramUi(){try{const prefs=await loadTelegramPreferences();const status=$('telegramConnectionStatus');if(!prefs){status.textContent='Connectez-vous dans Paramètres & profil pour associer Telegram.';$('saveTelegramPrefs').disabled=true;$('sendTelegramTest').disabled=true;return;}status.textContent=prefs.chat_id?'Compte Telegram associé.':'Compte Telegram non associé.';$('notifyAll').checked=Boolean(prefs.notify_all_analyses);$('notifySignals').checked=Boolean(prefs.notify_validated_signals);$('notifyEconomic').checked=Boolean(prefs.notify_economic_announcements);$('saveTelegramPrefs').disabled=!prefs.chat_id;$('sendTelegramTest').disabled=!prefs.chat_id;}catch(error){$('telegramConnectionStatus').textContent=error.message;}}
 function renderJournalStats(){
@@ -242,7 +285,7 @@ function createPositionFromForm(){
   const tps=[1,2,3].map(i=>({label:`TP${i}`,price:Number($(`posTP${i}`).value)})).filter(x=>Number.isFinite(x.price)&&x.price>0);
   try{
     const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:Number($('posLot').value),lotStep:Number($('posLotStep').value),entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,contractSize:$('posContract').value.trim()?Number($('posContract').value):null,quoteToAccount:Number($('posConversion').value||1),feesPerLot:Number($('posFees').value||0)});
-    saveTradeGroup(group);renderPositions();syncTradeGroupToSupabase(group).then(r=>{if(r.synced)alert(`Position enregistrée et synchronisée : ${group.children.length} trade(s).`);else alert(`Position enregistrée sur cet appareil : connectez-vous à Supabase pour la synchroniser. ${group.autoJournal?'Fiche locale liée au journal créée.':'Journal automatique désactivé.'}`);}).catch(error=>alert(`Position conservée localement, mais synchronisation cloud impossible : ${error.message}`));
+    saveTradeGroup(group);renderPositions();const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];sendTelegramNotification({type:'trade_open',text:tradeLines.join('\n')}).catch(()=>{});syncTradeGroupToSupabase(group).then(r=>{if(r.synced)alert(`Position enregistrée et synchronisée : ${group.children.length} trade(s).`);else alert(`Position enregistrée sur cet appareil : connectez-vous à Supabase pour la synchroniser. ${group.autoJournal?'Fiche locale liée au journal créée.':'Journal automatique désactivé.'}`);}).catch(error=>alert(`Position conservée localement, mais synchronisation cloud impossible : ${error.message}`));
   }catch(error){alert(error.message);}
 }
 function savePartialCloseFromForm(){
@@ -250,18 +293,26 @@ function savePartialCloseFromForm(){
     const childId=$('closeChildId').value;const groups=loadTradeGroups();const group=groups.find(g=>g.children.some(c=>c.id===childId));if(!group)throw new Error('Position introuvable.');
     const fees=$('closeFees').value.trim()===''?null:Number($('closeFees').value);
     recordPartialClose(group,childId,{volume:Number($('closeVolume').value),exit:Number($('closeExit').value),contractSize:group.contractSize,quoteToAccount:group.quoteToAccount,feesPerLot:group.feesPerLot,fees});
-    const child=group.children.find(x=>x.id===childId),closeEvent=child.closes.at(-1);persistTradeGroup(group);$('closePositionDialog').close();renderPositions();renderJournal();renderLinkedJournal();syncTradeCloseToSupabase(group,child,closeEvent).catch(error=>alert(`Clôture enregistrée localement, mais synchronisation cloud impossible : ${error.message}`));
+    const child=group.children.find(x=>x.id===childId),closeEvent=child.closes.at(-1);persistTradeGroup(group);sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · CLÔTURE ENREGISTRÉE\n${group.instrument} · ${child.direction} · ${child.tpLabel}\nVolume clôturé : ${closeEvent.volume}\nPrix de sortie saisi : ${closeEvent.exit}\nRésultat net enregistré : ${closeEvent.net.toFixed(2)}\nVolume restant : ${child.remainingLot}\nClôture interne AUREVIA uniquement.`}).catch(()=>{});$('closePositionDialog').close();renderPositions();renderJournal();renderLinkedJournal();syncTradeCloseToSupabase(group,child,closeEvent).catch(error=>alert(`Clôture enregistrée localement, mais synchronisation cloud impossible : ${error.message}`));
   }catch(error){alert(error.message);}
 }
 function bindEvents(){
+  let pendingAdminRoute=false;
   window.addEventListener('aurevia:authchange',()=>loadAnalysis());
-  window.addEventListener('aurevia:adminchange',event=>{if(event.detail?.isAdmin&&location.hash==='#admin')loadServiceStatus();});
+  window.addEventListener('aurevia:adminchange',event=>{
+    const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
+    if(allowed&&pendingAdminRoute){pendingAdminRoute=false;showPage('admin');}
+    else if(!allowed){pendingAdminRoute=false;if(location.hash==='#admin')showPage('accueil');}
+    else if(allowed&&location.hash==='#admin')loadAdminConsole();
+  });
   $('instrumentSelect').addEventListener('change',e=>setSelectedSymbol(e.target.value));
   document.querySelectorAll('.ticker').forEach(t=>t.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(t.dataset.symbol);}));
   document.querySelectorAll('#timeframes button').forEach(b=>b.addEventListener('click',()=>setTimeframe(b.dataset.tf)));
   $('refreshBtn').addEventListener('click',()=>{mountTradingView();loadAnalysis();});
   $('menuToggle').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
-  const showPage = page => {
+  const showPage = requestedPage => {
+    let page=requestedPage;
+    if(page==='admin'&&window.__aureviaAdminVerified!==true){if(window.__aureviaAdminVerified===null)pendingAdminRoute=true;page='accueil';}
     document.querySelectorAll('[data-page-view]').forEach(v=>v.classList.toggle('active',v.dataset.pageView===page));
     document.querySelectorAll('[data-page]').forEach(a=>a.classList.toggle('active',a.dataset.page===page));
     $('sidebar').classList.remove('open');
@@ -269,7 +320,8 @@ function bindEvents(){
     if(page==='positions')renderPositions();
     if(page==='dxy')mountStandaloneDxy();
     if(page==='telegram')loadTelegramUi();
-    if(page==='parametres'||page==='admin')loadServiceStatus();
+    if(page==='parametres')loadServiceStatus();
+    if(page==='admin')loadAdminConsole(1);
     history.replaceState(null,'','#'+page);
     window.scrollTo({top:0,behavior:'smooth'});
   };
@@ -292,12 +344,25 @@ function bindEvents(){
     $('riskMoneyOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('lotsOut').textContent=result.error?'—':result.lots.toFixed(2);$('lossOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('gainOut').textContent=result.error||result.gain===null?'—':`${result.gain.toFixed(2)} ${$('accountCurrency').value}`;$('rrOut').textContent=result.error||result.rr===null?'—':`1:${result.rr.toFixed(2)}`;$('riskPctOut').textContent=result.error||result.riskPercentActual===null?'—':`${result.riskPercentActual.toFixed(2)} %`;$('marginOut').textContent=result.error||result.margin===null?'—':`${result.margin.toFixed(2)} ${$('accountCurrency').value}`;
   });
   $('addTradeBtn').addEventListener('click',()=>$('tradeDialog').showModal());
+  $('journalRows')?.addEventListener('click',event=>{const btn=event.target.closest('[data-delete-journal]');if(!btn)return;if(!confirm('Supprimer définitivement cette entrée du journal local ?'))return;const result=deleteJournalTrade(btn.dataset.deleteJournal);if(!result.ok){alert(result.error);return;}renderJournal();renderJournalStats();});
   $('saveTrade').addEventListener('click',()=>{
     const result=addJournalTrade({instrument:$('tradeInstrument').value,direction:$('tradeDirection').value,result:Number($('tradeResult').value),date:$('tradeDate').value,note:$('tradeNote').value});
-    if(result.ok){renderJournal();renderJournalStats();$('tradeDialog').close();$('tradeForm').reset();}else alert(result.error);
+    if(result.ok){sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · TRADE AJOUTÉ AU JOURNAL\n${$('tradeInstrument').value} · ${$('tradeDirection').value}\nRésultat net : ${Number($('tradeResult').value).toFixed(2)}\nDate : ${$('tradeDate').value}\nNote : ${$('tradeNote').value||'—'}`}).catch(()=>{});renderJournal();renderJournalStats();$('tradeDialog').close();$('tradeForm').reset();}else alert(result.error);
   });
   $('settingsBtn').addEventListener('click',()=>document.querySelector('[data-page="parametres"]')?.click());
-  $('adminRefreshStatus')?.addEventListener('click',()=>loadAdminConsole(adminPage));$('adminUsersPrev')?.addEventListener('click',()=>loadAdminConsole(adminPage-1));$('adminUsersNext')?.addEventListener('click',()=>loadAdminConsole(adminPage+1));$('adminUserSearch')?.addEventListener('input',()=>renderAdminUsers(adminUsersCache));$('adminBootstrap')?.addEventListener('click',async()=>{const status=$('adminBootstrapStatus');status.textContent='Vérification sécurisée…';try{await adminRequest({action:'bootstrap'});status.textContent='Accès initialisé. Rechargement du profil…';location.reload();}catch(e){status.textContent=e.message;}});$('adminCreateAnnouncement')?.addEventListener('click',async()=>{const status=$('adminAnnouncementStatus');status.textContent='Enregistrement…';try{await adminRequest({action:'announcement_create',title:$('adminAnnouncementTitle').value,body:$('adminAnnouncementBody').value,category:$('adminAnnouncementCategory').value,source_url:$('adminAnnouncementUrl').value||null,is_published:$('adminAnnouncementPublish').checked});$('adminAnnouncementTitle').value='';$('adminAnnouncementBody').value='';status.textContent='Annonce enregistrée.';}catch(e){status.textContent=e.message;}});window.addEventListener('aurevia:adminchange',e=>{if(e.detail?.isAdmin)loadAdminConsole();});
+  $('adminRefreshStatus')?.addEventListener('click',()=>loadAdminConsole(adminPage,adminSearchValue));
+  $('adminUsersPrev')?.addEventListener('click',()=>loadAdminConsole(adminPage-1,adminSearchValue));
+  $('adminUsersNext')?.addEventListener('click',()=>loadAdminConsole(adminPage+1,adminSearchValue));
+  $('adminUserSearch')?.addEventListener('input',()=>{clearTimeout(adminSearchTimer);adminSearchTimer=setTimeout(()=>loadAdminConsole(1,$('adminUserSearch').value),350);});
+  $('adminCreateAnnouncement')?.addEventListener('click',async()=>{
+    const status=$('adminAnnouncementStatus');status.textContent='Enregistrement…';
+    try{
+      const endsValue=$('adminAnnouncementEndsAt').value;
+      await adminRequest({action:'announcement_create',title:$('adminAnnouncementTitle').value,body:$('adminAnnouncementBody').value,category:$('adminAnnouncementCategory').value,source_url:$('adminAnnouncementUrl').value||null,ends_at:endsValue?new Date(endsValue).toISOString():null,is_published:$('adminAnnouncementPublish').checked});
+      $('adminAnnouncementTitle').value='';$('adminAnnouncementBody').value='';$('adminAnnouncementEndsAt').value='';status.textContent='Annonce enregistrée.';await loadAdminConsole(adminPage,adminSearchValue);
+    }catch(error){status.textContent=error.message;}
+  });
+  window.addEventListener('aurevia:adminchange',e=>{if(e.detail?.isAdmin)loadAdminConsole(1,adminSearchValue);});
   $('saveProfileName')?.addEventListener('click',async()=>{const btn=$('saveProfileName');btn.disabled=true;try{const value=await updateDisplayName($('profileDisplayName').value);$('authStatus').textContent='Profil enregistré : '+value;}catch(error){$('authStatus').textContent='Profil non enregistré : '+error.message;}finally{btn.disabled=false;}});
   $('saveMyAnalysis').addEventListener('click',saveMyAnalysis);
   $('compareMyAnalysis').addEventListener('click',compareMyAnalysis);

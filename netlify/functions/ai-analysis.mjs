@@ -1,3 +1,4 @@
+import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const rate=new Map();
 function rateAllowed(key,limit=8){const now=Date.now(),item=rate.get(key);if(!item||now-item.start>60000){rate.set(key,{start:now,count:1});return true;}if(item.count>=limit)return false;item.count++;return true;}
@@ -7,8 +8,7 @@ export async function handler(event){
  if(event.httpMethod!=='POST')return json(405,{error:'Méthode non autorisée.'});
  let body;try{body=JSON.parse(event.body||'{}')}catch{return json(400,{error:'JSON invalide.'});}
  const {symbol,timeframes}=body;if(typeof symbol!=='string'||!ALLOWED.has(symbol)||!timeframes||!['H4','M30','M15','M5','M1'].every(tf=>validCandles(timeframes[tf])))return json(200,{decision:'WAIT',reason:'Données OHLC H4/M30/M15/M5/M1 absentes, invalides ou insuffisantes.',probability:null,score:null});
- const auth=event.headers?.authorization||event.headers?.Authorization||'';const accessToken=auth.startsWith('Bearer ')?auth.slice(7):'';const base=process.env.SUPABASE_URL,publishable=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY;if(!accessToken||!base||!publishable)return json(401,{error:'Connectez-vous à AUREVIA pour utiliser l’analyse IA.'});
- let user;try{const verified=await fetch(`${base}/auth/v1/user`,{headers:{apikey:publishable,authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(8000)});if(!verified.ok)return json(401,{error:'Session utilisateur invalide ou expirée.'});user=await verified.json();if(!user?.id)return json(401,{error:'Session utilisateur invalide.'});}catch{return json(401,{error:'Impossible de vérifier la session utilisateur.'});}
+ let user;try{const context=await verifyBearerUser(event);await assertActiveSession(context);user=context.user;}catch(error){return json(error.statusCode||401,{error:error.message||'Impossible de vérifier la session utilisateur.',code:error.code||null});}
  const clientIp=event.headers?.['x-nf-client-connection-ip']||event.headers?.['x-forwarded-for']?.split(',')[0]?.trim()||'unknown';if(!rateAllowed(`ai:${user.id}:${clientIp}`))return json(429,{error:'Limite d’analyses atteinte. Réessayez dans une minute.'});
  const key=process.env.GROQ_API_KEY;if(!key)return json(503,{error:'Moteur IA non configuré côté serveur.'});
  const model=process.env.GROQ_MODEL||'openai/gpt-oss-120b';

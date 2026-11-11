@@ -69,10 +69,10 @@
     }
     const dist=Math.hypot(x,y), center=Math.max(0,1-dist/1.35), hue=Math.random();
     let col;
-    if(center>.25)col=[1.0,.78+.18*Math.random(),.52+.25*Math.random()];
-    else if(hue<.46)col=[.48+.15*Math.random(),.62+.2*Math.random(),1.0];
-    else if(hue<.78)col=[.65+.16*Math.random(),.52+.15*Math.random(),1.0];
-    else col=[.78,.84,.98];
+    if(center>.25)col=[.28+.12*Math.random(),.72+.2*Math.random(),1.0];
+    else if(hue<.46)col=[.18+.16*Math.random(),.62+.22*Math.random(),1.0];
+    else if(hue<.78)col=[.66+.18*Math.random(),.24+.16*Math.random(),1.0];
+    else col=[.78,.86,1.0];
     const k=i*9;data[k]=x;data[k+1]=y;data[k+2]=z;data[k+3]=col[0];data[k+4]=col[1];data[k+5]=col[2];data[k+6]=size;data[k+7]=rnd(0,6.28);data[k+8]=kind;
   }
   const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);
