@@ -70,3 +70,14 @@ Dernière mise à jour : 10 novembre 2026.
 - Migration d’administration et index appliquée au projet Supabase associé ; droits RPC vérifiés : service_role seulement.
 - Tests locaux : 68/68 ; build réussi.
 - Non vérifié : intégration visuelle dans un navigateur réel, appels fournisseurs avec clés Netlify, notification Telegram réelle et déploiement Netlify.
+
+
+## Mise à jour 2.2.3 — 11 novembre 2026
+
+- Correction critique HTML : toutes les rubriques sont des enfants directs de `main`, et non des pages imbriquées dans `page-marches`. Cette imbrication empêchait les rubriques Gestion du capital, Journal, Telegram, Positions, DXY, Calendrier, Paramètres, Guide et Administration de s'afficher même lorsque leur lien était activé.
+- Navigation du logo vers Accueil et synchronisation de la navigation avec les changements de fragment URL.
+- Lisibilité augmentée : texte courant 15–16 px, formulaires et résultats d’analyse agrandis, cartes de structure, métriques, confluence, figures et tableaux renforcés.
+- Fond cosmique désormais rendu en WebGL : disque spiralé de particules avec profondeur, perspective, inclinaison, rotation lente et scintillement ; mode réduit et adaptation mobile/faible puissance conservés.
+- Structure des fichiers : les modules applicatifs demeurent à la racine ; les seuls sous-dossiers conservés sont les dossiers techniques utiles (`assets`, `netlify/functions`, `supabase/migrations`, `tests`, `scripts`, `docs`).
+- Validation locale : 73 tests réussis ; build réussi ; syntaxe Node vérifiée ; les 11 rubriques sont des sections sœurs directes de `main`.
+- Non vérifié dans cette session : rendu dans un vrai navigateur, appels aux API avec secrets Netlify, réception Telegram et déploiement effectif sur Netlify.

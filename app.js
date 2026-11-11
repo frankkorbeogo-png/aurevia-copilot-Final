@@ -254,6 +254,10 @@ function bindEvents(){
   document.querySelectorAll('[data-page]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showPage(a.dataset.page);}));
   const initial=location.hash.replace('#','');
   if(document.querySelector(`[data-page-view="${initial}"]`))showPage(initial);
+  window.addEventListener('hashchange',()=>{
+    const requested=location.hash.replace('#','');
+    if(document.querySelector(`[data-page-view="${requested}"]`))showPage(requested);
+  });
 
   document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-page="${b.dataset.goto}"]`)?.click()));
   document.querySelectorAll('.home-asset').forEach(b=>b.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(b.dataset.symbol);}));

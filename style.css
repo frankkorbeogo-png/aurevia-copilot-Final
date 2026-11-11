@@ -127,10 +127,8 @@ body{background:radial-gradient(ellipse at 52% 0%,#172348 0%,transparent 42%),li
 body>header,body>aside,body>nav{z-index:1}body>main.main-content{position:relative;z-index:1}
 
 
-/* AUREVIA — intégration des visuels officiels et galaxie en rotation lente */
-.space-scene::before{content:"";position:absolute;inset:-18%;z-index:0;background:url("assets/galaxy-spiral.webp") center center/cover no-repeat;opacity:.24;filter:saturate(.88) contrast(1.05);transform-origin:50% 50%;animation:galaxyTurn 720s linear infinite;will-change:transform;}
+/* AUREVIA — galaxie désormais calculée en WebGL dans galaxy.js */
 .space-scene #galaxyCanvas,.space-scene .space-nebula,.space-scene .space-vignette{z-index:1}
-@keyframes galaxyTurn{from{transform:rotate(0deg) scale(1.06)}to{transform:rotate(360deg) scale(1.06)}}
 .brand-logo{width:54px;height:54px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 0 13px #4e86ff88) drop-shadow(0 0 20px #9b55ff44);}
 .brand-name{font-weight:800;letter-spacing:.105em;text-shadow:0 0 18px #7188ff22}
 .brand-name b{background:linear-gradient(100deg,#62dfff,#9b87ff 65%,#d17aff);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -179,3 +177,96 @@ body>header,body>aside,body>nav{z-index:1}body>main.main-content{position:relati
 .table-actions{display:flex;flex-wrap:wrap;gap:6px;min-width:180px}.table-actions .small-btn{margin:0;padding:7px 9px;font-size:.72rem}.table-wrap td small{display:block;color:var(--muted,#9b91a7);font-size:.72rem;margin-top:3px}.panel input[type="search"]{max-width:260px;margin:0 14px 0 auto}.panel[hidden]{display:none!important}
 
 .admin-pagination{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px;color:var(--muted,#9b91a7)}.admin-pagination .small-btn{margin:0}
+
+
+/* AUREVIA V2.2.3 — lisibilité renforcée, priorité à l'analyse */
+:root{--aurevia-font-base:16px}
+body{font-size:16px;line-height:1.58}
+.eyebrow{font-size:11px;letter-spacing:.13em}
+.muted{font-size:14px;line-height:1.7}
+.nav-link{font-size:14px;min-height:46px}
+.panel-head h2{font-size:18px}
+.small-btn,.primary-btn{font-size:14px;min-height:42px}
+.source-pill,.subtle-pill{font-size:11px}
+.footnote,.session-note{font-size:12px;line-height:1.6}
+.table-wrap table,table{font-size:13px}
+th,td{padding:11px 10px}
+/* Analyse technique et analyse personnelle */
+#page-marches .market-page-intro h1{font-size:clamp(28px,3vw,38px)}
+#page-marches .market-page-intro p{font-size:16px;line-height:1.7}
+#page-marches .chart-head h2{font-size:22px}
+#page-marches .chart-head select{font-size:20px}
+#page-marches .timeframes button{font-size:14px;min-height:38px;padding:8px 12px}
+#page-marches .chart-footer{font-size:12px}
+#page-marches .signal-state{font-size:clamp(38px,4vw,52px)}
+#page-marches .signal-explain{font-size:14px;line-height:1.6}
+#page-marches .probability>div:first-child{font-size:13px}
+#page-marches .probability b{font-size:19px}
+#page-marches .probability small{font-size:12px}
+#page-marches .scenario-list{font-size:14px;line-height:1.7}
+#page-marches .scenario-list>b{font-size:15px}
+#page-marches .scenario-list p{font-size:14px}
+#page-marches .disclaimer-mini{font-size:12px;line-height:1.65}
+#page-marches .panel-head h2{font-size:19px}
+#page-marches .personal-analysis-intro p{font-size:15px;line-height:1.7}
+#page-marches .analysis-form label{font-size:15px;line-height:1.5}
+#page-marches .analysis-form input,
+#page-marches .analysis-form select,
+#page-marches .analysis-form textarea{font-size:16px;min-height:46px;padding:12px 14px}
+#page-marches .analysis-result-card h3{font-size:19px}
+#page-marches .analysis-result-card p,
+#page-marches .confrontation-content{font-size:15px;line-height:1.8}
+#page-marches .analysis-save-status{font-size:13px;line-height:1.6}
+#page-marches .history-head{font-size:15px}
+#page-marches .history-list{font-size:14px;line-height:1.75}
+#page-marches .structure-card{font-size:14px;line-height:1.65;padding:16px}
+#page-marches .structure-card-head{font-size:13px}
+#page-marches .structure-card-head b{font-size:16px}
+#page-marches .structure-metrics span{font-size:12px;line-height:1.5;padding:8px}
+#page-marches .structure-metrics b{font-size:13px}
+#page-marches .structure-card p{font-size:13px;line-height:1.65}
+#page-marches .structure-card p small{font-size:11px}
+#page-marches .structure-bottom h3{font-size:15px}
+#page-marches .confluence-item,
+#page-marches .pattern-chip{font-size:12px;line-height:1.5;padding:9px 11px}
+#page-marches .confluence-item b{font-size:14px}
+#page-marches .pattern-chip b{font-size:13px}
+#page-marches .pattern-chip small{font-size:11px}
+#page-marches .indicator-chips span{font-size:12px;padding:6px 10px}
+#page-marches .lower-grid table{font-size:13px}
+/* Les écrans de gestion conservent également des libellés confortables. */
+.page-view .risk-fields label,.page-view .form-grid label{font-size:14px;line-height:1.5}
+.page-view .risk-fields input,.page-view .risk-fields select,
+.page-view .form-grid input,.page-view .form-grid select,.page-view .form-grid textarea{font-size:16px;min-height:44px}
+.check-line{font-size:14px;line-height:1.5}
+.guide-list{font-size:15px;line-height:1.9}
+@media(max-width:900px){
+  body{font-size:15px}
+  .nav-link{font-size:14px}
+  #page-marches .structure-cards{grid-template-columns:1fr}
+  #page-marches .structure-card{font-size:14px}
+}
+@media(max-width:600px){
+  body{font-size:15px}
+  .eyebrow{font-size:10px}
+  .panel-head h2{font-size:17px}
+  .nav-link{font-size:13px;min-height:42px}
+  #page-marches .market-page-intro h1{font-size:27px}
+  #page-marches .market-page-intro p{font-size:15px}
+  #page-marches .analysis-form label{font-size:15px}
+  #page-marches .analysis-form input,
+  #page-marches .analysis-form select,
+  #page-marches .analysis-form textarea{font-size:16px;min-height:48px}
+  #page-marches .analysis-result-card p,
+  #page-marches .confrontation-content{font-size:15px}
+  #page-marches .structure-card p{font-size:13px}
+  #page-marches .structure-metrics span{font-size:12px}
+  #page-marches .confluence-item,
+  #page-marches .pattern-chip{font-size:12px}
+  #page-marches .footnote{font-size:12px}
+  table{font-size:12px}
+}
+/* Le WebGL dessine désormais la galaxie : on retire l'ancienne image tournante. */
+.space-scene::before{display:none!important}
+
+@media(max-width:600px){.nav-link{font-size:13px!important}}
