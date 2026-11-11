@@ -6,7 +6,7 @@ import {calculateFixedRangeVolumeProfile} from './volume-profile.js';
 import {calculateFibonacciRetracements} from './fibonacci.js';
 import {getAnalysisAccessToken} from './auth.js';
 const SYMBOLS={XAUUSD:'XAU/USD',XAGUSD:'XAG/USD',EURUSD:'EUR/USD',GBPUSD:'GBP/USD',USDJPY:'USD/JPY',AUDUSD:'AUD/USD',USDCAD:'USD/CAD',USDCHF:'USD/CHF',NZDUSD:'NZD/USD',EURGBP:'EUR/GBP',EURJPY:'EUR/JPY',GBPJPY:'GBP/JPY',BTCUSD:'BTC/USD',ETHUSD:'ETH/USD'};
-const FRAMES={H4:'4h',M30:'30min',M5:'5min'};
+const FRAMES={H4:'4h',M30:'30min',M15:'15min',M5:'5min',M1:'1min'};
 let latest={message:'En attente',tableMessage:'Sélectionnez un instrument pour commencer.',signalReason:'Aucune conclusion avant validation des données.'};
 export function getAnalysisState(){return latest;}
 function parseProviderTime(value,zone){
@@ -20,12 +20,12 @@ export async function loadInstrumentAnalysis(symbol){
  const pair=SYMBOLS[symbol];if(!pair){latest={message:'Instrument non pris en charge par le flux OHLC',tableMessage:'Cet instrument ne fait pas partie de la liste autorisée pour les données techniques.',signalReason:'WAIT : historique OHLC validé indisponible pour cet instrument.'};return null;}
  try{
   const frames={};for(const [tf,interval] of Object.entries(FRAMES))frames[tf]=await fetchFrame(pair,interval);
-  const stale=Object.entries(frames).filter(([tf,d])=>!isFresh(d.candles,d.timezone,{H4:240,M30:30,M5:5}[tf]));
+  const stale=Object.entries(frames).filter(([tf,d])=>!isFresh(d.candles,d.timezone,{H4:240,M30:30,M15:15,M5:5,M1:1}[tf]));
   const analyses={};for(const [tf,data] of Object.entries(frames)){const candles=data.candles;const structure=detectMarketStructure(candles);analyses[tf]={indicators:calculateIndicators(candles),structure,patterns:[...detectCandlestickPatterns(candles),...detectChartPatterns(candles)],fibonacci:calculateFibonacciRetracements(structure.swings,structure.bias),volumeProfile:calculateFixedRangeVolumeProfile(candles),last:candles.at(-1)};}
-  const h4=analyses.H4,m30=analyses.M30,m5=analyses.M5;
+  const h4=analyses.H4,m30=analyses.M30,m15=analyses.M15,m5=analyses.M5,m1=analyses.M1;
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
-  const {direction,score,scoreComponents,aligned}=evaluateConfluence({h4,m30,m5});
-  let decision={decision:'WAIT',reason:'Confluence multi-timeframe incomplète. Les cinq critères doivent être confirmés.',score,probability:null};
+  const {direction,score,scoreComponents,aligned}=evaluateConfluence({h4,m30,m15,m5,m1});
+  let decision={decision:'WAIT',reason:'Confluence multi-timeframe incomplète. Les critères pondérés doivent être confirmés.',score,probability:null};
   if(!stale.length&&aligned){
     let accessToken=null;try{accessToken=await getAnalysisAccessToken();}catch{}
     if(!accessToken)decision.reason='Analyse IA réservée aux comptes connectés. Connectez-vous dans Paramètres & profil ; les indicateurs techniques restent consultables.';
@@ -35,10 +35,10 @@ export async function loadInstrumentAnalysis(symbol){
     if(response.ok)decision={...result,score,probability:null};else decision={decision:'WAIT',reason:result.error||'Moteur IA indisponible.',score,probability:null};
     }
   }else if(stale.length)decision.reason='WAIT : données périmées ou horodatage non vérifiable sur '+stale.map(x=>x[0]).join(', ')+'.';
-  else decision.reason='WAIT : les cinq critères H4/M30/M5 ne sont pas tous confirmés. Il faut un contexte H4 aligné EMA200, une cassure M30, un sweep M5 cohérent et une cassure M5 de confirmation.';
+  else decision.reason='WAIT : les confirmations H4/M30/M15/M5/M1 ne sont pas toutes réunies. Il faut un contexte H4 aligné EMA200, une structure M30, les confirmations principales M15, puis un sweep M5 et un déclencheur M5 ou M1.';
   if((decision.decision==='BUY'&&direction!=='BUY')||(decision.decision==='SELL'&&direction!=='SELL'))decision={decision:'WAIT',reason:'Réponse IA rejetée : elle contredit le biais H4 calculé.',score,probability:null};
-  const patterns=[...h4.patterns,...m30.patterns,...m5.patterns].map(x=>x.name);
-  latest={message:stale.length?'Données reçues mais fraîcheur non confirmée':'Données OHLC reçues · H4 / M30 / M5',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,probability:null,frames};
-  return {price:m5.last.close,status:'reçu'};
- }catch(error){latest={message:'Analyse indisponible',tableMessage:'Impossible de charger les trois unités H4/M30/M5.',signalReason:'WAIT : '+error.message,decision:'WAIT',probability:null,score:null};return null;}
+  const patterns=[...h4.patterns,...m30.patterns,...m15.patterns,...m5.patterns,...m1.patterns].map(x=>x.name);
+  latest={message:stale.length?'Données reçues mais fraîcheur non confirmée':'Données OHLC reçues · H4 / M30 / M15 / M5 / M1',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,probability:null,frames};
+  return {price:m1.last.close,status:'reçu'};
+ }catch(error){latest={message:'Analyse indisponible',tableMessage:'Impossible de charger les cinq unités H4/M30/M15/M5/M1.',signalReason:'WAIT : '+error.message,decision:'WAIT',probability:null,score:null};return null;}
 }

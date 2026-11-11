@@ -4,6 +4,11 @@
   functions = "netlify/functions"
 
 [[redirects]]
+  from = "/api/market-quote"
+  to = "/.netlify/functions/market-quote"
+  status = 200
+
+[[redirects]]
   from = "/api/market-data"
   to = "/.netlify/functions/market-data"
   status = 200

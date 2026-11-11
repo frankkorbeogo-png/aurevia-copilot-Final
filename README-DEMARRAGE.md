@@ -64,6 +64,22 @@ Après le déploiement, vérifier l'URL de redirection OAuth Supabase. Les avert
 - Les graphiques TradingView, le calendrier économique et le DXY sont des widgets externes ; leur disponibilité dépend du fournisseur et de la connexion.
 - L'analyse OHLC Twelve Data est autorisée sur 14 instruments : XAU/USD, XAG/USD, les paires forex listées dans `analysis.js`, BTC/USD et ETH/USD. Les autres symboles de la liste graphique restent consultables sur le widget mais ne reçoivent pas cette analyse OHLC.
 - Le Volume Profile est une approximation calculée à partir des volumes OHLCV par intervalle, pas un profil tick par tick. Il reste indisponible si le fournisseur ne donne pas de volume exploitable.
-- Le score de confirmation technique est une règle explicable sur cinq critères pondérés. Ce n'est pas une probabilité statistique de réussite. La probabilité reste non publiée tant qu'un historique de calibration représentatif n'existe pas.
+- Le score de confirmation technique est une règle explicable sur sept critères pondérés, dont 50 % consacrés au timeframe M15. Ce n'est pas une probabilité statistique de réussite. La probabilité reste non publiée tant qu'un historique de calibration représentatif n'existe pas.
 - Le P/L réalisé utilise le prix d'exécution, le volume clôturé, la taille du contrat, la conversion de devise et les frais. Sans spécifications contractuelles valides, le résultat réel ne peut pas être calculé.
 - L'analyse IA exige une session Supabase valide et le backend applique une limite de requêtes par utilisateur ; le flux OHLC applique une limite par IP (garde-fou par instance serverless). Les secrets serveur ne sont pas inclus dans l'archive ; les appels réels Groq, Twelve Data et Telegram doivent être vérifiés après configuration des variables Netlify.
+
+
+## Installation de l’application (PWA)
+
+Le site doit être servi en HTTPS.
+- **iPhone/iPad :** ouvrir dans Safari → Partager → Sur l’écran d’accueil → Ajouter.
+- **Android :** ouvrir dans Chrome → menu ⋮ → Installer l’application ou Ajouter à l’écran d’accueil.
+- **Windows/macOS :** dans Chrome ou Edge, utiliser l’icône Installer dans la barre d’adresse ou le menu du navigateur.
+
+Le manifeste fournit les icônes standard 192×192 et 512×512, une icône maskable 512×512 et une icône Apple Touch 180×180. L’installation ne demande aucune clé API à l’utilisateur.
+
+## Méthode multi-timeframes V2.2.5
+- H4 : biais général.
+- M30 : structure intermédiaire et BOS/CHoCH.
+- M15 : unité centrale de l’analyse technique et de la confluence.
+- M5 ou M1 : déclencheur d’entrée après sweep/reclaim et confirmation.

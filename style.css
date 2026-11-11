@@ -270,3 +270,54 @@ th,td{padding:11px 10px}
 .space-scene::before{display:none!important}
 
 @media(max-width:600px){.nav-link{font-size:13px!important}}
+
+/* V2.2.4 — corrections demandées : aucune barre fixe inférieure sur mobile. */
+@media(max-width:600px){.mobile-nav{display:none!important}.main-content{padding-bottom:15px!important}}
+.auth-brand img{width:96px!important;height:96px!important;max-height:96px!important;object-fit:contain;filter:drop-shadow(0 0 18px #657ce955)}
+.install-app-block{margin:12px 16px 16px;padding:14px;border:1px solid #34486f;border-radius:12px;background:linear-gradient(135deg,#111d35,#151126)}
+.install-app-block>div{margin-bottom:10px}.install-app-block>div>b{font-size:13px;color:#f0efff}.install-app-block .muted{margin:5px 0;font-size:11px;line-height:1.5}.install-app-block .small-btn{margin:0 0 4px}.install-app-block .footnote{padding:5px 0 0;margin:0;line-height:1.5}
+
+
+/* AUREVIA V2.2.5 — lisibilité globale et véritable Voie lactée 3D en arrière-plan */
+html,body{background:#030713!important}
+body{font-size:16px;line-height:1.65}
+.space-scene{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse at 50% 48%,#111a35 0%,#070d1e 48%,#02040c 100%);overflow:hidden}
+#galaxyCanvas{opacity:.98;z-index:1}
+.space-nebula{opacity:.08;filter:blur(90px);mix-blend-mode:screen}
+.nebula-a{background:radial-gradient(ellipse,#4059b8 0%,#252b68 42%,transparent 74%)}
+.nebula-b{background:radial-gradient(ellipse,#68449d 0%,#293a78 42%,transparent 74%)}
+.nebula-c{background:radial-gradient(ellipse,#314f9a 0%,#4b2d78 42%,transparent 74%)}
+.space-vignette{z-index:2;background:linear-gradient(180deg,#02040c33,#02040c66),radial-gradient(ellipse at center,transparent 24%,#02040cc9 100%)}
+.ambient{display:none!important}
+body>header,body>aside,body>nav,body>main.main-content{position:relative;z-index:2}
+.panel{background:linear-gradient(145deg,#0d1629eF,#080f20f2 76%);border-color:#293c60;backdrop-filter:blur(15px) saturate(1.15)}
+.ticker,.date-chip,.sidebar,.topbar{backdrop-filter:blur(17px) saturate(1.2)}
+/* Aucune micro-typographie : les libellés secondaires restent lisibles. */
+small,.eyebrow,.footnote,.session-note,.app-footer,.notice-box,.source-pill,.subtle-pill{font-size:12px!important;line-height:1.55}
+label,.form-grid label,.risk-fields label,.analysis-form label{font-size:14px!important;line-height:1.5}
+button,.small-btn,.primary-btn,.nav-link{font-size:14px}
+input,select,textarea{font-size:16px}
+th,td,.table-wrap table,table{font-size:14px}
+.ticker b,.ticker strong{font-size:15px}.ticker small{font-size:12px!important}
+.structure-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+.structure-card,.structure-card p{font-size:14px;line-height:1.7}
+.structure-card p small{font-size:12px!important}
+.structure-metrics span{font-size:12px;line-height:1.55}
+.structure-metrics b{font-size:14px}
+.pattern-chip,.confluence-item{font-size:13px;line-height:1.55}
+@media(max-width:900px){.structure-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){
+  .mobile-nav{display:none!important}
+  .main-content{padding-bottom:24px!important}
+  .sidebar{top:62px}
+  .sidebar nav{overflow-x:auto;scrollbar-width:none}
+  .nav-link{font-size:12px!important;min-height:40px;padding:8px 10px}
+  .ticker{flex-basis:168px}
+  .ticker b,.ticker strong{font-size:14px}
+  .structure-cards{grid-template-columns:1fr}
+  .structure-card,.structure-card p{font-size:14px}
+  .structure-metrics span{font-size:12px}
+  .space-nebula{opacity:.06;filter:blur(70px)}
+  #galaxyCanvas{opacity:.92}
+}
+@media(prefers-reduced-motion:reduce){.space-nebula{animation:none!important}}

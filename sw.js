@@ -1,10 +1,11 @@
-const CACHE = 'aurevia-shell-v2.2.3';
+const CACHE = 'aurevia-shell-v2.2.6';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/analysis.js', '/indicators.js',
   '/structure.js', '/patterns.js', '/risk.js', '/journal.js', '/trade-management.js', '/confluence.js', '/fibonacci.js', '/volume-profile.js',
   '/auth.js', '/news.js', '/galaxy.js', '/manifest.webmanifest',
   '/assets/aurevia-logo-mark.png', '/assets/aurevia-app-icon.png',
-  '/assets/aurevia-mark.svg'
+  '/assets/aurevia-app-icon-192.png', '/assets/aurevia-app-icon-maskable.png',
+  '/assets/aurevia-apple-touch-icon.png', '/assets/aurevia-mark.svg'
 ];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
