@@ -1,3 +1,10 @@
+## V2.2.7 — maîtrise du quota Twelve Data
+- Suppression des appels Twelve Data automatiques au démarrage de l’application.
+- Suppression du chargement OHLC multi-timeframes au démarrage : l’analyse H4/M30/M15/M5/M1 se lance uniquement sur action de l’utilisateur (bouton Analyser ou changement explicite d’instrument).
+- Suppression du rafraîchissement automatique des sept cotations au démarrage et chaque minute.
+- Affichage d’un état d’attente clair tant qu’aucune analyse n’a été demandée.
+- Cache du service worker renouvelé.
+
 ## V2.2.6 — finalisation de l’installation PWA
 - Ajout des icônes PWA 192×192 et 512×512, d’une icône maskable dédiée et de l’icône Apple Touch 180×180.
 - Ajout d’une rubrique Installation détaillée dans Guide & assistance (iPhone/iPad, Android, Windows/macOS).

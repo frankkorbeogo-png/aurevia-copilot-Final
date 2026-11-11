@@ -36,3 +36,12 @@ test('le même emblème officiel est affiché dans l’en-tête et dans les deux
   assert.match(html,/id="authSignedOut"[^]*class="auth-brand"[^]*assets\/aurevia-logo-mark\.png/);
   assert.match(html,/id="authSignedIn"[^]*class="auth-brand profile-brand"[^]*assets\/aurevia-logo-mark\.png/);
 });
+
+test('aucun appel Twelve Data automatique au démarrage : analyse uniquement à la demande',async()=>{
+  const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+  const init=app.match(/function init\(\)\{([\s\S]*?)\}\ninit\(\);/)?.[1]||'';
+  assert.ok(init,'fonction init présente');
+  assert.doesNotMatch(init,/refreshMarketQuotes\(|loadAnalysis\(/);
+  assert.match(init,/Données en attente/);
+  assert.match(app,/refreshBtn[^]*loadAnalysis\(\)/);
+});
