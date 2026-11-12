@@ -251,3 +251,11 @@
 - Le bouton « Créer un compte » continue de refuser les identités Google déjà inscrites.
 - Ajout de l'endpoint Netlify `/api/account-reject-new-login` et de tests ciblés.
 - Migration SQL `20261112130000_fix_google_oauth_session_claim_v235.sql` ajoutée et fonction équivalente appliquée au projet Supabase de production.
+
+
+## V2.3.26 — Diagnostic et reprise de session Google
+- Une erreur temporaire du service de validation ne supprime plus automatiquement la session Google locale.
+- L’accès reste verrouillé tant que la validation serveur n’a pas réussi ; un bouton permet de relancer la vérification.
+- Le message d’erreur indique désormais le statut et le motif retourné par l’API, sans exposer de jeton.
+- Les erreurs serveur de session sont consignées côté fonction Netlify pour diagnostic.
+- Le parcours « Se connecter » traite explicitement le cas d’un compte Auth créé pendant une tentative de connexion et appelle le refus serveur prévu.

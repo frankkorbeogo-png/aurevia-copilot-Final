@@ -14,5 +14,9 @@ export async function handler(event){
   });
   if(accepted!==true)return json(409,{error:'Une autre session est déjà active sur ce compte. Cette session a été déconnectée.',code:'SESSION_REPLACED'});
   return json(200,{ok:true,active:true,heartbeat_seconds:30});
- }catch(error){return json(error.statusCode||500,{error:error.statusCode===500?'Service de session temporairement indisponible.':error.message,code:error.code||null});}
+ }catch(error){
+  console.error('[AUREVIA_SESSION_API] validation failed', {statusCode:error.statusCode||500, code:error.code||null, message:error.message||'unknown'});
+  const status=error.statusCode||500;
+  return json(status,{error:status>=500?'Le serveur AUREVIA ne parvient pas à confirmer la session. Réessayez dans quelques instants.':error.message,code:error.code||(status>=500?'SESSION_BACKEND_ERROR':null)});
+ }
 }

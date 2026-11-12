@@ -5,7 +5,7 @@ let supabase=null;
 async function ensureClient(){if(!supabase){const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.119.0');supabase=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});}return supabase;}
 async function ensureUser(){await ensureClient();const {data,error}=await supabase.auth.getUser();if(error)throw new Error(error.message);currentUser=data.user||null;return currentUser;}
 const $=id=>document.getElementById(id);
-let currentUser=null,currentProfile=null,adminVerified=false,sessionReady=false,heartbeatTimer=null,profileRefreshSequence=0;
+let currentUser=null,currentProfile=null,adminVerified=false,sessionReady=false,heartbeatTimer=null,profileRefreshSequence=0,pendingSession=null,sessionActivationBusy=false;
 window.__aureviaAuthenticated=false;document.body.classList.add('auth-required');
 window.__aureviaAdminVerified=null;
 function showStatus(message,isError=false){const el=$('authStatus');if(el){el.textContent=message;el.dataset.state=isError?'error':'ok';}}
@@ -25,15 +25,21 @@ async function sessionRequest(action,accessToken=null){
 }
 function stopHeartbeat(){if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;}}
 async function forceLocalSignOut(message){
- stopHeartbeat();sessionReady=false;setAdminVisibility(false);currentUser=null;currentProfile=null;
+ stopHeartbeat();sessionReady=false;pendingSession=null;setAdminVisibility(false);currentUser=null;currentProfile=null;
  try{await supabase?.auth.signOut({scope:'local'});}catch{}
  render();if(message)showStatus(message,true);
+}
+function showSessionRetry(message){
+ stopHeartbeat();sessionReady=false;setAdminVisibility(false);
+ const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;
+ showStatus(message,true);render();
+ const retry=$('retrySessionBtn');if(retry)retry.hidden=false;
 }
 function startHeartbeat(){
  stopHeartbeat();heartbeatTimer=setInterval(async()=>{
   if(!currentUser||!sessionReady)return;
   try{await sessionRequest('heartbeat');}
-  catch(error){await forceLocalSignOut(error.code==='SESSION_REPLACED'?'Votre compte a été connecté sur un autre appareil ou votre session a été révoquée. Vous avez été déconnecté.':'La protection de session est indisponible. Reconnectez-vous après vérification du service.');}
+  catch(error){if(error.code==='SESSION_REPLACED'){await forceLocalSignOut('Votre compte a été connecté sur un autre appareil ou votre session a été révoquée. Vous avez été déconnecté.');return;}showSessionRetry(`Vérification de session temporairement impossible (${error.status||'réseau'}). Votre connexion Google est conservée ; réessayez sans vous reconnecter. Détail : ${error.message}`);}
  },30000);
 }
 async function verifyAdminAccess(accessToken=null){
@@ -92,17 +98,29 @@ async function rejectAccountCreatedDuringLogin(session,intentError){
 }
 async function activateSession(session,action){
  if(!session?.access_token){sessionReady=false;render();return;}
+ if(sessionActivationBusy)return;
+ sessionActivationBusy=true;pendingSession=session;currentUser=session.user||currentUser;
  try{
   const authIntentError=consumeAuthIntent(session.user);
   if(authIntentError==='EXISTING_ACCOUNT'){
-   await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;render();
-   const message='Cette adresse Google possède déjà un compte AUREVIA. Utilisez « Se connecter avec Google ».';
+   pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;render();
+   const message='Cette adresse Google possède déjà un compte AUREVIA. Utilisez « Se connecter avec Google ». ';
    const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);return;
   }
-  await sessionRequest(action,session.access_token);sessionReady=true;currentUser=session.user||currentUser;render();startHeartbeat();
+  if(authIntentError==='ACCOUNT_NOT_REGISTERED'){
+   try{await rejectAccountCreatedDuringLogin(session,authIntentError);pendingSession=null;return;}catch(rejectError){await forceLocalSignOut('Connexion refusée : cette adresse ne possède pas encore de compte AUREVIA. Utilisez « Créer un compte ». Si le refus n’a pas pu être appliqué, contactez le support.');return;}
+  }
+  await sessionRequest(action,session.access_token);sessionReady=true;pendingSession=null;render();
+  const retry=$('retrySessionBtn');if(retry)retry.hidden=true;
+  startHeartbeat();
  }catch(error){
-  await forceLocalSignOut(error.code==='SESSION_REPLACED'?'Une autre session est déjà active sur ce compte. Cette session a été déconnectée.':'Mise à jour de sécurité requise : la protection des sessions n’est pas disponible. Le compte reste déconnecté jusqu’à son activation côté serveur.');
- }
+  if(error.code==='SESSION_REPLACED'){
+   await forceLocalSignOut('Une autre session est déjà active sur ce compte. Cette session a été déconnectée.');
+  }else{
+   pendingSession=session;
+   showSessionRetry(`La session Google est valide, mais AUREVIA n’a pas pu confirmer l’accès (${error.status||'réseau'}). Votre connexion est conservée. Réessayez dans quelques instants. Détail : ${error.message}`);
+  }
+ }finally{sessionActivationBusy=false;}
 }
 export async function initAuth(){
  if(!$('authForm'))return;
@@ -120,6 +138,7 @@ export async function initAuth(){
  const bindGoogleAuth=(id,mode)=>$(id)?.addEventListener('click',e=>startGoogleAuth(e.currentTarget,mode));
  bindGoogleAuth('googleLoginBtn','login');bindGoogleAuth('googleSignupBtn','signup');
  bindGoogleAuth('googleLoginGateBtn','login');bindGoogleAuth('googleSignupGateBtn','signup');
+ $('retrySessionBtn')?.addEventListener('click',async event=>{const btn=event.currentTarget;if(!pendingSession?.access_token){showStatus('Aucune session Google à vérifier. Relancez la connexion.',true);return;}btn.disabled=true;btn.textContent='Vérification…';try{await activateSession(pendingSession,'claim');}finally{btn.disabled=false;btn.textContent='Réessayer la vérification';}});
  $('signOutBtn')?.addEventListener('click',async()=>{try{await sessionRequest('end');}catch{}const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}try{localStorage.removeItem('aurevia_active_session_id');}catch{}currentUser=null;currentProfile=null;sessionReady=false;setAdminVisibility(false);render();showStatus('Déconnexion effectuée.');});
  $('deleteOwnAccountBtn')?.addEventListener('click',async(event)=>{const btn=event.currentTarget;if(!currentUser||!sessionReady){showStatus('Connectez-vous pour supprimer votre compte.',true);return;}const email=currentUser.email||'ce compte';const first=window.confirm(`Supprimer définitivement votre compte AUREVIA (${email}) ?\n\nToutes les données associées seront supprimées selon les règles de conservation. Cette action est irréversible. Votre compte Google ne sera pas supprimé.`);if(!first)return;const confirmation=window.prompt('Pour confirmer, saisissez SUPPRIMER :');if(confirmation!=='SUPPRIMER'){showStatus('Suppression annulée : confirmation incorrecte.',true);return;}btn.disabled=true;btn.textContent='Suppression en cours…';try{const token=await getAnalysisAccessToken();const response=await fetch('/api/account-delete',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({confirmation:'SUPPRIMER'}),cache:'no-store'});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Suppression impossible.');stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);await supabase.auth.signOut({scope:'local'});render();const status=$('authGateStatus');if(status)status.textContent='Votre compte AUREVIA a été supprimé. Vous pouvez fermer cette page.';showStatus('Compte AUREVIA supprimé.');}catch(error){showStatus(error.message,true);btn.disabled=false;btn.textContent='Supprimer définitivement mon compte';}});
 }
