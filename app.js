@@ -390,7 +390,7 @@ function bindEvents(){
   $('adminUserSearch')?.addEventListener('input',()=>{clearTimeout(adminSearchTimer);adminSearchTimer=setTimeout(()=>loadAdminConsole(1,$('adminUserSearch').value),350);});
   $('adminCheckTelegramBot')?.addEventListener('click',async()=>{
     const button=$('adminCheckTelegramBot'),status=$('adminTelegramBotCheckStatus');button.disabled=true;status.textContent='Interrogation sécurisée de Telegram…';
-    try{const result=await adminRequest({action:'telegram_bot_check'});if(result.valid){status.textContent=`Token valide · Bot : ${result.bot.first_name}${result.bot.username?' (@'+result.bot.username+')':''}`;status.dataset.state='ready';}else{status.textContent=result.message||'Telegram n’a pas validé le token.';status.dataset.state='error';}}
+    try{const result=await adminRequest({action:'telegram_bot_check'});if(result.valid&&result.webhook?.configured){status.textContent=`Token valide · Bot : ${result.bot.first_name}${result.bot.username?' (@'+result.bot.username+')':''} · Webhook configuré${result.webhook.last_error?' · Dernière erreur Telegram : '+result.webhook.last_error:''}`;status.dataset.state='ready';}else if(result.valid){status.textContent=`Token valide, mais liaison entrante non prête : ${result.message||'Webhook non configuré.'}`;status.dataset.state='error';}else{status.textContent=result.message||'Telegram n’a pas validé le token.';status.dataset.state='error';}}
     catch(error){status.textContent='Contrôle impossible : '+error.message;status.dataset.state='error';}
     finally{button.disabled=false;}
   });

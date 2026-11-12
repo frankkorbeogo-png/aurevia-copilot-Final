@@ -44,7 +44,7 @@ Ne jamais placer de clé secrète dans `index.html`, les fichiers JavaScript du 
 ## Telegram
 
 1. Définir `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` et `SUPABASE_SERVICE_ROLE_KEY`.
-2. Configurer le webhook du bot sur `https://VOTRE-SITE/.netlify/functions/telegram-webhook` avec le même secret dans l'en-tête Telegram `secret_token`.
+2. Depuis la console administrateur, cliquer sur « Vérifier le token Telegram » : le contrôle valide le bot et configure automatiquement le webhook Telegram avec `TELEGRAM_WEBHOOK_SECRET`.
 3. L'utilisateur se connecte à AUREVIA, génère un code de liaison et envoie `/start CODE` en conversation privée à `@AureviaCopilotBot`.
 4. Les notifications d'analyse et de signal sont envoyées uniquement au chat associé au compte authentifié et selon ses préférences. Après liaison, le bouton « Envoyer un test de réception » permet de demander un message test et de vérifier la réponse de l'API Telegram. Le backend vérifie que le chat privé n'est pas partagé entre plusieurs comptes et limite les appels IA par utilisateur.
 

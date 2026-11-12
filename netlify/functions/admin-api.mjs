@@ -71,17 +71,26 @@ export async function handler(event){
   }
   const action=String(body.action||'');
   if(action==='telegram_bot_check'){
-   const token=env('TELEGRAM_BOT_TOKEN');
+   const token=env('TELEGRAM_BOT_TOKEN'),secret=env('TELEGRAM_WEBHOOK_SECRET');
    if(!token)return json(200,{ok:false,valid:false,status:'not_configured',message:'TELEGRAM_BOT_TOKEN absent côté serveur.'});
    try{
-    const response=await fetch(`https://api.telegram.org/bot${token}/getMe`,{method:'GET',headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+    const api=`https://api.telegram.org/bot${token}`;
+    const response=await fetch(`${api}/getMe`,{method:'GET',headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
     const result=await response.json().catch(()=>null);
-    if(response.ok&&result?.ok&&result?.result?.is_bot===true){
-     const bot=result.result;
-     return json(200,{ok:true,valid:true,status:'valid',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)}});
+    if(!(response.ok&&result?.ok&&result?.result?.is_bot===true)){
+     if(response.status===401||result?.error_code===401)return json(200,{ok:true,valid:false,status:'invalid',message:'Telegram refuse le token (non valide ou révoqué).'});
+     return json(200,{ok:false,valid:false,status:'telegram_error',message:'Telegram n’a pas pu confirmer le bot. Réessayez plus tard.'});
     }
-    if(response.status===401||result?.error_code===401)return json(200,{ok:true,valid:false,status:'invalid',message:'Telegram refuse le token (non valide ou révoqué).'});
-    return json(200,{ok:false,valid:false,status:'telegram_error',message:'Telegram n’a pas pu confirmer le bot. Réessayez plus tard.'});
+    const bot=result.result;
+    if(!secret||!/^[A-Za-z0-9_-]{1,256}$/.test(secret))return json(200,{ok:true,valid:true,status:'valid_webhook_not_configured',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured:false},message:'Token valide, mais TELEGRAM_WEBHOOK_SECRET est absent ou invalide. Ajoutez un secret de 1 à 256 caractères (A-Z, a-z, 0-9, _ ou -), puis relancez le contrôle.'});
+    const webhookUrl='https://aurevia-copilot-ia.netlify.app/.netlify/functions/telegram-webhook';
+    const setResponse=await fetch(`${api}/setWebhook`,{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({url:webhookUrl,secret_token:secret,allowed_updates:['message'],drop_pending_updates:false}),signal:AbortSignal.timeout(12000)});
+    const setResult=await setResponse.json().catch(()=>null);
+    if(!setResponse.ok||!setResult?.ok||setResult?.result!==true)return json(200,{ok:true,valid:true,status:'webhook_setup_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured:false},message:'Token valide, mais Telegram a refusé la configuration du webhook. Vérifiez le secret et réessayez.'});
+    const infoResponse=await fetch(`${api}/getWebhookInfo`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+    const infoPayload=await infoResponse.json().catch(()=>null),info=infoPayload?.result||{};
+    const configured=Boolean(infoPayload?.ok&&info.url===webhookUrl);
+    return json(200,{ok:true,valid:true,status:configured?'valid_webhook_ready':'webhook_verification_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured,url_matches:configured,pending_updates:Number(info.pending_update_count)||0,last_error:info.last_error_message?String(info.last_error_message).slice(0,240):null},message:configured?'Token valide et webhook Telegram configuré. Envoyez maintenant /start CODE au bot.':'Le webhook a été demandé, mais sa présence n’a pas pu être confirmée.'});
    }catch{
     return json(200,{ok:false,valid:false,status:'unreachable',message:'Impossible de joindre Telegram pour le moment.'});
    }
