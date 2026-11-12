@@ -1,3 +1,8 @@
+## v2.3.49 — Affinage du fond galaxie
+- Remplacement de la texture de nébuleuse basse résolution par un visuel haute définition.
+- Réduction du zoom et du mouvement, contraste et saturation harmonisés pour préserver la lisibilité.
+- Animation de profondeur ralentie et discrète.
+
 ## 2.3.46 — éditeur professionnel de synthèse finale
 - Refonte de l’espace « Synthèse finale du scénario » en éditeur de rapport structuré, avec métadonnées, état de brouillon, compteur de caractères et zone d’édition agrandie.
 - Ajout d’une structuration guidée du rapport (contexte, confirmations, plan, risques, conclusion) sans inventer de données de marché.
@@ -320,3 +325,19 @@
 - Le calendrier USD passe par une fonction Netlify serveur authentifiée afin d’éviter les blocages CORS du navigateur et d’unifier les données des deux vues.
 - Ajout d’un état d’erreur explicite et d’un bouton Réessayer ; aucune donnée économique n’est inventée.
 - La fenêtre « Ajouter un trade clôturé » possède une fermeture explicite, une fermeture par clic sur l’arrière-plan et une remise à zéro sûre du formulaire à la fermeture.
+
+## v2.3.50 — calendrier économique, horloge et analyse moins bloquante
+- Horloge et date du Burkina Faso initialisées dès le démarrage de l’interface, indépendamment de l’authentification ; affichage actualisé chaque seconde.
+- Calendrier économique remis sous forme de tableau classique avec date/heure, devise, impact, événement, précédent, prévision et réel, filtres par devise/impact/période.
+- Source calendrier élargie à toutes les devises et aux impacts élevé, moyen et faible sur 14 jours ; le moteur IA et les connexions serveur existantes restent conservés.
+- Les horodatages H4/H1 périmés ou invérifiables ne bloquent plus à eux seuls l’appel IA ni la génération des scénarios candidats ; la fraîcheur M30/M15 reste exigée pour l’analyse opérationnelle.
+- Le statut global reste WAIT tant que le déclencheur M5 n’est pas confirmé ; les scénarios potentiels doivent rester visibles séparément.
+- Tests automatisés : 162 réussis ; build Netlify local réussi. Aucune publication Netlify ni migration Supabase exécutée.
+
+## v2.3.50 — calendrier économique, horloge et analyse moins bloquante
+- Horloge et date du Burkina Faso initialisées dès le démarrage de l’interface, indépendamment de l’authentification ; affichage actualisé chaque seconde.
+- Calendrier économique remis sous forme de tableau classique avec date/heure, devise, impact, événement, précédent, prévision et réel, filtres par devise/impact/période.
+- Source calendrier élargie à toutes les devises et aux impacts élevé, moyen et faible sur 14 jours ; le moteur IA et les connexions serveur existantes restent conservés.
+- Les horodatages H4/H1 périmés ou invérifiables ne bloquent plus à eux seuls l’appel IA ni la génération des scénarios candidats ; la fraîcheur M30/M15 reste exigée pour l’analyse opérationnelle.
+- Le statut global reste WAIT tant que le déclencheur M5 n’est pas confirmé ; les scénarios potentiels doivent rester visibles séparément.
+- Tests automatisés : 162 réussis ; build Netlify local réussi. Aucune publication Netlify ni migration Supabase exécutée.

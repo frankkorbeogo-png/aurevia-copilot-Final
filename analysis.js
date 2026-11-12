@@ -31,7 +31,7 @@ async function runInstrumentAnalysis(symbol){
  const pair=SYMBOLS[symbol];if(!pair){latest={message:'Instrument non pris en charge par le flux OHLC',tableMessage:'Cet instrument ne fait pas partie de la liste autorisée pour les données techniques.',signalReason:'WAIT : historique OHLC validé indisponible pour cet instrument.'};return null;}
  try{
   const frameEntries=await Promise.all(Object.entries(FRAMES).map(async([tf,interval])=>[tf,await fetchFrame(pair,interval)]));const frames=Object.fromEntries(frameEntries);const macroContext=symbol==='XAUUSD'?await fetchMacroContext():{configured:false,notice:'Analyse macro désactivée pour cet instrument.'};
-  const stale=Object.entries(frames).filter(([tf,d])=>!isFresh(d.candles,d.timezone,FRAME_MINUTES[tf]));const criticalStale=stale.filter(([tf])=>['H4','H1','M30','M15'].includes(tf));
+  const stale=Object.entries(frames).filter(([tf,d])=>!isFresh(d.candles,d.timezone,FRAME_MINUTES[tf]));
   const analyses={};for(const [tf,data] of Object.entries(frames)){const candles=data.candles;const structure=detectMarketStructure(candles);analyses[tf]={indicators:calculateIndicators(candles),structure,patterns:[...detectCandlestickPatterns(candles),...detectChartPatterns(candles)],fibonacci:calculateFibonacciRetracements(structure.swings,structure.bias),volumeProfile:calculateFixedRangeVolumeProfile(candles),last:candles.at(-1)};}
   const h4=analyses.H4,h1=analyses.H1,m30=analyses.M30,m15=analyses.M15,m5=analyses.M5;
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
@@ -44,22 +44,23 @@ async function runInstrumentAnalysis(symbol){
   const score=Math.max(0,Math.min(100,Math.round(baseConfluence.score*0.8+(h4Match?10:0)+(h1Match?10:0))));
   scoreComponents.push({label:`Contexte H4 (${h4.structure.bias})`,passed:h4Match,weight:10});
   scoreComponents.push({label:`Contexte H1 (${h1.structure.bias})`,passed:h1Match,weight:10});
-  const technicalScenarios=generateOpportunityScenarios({analyses,frames,staleFrames:criticalStale.map(x=>x[0])});
+  const operationalStale=stale.filter(([tf])=>['M30','M15'].includes(tf));
+  const technicalScenarios=generateOpportunityScenarios({analyses,frames,staleFrames:operationalStale.map(x=>x[0])});
   let decision={decision:'WAIT',reason:'Confluence multi-timeframe incomplète. Les critères pondérés doivent être confirmés.',score,probability:null,scenarios:technicalScenarios};
-  if(!criticalStale.length&&m30?.last&&m15?.last){
+  if(!operationalStale.length&&m30?.last&&m15?.last){
     let accessToken=null;try{accessToken=await getAnalysisAccessToken();}catch{}
     if(!accessToken)decision.reason='Analyse IA réservée aux comptes connectés. Connectez-vous dans Paramètres & profil ; les indicateurs techniques restent consultables.';
     else {
     const response=await fetch('/api/ai-analysis',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${accessToken}`},body:JSON.stringify({symbol:pair,timeframes:Object.fromEntries(Object.entries(frames).map(([tf,d])=>[tf,d.candles])),macroContext})});
     const result=await response.json();
-    if(response.ok)decision={...result,score,probability:null,scenarios:{buy:result.scenarios?.buy||technicalScenarios.buy,sell:result.scenarios?.sell||technicalScenarios.sell,engine:technicalScenarios.engine}};else decision={decision:'WAIT',reason:result.error||'Moteur IA indisponible.',score,probability:null,scenarios:technicalScenarios};
+    if(response.ok)decision={...result,score,probability:null,scenarios:{buy:result.scenarios?.buy?.status==='IDENTIFIED'?result.scenarios.buy:technicalScenarios.buy,sell:result.scenarios?.sell?.status==='IDENTIFIED'?result.scenarios.sell:technicalScenarios.sell,engine:technicalScenarios.engine}};else decision={decision:'WAIT',reason:result.error||'Moteur IA indisponible.',score,probability:null,scenarios:technicalScenarios};
     }
-  }else if(criticalStale.length)decision.reason='WAIT : données H4/H1/M30/M15 périmées ou horodatage non vérifiable sur '+criticalStale.map(x=>x[0]).join(', ')+'.';
+  }else if(operationalStale.length)decision.reason='WAIT : données opérationnelles M30/M15 périmées ou horodatage non vérifiable sur '+operationalStale.map(x=>x[0]).join(', ')+'. Les contextes H4/H1 ne bloquent plus à eux seuls la recherche de scénarios.';
   else decision.reason='WAIT : structure M30/M15 insuffisante ou données non alignées. M5 ne déterminent pas la direction ; ils servent uniquement à confirmer le point d’entrée.';
   if((decision.decision==='BUY'&&direction!=='BUY')||(decision.decision==='SELL'&&direction!=='SELL'))decision={...decision,decision:'WAIT',reason:'Entrée non confirmée ou décision incompatible avec la structure M30/M15. Les scénarios potentiels restent consultables.',score,probability:null};
   if(higherConflict)decision.reason=`${decision.reason||''} Conflit de contexte : H4/H1 ne sont pas entièrement alignés avec la direction opérationnelle M30/M15 ; prudence renforcée.`.trim();
   const patterns=[...m30.patterns,...m15.patterns,...m5.patterns].map(x=>x.name);
-  latest={message:criticalStale.length?'Données H4/H1/M30/M15 à actualiser':stale.length?'Données principales exploitables · fraîcheur secondaire à vérifier':'Données OHLC reçues · H4 / H1 / M30 / M15 / M5',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios||technicalScenarios,probability:null,higherTimeframes,higherConflict,frames,macroContext};
+  latest={message:operationalStale.length?'Données M30/M15 à actualiser':stale.length?'Données reçues · fraîcheur H4/H1 à considérer':'Données OHLC reçues · H4 / H1 / M30 / M15 / M5',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios||technicalScenarios,probability:null,higherTimeframes,higherConflict,frames,macroContext};
   return {price:m5.last.close,status:'reçu'};
  }catch(error){latest={message:'Analyse indisponible',tableMessage:'Impossible de charger les unités H4/H1/M30/M15/M5.',signalReason:'WAIT : '+error.message,decision:'WAIT',probability:null,score:null};return null;}
 }
