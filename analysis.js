@@ -35,7 +35,7 @@ async function runInstrumentAnalysis(symbol){
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
   const {direction,score,scoreComponents,aligned}=evaluateConfluence({h4,m30,m15,m5,m1});
   let decision={decision:'WAIT',reason:'Confluence multi-timeframe incomplète. Les critères pondérés doivent être confirmés.',score,probability:null};
-  if(!stale.length&&aligned){
+  if(!stale.length&&m30?.last&&m15?.last){
     let accessToken=null;try{accessToken=await getAnalysisAccessToken();}catch{}
     if(!accessToken)decision.reason='Analyse IA réservée aux comptes connectés. Connectez-vous dans Paramètres & profil ; les indicateurs techniques restent consultables.';
     else {
@@ -44,10 +44,10 @@ async function runInstrumentAnalysis(symbol){
     if(response.ok)decision={...result,score,probability:null};else decision={decision:'WAIT',reason:result.error||'Moteur IA indisponible.',score,probability:null};
     }
   }else if(stale.length)decision.reason='WAIT : données périmées ou horodatage non vérifiable sur '+stale.map(x=>x[0]).join(', ')+'.';
-  else decision.reason='WAIT : les confirmations H4/M30/M15/M5/M1 ne sont pas toutes réunies. Il faut un contexte H4 aligné EMA200, une structure M30, les confirmations principales M15, puis un sweep M5 et un déclencheur M5 ou M1.';
-  if((decision.decision==='BUY'&&direction!=='BUY')||(decision.decision==='SELL'&&direction!=='SELL'))decision={decision:'WAIT',reason:'Réponse IA rejetée : elle contredit le biais H4 calculé.',score,probability:null};
+  else decision.reason='WAIT : structure M30/M15 insuffisante ou données non alignées. M5/M1 ne déterminent pas la direction ; ils servent uniquement à confirmer le point d’entrée.';
+  if((decision.decision==='BUY'&&direction!=='BUY')||(decision.decision==='SELL'&&direction!=='SELL'))decision={...decision,decision:'WAIT',reason:'Entrée non confirmée ou décision incompatible avec la structure M30/M15. Les scénarios potentiels restent consultables.',score,probability:null};
   const patterns=[...h4.patterns,...m30.patterns,...m15.patterns,...m5.patterns,...m1.patterns].map(x=>x.name);
-  latest={message:stale.length?'Données reçues mais fraîcheur non confirmée':'Données OHLC reçues · H4 / M30 / M15 / M5 / M1',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,probability:null,frames,macroContext};
+  latest={message:stale.length?'Données reçues mais fraîcheur non confirmée':'Données OHLC reçues · H4 / M30 / M15 / M5 / M1',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios||{},probability:null,frames,macroContext};
   return {price:m1.last.close,status:'reçu'};
  }catch(error){latest={message:'Analyse indisponible',tableMessage:'Impossible de charger les cinq unités H4/M30/M15/M5/M1.',signalReason:'WAIT : '+error.message,decision:'WAIT',probability:null,score:null};return null;}
 }

@@ -2,7 +2,7 @@ import { loadInstrumentAnalysis, getAnalysisState } from './analysis.js';
 import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
 import { initEconomicCalendar } from './news.js';
-import { initAuth, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, sendTelegramTest, updateDisplayName, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase } from './auth.js';
+import { initAuth, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase } from './auth.js';
 import { createTradeGroup, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, editOpenTradeGroup } from './trade-management.js';
 
 const $ = id => document.getElementById(id);
@@ -121,6 +121,7 @@ async function loadAnalysis(){
   if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
   $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} %`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
+  renderAIScenarios(state);
   renderStructureAnalysis(state);
   if(state.analysis)notifyLatestAnalysis(state,selectedSymbol).catch(()=>{});
 }
@@ -137,6 +138,17 @@ function renderAITradePlan(state){
   $('aiStopLoss').textContent=String(d.stopLoss);
   $('aiTakeProfits').textContent=d.takeProfits.join(' · ');
   $('aiInvalidation').textContent='Invalidation : '+(d.invalidation||'Non précisée par le moteur.');
+}
+
+
+function renderAIScenarios(state){
+  const host=$('aiScenarios'),grid=$('aiScenariosGrid');if(!host||!grid)return;
+  const scenarios=state.decisionDetails?.scenarios||state.scenarios||{};
+  const entries=[['BUY',scenarios.buy],['SELL',scenarios.sell]].filter(([,x])=>x&&x.status==='IDENTIFIED');
+  host.hidden=!entries.length;
+  if(!entries.length){grid.innerHTML='';return;}
+  const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  grid.innerHTML=entries.map(([side,x])=>`<article class="ai-scenario-card ${side.toLowerCase()}"><header><strong>${side} POTENTIEL</strong><span>${x.entryStatus==='CONFIRMED'?'ENTRÉE CONFIRMÉE':'EN ATTENTE DU DÉCLENCHEUR'}</span></header><p>${esc(x.reason)}</p><dl><div><dt>Zone à surveiller</dt><dd>${esc(x.entryZoneLow)} – ${esc(x.entryZoneHigh)}</dd></div><div><dt>Entrée indicative</dt><dd>${esc(x.entry)}</dd></div><div><dt>Stop Loss</dt><dd>${esc(x.stopLoss)}</dd></div><div><dt>Objectifs</dt><dd>${(x.takeProfits||[]).map(esc).join(' · ')||'—'}</dd></div></dl><section><b>Conditions d’activation</b><ul>${(x.activationConditions||[]).map(v=>`<li>${esc(v)}</li>`).join('')||'<li>Voir les confirmations de structure.</li>'}</ul></section><p><b>Déclencheur M5/M1 :</b> ${esc(x.entryTrigger)}</p><p><b>Invalidation :</b> ${esc(x.invalidation)}</p></article>`).join('');
 }
 
 function renderStructureAnalysis(state){
@@ -249,7 +261,7 @@ function renderAdminAnnouncements(items){
   const status=expired?'Expirée':a.is_published?'Publiée':'Brouillon';
   return `<tr><td>${escapeText(a.title)}</td><td>${escapeText(a.category)}</td><td>${status}</td><td>${a.ends_at?new Date(a.ends_at).toLocaleString():'Sans expiration'}</td><td><div class="table-actions"><button class="small-btn" data-announcement-toggle="${a.id}" data-published="${a.is_published?'true':'false'}">${a.is_published?'Dépublier':'Publier'}</button>${!expired?`<button class="small-btn" data-announcement-expire="${a.id}">Expirer</button>`:''}</div></td></tr>`;
  }).join(''):'<tr><td colspan="5" class="empty-cell">Aucune annonce.</td></tr>';
- host.querySelectorAll('[data-announcement-toggle]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await adminRequest({action:'announcement_publish',announcement_id:btn.dataset.announcementToggle,is_published:btn.dataset.published!=='true'});await loadAdminConsole(adminPage,adminSearchValue);}catch(error){alert(error.message);btn.disabled=false;}}));
+ host.querySelectorAll('[data-announcement-toggle]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{const result=await adminRequest({action:'announcement_publish',announcement_id:btn.dataset.announcementToggle,is_published:btn.dataset.published!=='true'});if(result.telegram?.status==='sent'||result.telegram?.status==='partial'||result.telegram?.status==='failed'){const status=$('adminAnnouncementStatus');if(status)status.textContent=`Diffusion Telegram : ${result.telegram.sent||0} envoyé(s), ${result.telegram.failed||0} échec(s).`;}await loadAdminConsole(adminPage,adminSearchValue);}catch(error){alert(error.message);btn.disabled=false;}}));
  host.querySelectorAll('[data-announcement-expire]').forEach(btn=>btn.addEventListener('click',async()=>{if(!confirm('Expirer immédiatement cette annonce globale ?'))return;btn.disabled=true;try{await adminRequest({action:'announcement_expire',announcement_id:btn.dataset.announcementExpire});await loadAdminConsole(adminPage,adminSearchValue);}catch(error){alert(error.message);btn.disabled=false;}}));
 }
 function renderAdminAudit(items){const host=$('adminAuditRows');if(!host)return;host.innerHTML=items?.length?items.map(a=>`<tr><td>${a.created_at?new Date(a.created_at).toLocaleString():'—'}</td><td>${escapeText(a.action)}</td><td>${escapeText(a.actor_id||'—')}</td><td>${escapeText(a.target_user_id||'—')}</td><td>${escapeText(JSON.stringify(a.details||{}))}</td></tr>`).join(''):'<tr><td colspan="5" class="empty-cell">Aucune action enregistrée.</td></tr>';}
@@ -270,7 +282,7 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
  }
 }
 
-async function loadTelegramUi(){try{const prefs=await loadTelegramPreferences();const status=$('telegramConnectionStatus');if(!prefs){status.textContent='Connectez-vous dans Paramètres & profil pour associer Telegram.';$('saveTelegramPrefs').disabled=true;$('sendTelegramTest').disabled=true;return;}status.textContent=prefs.chat_id?'Compte Telegram associé.':'Compte Telegram non associé.';$('notifyAll').checked=Boolean(prefs.notify_all_analyses);$('notifySignals').checked=Boolean(prefs.notify_validated_signals);$('notifyEconomic').checked=Boolean(prefs.notify_economic_announcements);$('saveTelegramPrefs').disabled=!prefs.chat_id;$('sendTelegramTest').disabled=!prefs.chat_id;}catch(error){$('telegramConnectionStatus').textContent=error.message;}}
+async function loadTelegramUi(){try{const prefs=await loadTelegramPreferences();const status=$('telegramConnectionStatus');if(!prefs){status.textContent='Connectez-vous dans Paramètres & profil pour associer Telegram.';$('saveTelegramPrefs').disabled=true;$('sendTelegramTest').disabled=true;return;}status.textContent=prefs.chat_id?'Compte Telegram associé.':'Compte Telegram non associé.';$('notifyAll').checked=Boolean(prefs.notify_all_analyses);$('notifySignals').checked=Boolean(prefs.notify_validated_signals);$('notifyEconomic').checked=Boolean(prefs.notify_economic_announcements);$('notifyProductAnnouncements').checked=Boolean(prefs.notify_product_announcements);$('saveTelegramPrefs').disabled=!prefs.chat_id;$('sendTelegramTest').disabled=!prefs.chat_id;}catch(error){$('telegramConnectionStatus').textContent=error.message;}}
 function renderJournalStats(){
   const manual=loadJournalTrades(),linked=loadLinkedJournal();
   const closedLinked=linked.filter(x=>x.status==='CLOSED');
@@ -309,9 +321,13 @@ function savePartialCloseFromForm(){
     const child=group.children.find(x=>x.id===childId),closeEvent=child.closes.at(-1);persistTradeGroup(group);sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · CLÔTURE ENREGISTRÉE\n${group.instrument} · ${child.direction} · ${child.tpLabel}\nVolume clôturé : ${closeEvent.volume}\nPrix de sortie saisi : ${closeEvent.exit}\nRésultat net enregistré : ${closeEvent.net.toFixed(2)}\nVolume restant : ${child.remainingLot}\nClôture interne AUREVIA uniquement.`}).catch(()=>{});$('closePositionDialog').close();renderPositions();renderJournal();renderLinkedJournal();syncTradeCloseToSupabase(group,child,closeEvent).catch(error=>alert(`Clôture enregistrée localement, mais synchronisation cloud impossible : ${error.message}`));
   }catch(error){alert(error.message);}
 }
+let announcementCache=[],announcementFilter='all';
+function updateAnnouncementBadge(){const badge=$('announcementUnreadBadge');if(!badge)return;const count=announcementCache.filter(a=>!a.is_read).length;badge.textContent=count>99?'99+':String(count);badge.hidden=count===0;}
+function renderAnnouncements(){const host=$('announcementList');if(!host)return;const items=announcementCache.filter(a=>announcementFilter==='all'||!a.is_read);updateAnnouncementBadge();document.querySelectorAll('[data-announcement-filter]').forEach(b=>b.classList.toggle('active',b.dataset.announcementFilter===announcementFilter));if(!items.length){host.innerHTML=`<div class="empty-cell">${announcementFilter==='unread'?'Aucune annonce non lue.':'Aucune annonce publiée pour le moment.'}</div>`;return;}const now=Date.now();host.innerHTML=items.map(a=>{const expired=a.ends_at&&Date.parse(a.ends_at)<now;const date=a.created_at?new Date(a.created_at).toLocaleString('fr-FR'):'Date inconnue';const url=typeof a.source_url==='string'&&/^https:\/\//i.test(a.source_url)?a.source_url:null;return `<article class="announcement-card ${a.is_read?'is-read':'is-unread'}"><div class="announcement-card-top"><span class="announcement-category">${escapeText(a.category||'Information')}</span><span class="announcement-state">${a.is_read?'Lue':'Non lue'}${expired?' · Archivée':''}</span></div><h3>${escapeText(a.title)}</h3><p>${escapeText(a.body).replace(/\n/g,'<br>')}</p><div class="announcement-meta"><span>${escapeText(date)}</span>${expired?'<span>Annonce expirée · conservée dans l’historique</span>':''}</div><div class="announcement-actions">${url?`<a href="${escapeText(url)}" target="_blank" rel="noopener noreferrer">Consulter la source</a>`:''}${!a.is_read?`<button class="small-btn" type="button" data-announcement-read="${escapeText(a.id)}">Marquer comme lue</button>`:''}</div></article>`;}).join('');host.querySelectorAll('[data-announcement-read]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await markAnnouncementAsRead(btn.dataset.announcementRead);const item=announcementCache.find(a=>a.id===btn.dataset.announcementRead);if(item){item.is_read=true;item.read_at=new Date().toISOString();}renderAnnouncements();}catch(error){$('announcementStatus').textContent='Lecture non synchronisée : '+error.message;btn.disabled=false;}}));}
+async function loadAnnouncements(){if(!window.__aureviaAuthenticated)return;const status=$('announcementStatus');if(status)status.textContent='Actualisation des annonces…';try{announcementCache=await loadPublishedAnnouncements();renderAnnouncements();if(status)status.textContent=`${announcementCache.length} annonce(s) publiée(s) · ${announcementCache.filter(a=>!a.is_read).length} non lue(s).`;}catch(error){if(status)status.textContent='Impossible de charger les annonces : '+error.message;const host=$('announcementList');if(host)host.innerHTML='<div class="empty-cell">Les annonces ne sont pas disponibles. Réessayez après vérification de votre connexion.</div>';}}
 function bindEvents(){
   let pendingAdminRoute=false;
-  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();loadAnalysis();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:adminchange',event=>{
     const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
     if(allowed&&pendingAdminRoute){pendingAdminRoute=false;showPage('admin');}
@@ -336,6 +352,7 @@ function bindEvents(){
     if(page==='telegram')loadTelegramUi();
     if(page==='parametres')loadServiceStatus();
     if(page==='admin')loadAdminConsole(1);
+    if(page==='annonces')loadAnnouncements();
     history.replaceState(null,'','#'+page);
     window.scrollTo({top:0,behavior:'smooth'});
   };
@@ -365,27 +382,34 @@ function bindEvents(){
     if(result.ok){sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · TRADE AJOUTÉ AU JOURNAL\n${$('tradeInstrument').value} · ${$('tradeDirection').value}\nRésultat net : ${Number($('tradeResult').value).toFixed(2)}\nDate : ${$('tradeDate').value}\nNote : ${$('tradeNote').value||'—'}`}).catch(()=>{});renderJournal();renderJournalStats();$('tradeDialog').close();$('tradeForm').reset();}else alert(result.error);
   });
   $('settingsBtn').addEventListener('click',()=>document.querySelector('[data-page="parametres"]')?.click());
+  document.querySelectorAll('[data-announcement-filter]').forEach(btn=>btn.addEventListener('click',()=>{announcementFilter=btn.dataset.announcementFilter;renderAnnouncements();}));
+  $('announcementMarkAllRead')?.addEventListener('click',async btnEvent=>{const btn=btnEvent.currentTarget;const unread=announcementCache.filter(a=>!a.is_read);if(!unread.length)return;btn.disabled=true;try{await markAllAnnouncementsAsRead(unread.map(a=>a.id));unread.forEach(a=>{a.is_read=true;a.read_at=new Date().toISOString();});renderAnnouncements();$('announcementStatus').textContent='Toutes les annonces ont été marquées comme lues.';}catch(error){$('announcementStatus').textContent='Impossible de synchroniser les lectures : '+error.message;}finally{btn.disabled=false;}});
   $('adminRefreshStatus')?.addEventListener('click',()=>loadAdminConsole(adminPage,adminSearchValue));
   $('adminUsersPrev')?.addEventListener('click',()=>loadAdminConsole(adminPage-1,adminSearchValue));
   $('adminUsersNext')?.addEventListener('click',()=>loadAdminConsole(adminPage+1,adminSearchValue));
   $('adminUserSearch')?.addEventListener('input',()=>{clearTimeout(adminSearchTimer);adminSearchTimer=setTimeout(()=>loadAdminConsole(1,$('adminUserSearch').value),350);});
+  $('adminCheckTelegramBot')?.addEventListener('click',async()=>{
+    const button=$('adminCheckTelegramBot'),status=$('adminTelegramBotCheckStatus');button.disabled=true;status.textContent='Interrogation sécurisée de Telegram…';
+    try{const result=await adminRequest({action:'telegram_bot_check'});if(result.valid){status.textContent=`Token valide · Bot : ${result.bot.first_name}${result.bot.username?' (@'+result.bot.username+')':''}`;status.dataset.state='ready';}else{status.textContent=result.message||'Telegram n’a pas validé le token.';status.dataset.state='error';}}
+    catch(error){status.textContent='Contrôle impossible : '+error.message;status.dataset.state='error';}
+    finally{button.disabled=false;}
+  });
   $('adminCreateAnnouncement')?.addEventListener('click',async()=>{
     const status=$('adminAnnouncementStatus');status.textContent='Enregistrement…';
     try{
       const endsValue=$('adminAnnouncementEndsAt').value;
-      await adminRequest({action:'announcement_create',title:$('adminAnnouncementTitle').value,body:$('adminAnnouncementBody').value,category:$('adminAnnouncementCategory').value,source_url:$('adminAnnouncementUrl').value||null,ends_at:endsValue?new Date(endsValue).toISOString():null,is_published:$('adminAnnouncementPublish').checked});
-      $('adminAnnouncementTitle').value='';$('adminAnnouncementBody').value='';$('adminAnnouncementEndsAt').value='';status.textContent='Annonce enregistrée.';await loadAdminConsole(adminPage,adminSearchValue);
+      const result=await adminRequest({action:'announcement_create',title:$('adminAnnouncementTitle').value,body:$('adminAnnouncementBody').value,category:$('adminAnnouncementCategory').value,source_url:$('adminAnnouncementUrl').value||null,ends_at:endsValue?new Date(endsValue).toISOString():null,is_published:$('adminAnnouncementPublish').checked});
+      $('adminAnnouncementTitle').value='';$('adminAnnouncementBody').value='';$('adminAnnouncementEndsAt').value='';status.textContent=result.telegram?.status==='sent'||result.telegram?.status==='partial'||result.telegram?.status==='failed'?`Annonce enregistrée · Telegram : ${result.telegram.sent||0} envoyé(s), ${result.telegram.failed||0} échec(s).`:'Annonce enregistrée.';await loadAdminConsole(adminPage,adminSearchValue);
     }catch(error){status.textContent=error.message;}
   });
   window.addEventListener('aurevia:adminchange',e=>{if(e.detail?.isAdmin)loadAdminConsole(1,adminSearchValue);});
-  $('saveProfileName')?.addEventListener('click',async()=>{const btn=$('saveProfileName');btn.disabled=true;try{const value=await updateDisplayName($('profileDisplayName').value);$('authStatus').textContent='Profil enregistré : '+value;}catch(error){$('authStatus').textContent='Profil non enregistré : '+error.message;}finally{btn.disabled=false;}});
   $('saveMyAnalysis').addEventListener('click',saveMyAnalysis);
   $('compareMyAnalysis').addEventListener('click',compareMyAnalysis);
   $('clearAnalysisHistory').addEventListener('click',()=>{localStorage.removeItem('aurevia_analysis_history');renderAnalysisHistory();});
   $('createPositionBtn').addEventListener('click',createPositionFromForm);
   $('savePartialClose').addEventListener('click',savePartialCloseFromForm);
   $('generateTelegramCode').addEventListener('click',async()=>{try{$('telegramPairStatus').textContent='Génération du code…';const code=await createTelegramPairingCode();$('telegramPairCode').textContent=code;$('telegramPairStatus').textContent='Code valable 10 minutes. Envoyez /start '+code+' au bot officiel.';}catch(error){$('telegramPairStatus').textContent=error.message;}});
-  $('saveTelegramPrefs').addEventListener('click',async()=>{try{await saveTelegramPreferences({all:$('notifyAll').checked,signals:$('notifySignals').checked,economic:$('notifyEconomic').checked});$('telegramConnectionStatus').textContent='Préférences enregistrées.';}catch(error){$('telegramConnectionStatus').textContent=error.message;}});
+  $('saveTelegramPrefs').addEventListener('click',async()=>{try{await saveTelegramPreferences({all:$('notifyAll').checked,signals:$('notifySignals').checked,economic:$('notifyEconomic').checked,productAnnouncements:$('notifyProductAnnouncements').checked});$('telegramConnectionStatus').textContent='Préférences enregistrées.';}catch(error){$('telegramConnectionStatus').textContent=error.message;}});
   $('sendTelegramTest')?.addEventListener('click',async()=>{const status=$('telegramTestStatus');status.textContent='Envoi du test en cours…';$('sendTelegramTest').disabled=true;try{const result=await sendTelegramTest();status.textContent=result.sent?'Test accepté par Telegram. Vérifiez votre conversation avec @AureviaCopilotBot.':'Test non envoyé : '+(result.reason||'raison inconnue');}catch(error){status.textContent='Échec du test : '+error.message;}finally{$('sendTelegramTest').disabled=false;}});
   $('posMode').addEventListener('change',()=>{$('posModeHelp').textContent=$('posMode').value==='unique'?'Position unique : le lot saisi est réparti entre les TP sélectionnés.':'Trades séparés : le lot saisi est appliqué individuellement à chaque TP sélectionné.';});
   const syncOrderFields=()=>{const type=$('posOrderType').value;const isBuy=type.startsWith('BUY '),isSell=type.startsWith('SELL '),isStop=type.includes('STOP'),isLimit=type.endsWith('LIMIT');if(isBuy||isSell)$('posDirection').value=isBuy?'BUY':'SELL';$('posTriggerWrap').hidden=!isStop;$('posLimitWrap').hidden=!(isLimit||type.includes('STOP LIMIT'));$('posExpiryWrap').hidden=type==='MARKET';$('posTrigger').required=isStop;$('posLimit').required=isLimit||type.includes('STOP LIMIT');$('posTrigger').disabled=!isStop;$('posLimit').disabled=!(isLimit||type.includes('STOP LIMIT'));$('posExpiry').disabled=type==='MARKET';$('posLimit').placeholder=type.includes('STOP LIMIT')?'Prix limite après déclenchement':'Prix d’entrée limite';};

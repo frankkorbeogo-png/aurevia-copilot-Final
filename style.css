@@ -401,3 +401,20 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .auth-choice-actions button{width:100%;justify-content:center;min-height:50px}
 .auth-choice-actions .secondary-btn{border:1px solid rgba(143,170,255,.38);background:rgba(35,49,88,.62);color:#e5ecff;border-radius:12px;padding:12px 18px;font-weight:700;cursor:pointer}
 .auth-choice-actions button:disabled{opacity:.6;cursor:wait}
+
+/* Centre d’annonces AUREVIA */
+.nav-count{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 5px;margin-left:auto;border-radius:999px;background:#8d69e8;color:#fff;font-size:10px;font-weight:800;line-height:1}.announcement-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 4px;flex-wrap:wrap}.announcement-filters{display:flex;gap:7px}.announcement-filter.active{border-color:#9b7cff;background:rgba(132,101,220,.2);color:#fff}.announcement-list{display:grid;gap:12px;padding:12px 16px 18px}.announcement-card{border:1px solid rgba(150,132,190,.22);border-radius:13px;padding:15px;background:linear-gradient(135deg,rgba(30,28,48,.86),rgba(12,16,30,.92));}.announcement-card.is-unread{border-color:rgba(151,119,255,.62);box-shadow:inset 3px 0 0 #9a7bff}.announcement-card-top,.announcement-meta,.announcement-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.announcement-category{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:#b9a2ff;font-weight:800}.announcement-state,.announcement-meta{font-size:11px;color:#a9a5b9}.announcement-card h3{margin:10px 0 7px;font-size:16px;color:#f5f2ff}.announcement-card p{margin:0;color:#d1ccdf;font-size:13px;line-height:1.6;white-space:normal;overflow-wrap:anywhere}.announcement-meta{margin-top:12px;justify-content:flex-start}.announcement-actions{margin-top:12px;justify-content:flex-end}.announcement-actions a{color:#bba7ff;font-size:12px;text-decoration:none}.announcement-actions a:hover{text-decoration:underline}.announcement-card .small-btn{min-height:32px}@media(max-width:560px){.announcement-toolbar{align-items:stretch}.announcement-toolbar>#announcementMarkAllRead{width:100%}.announcement-card{padding:13px}.announcement-list{padding:10px}}
+
+/* Scénarios directionnels indépendants BUY / SELL */
+.ai-scenarios{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.ai-scenarios-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px;margin-top:12px}
+.ai-scenario-card{padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface,rgba(255,255,255,.025));min-width:0}
+.ai-scenario-card.buy{border-top:3px solid #22b981}.ai-scenario-card.sell{border-top:3px solid #e16b78}
+.ai-scenario-card header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.ai-scenario-card header strong{font-size:.88rem}.ai-scenario-card header span{font-size:.65rem;color:var(--muted);text-align:right}
+.ai-scenario-card p{font-size:.82rem;line-height:1.45;color:var(--muted)}
+.ai-scenario-card dl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.ai-scenario-card dl div{padding:8px;border-radius:8px;background:rgba(127,127,127,.08)}
+.ai-scenario-card dt{font-size:.68rem;color:var(--muted)}.ai-scenario-card dd{margin:3px 0 0;font-weight:700;font-size:.82rem;overflow-wrap:anywhere}
+.ai-scenario-card ul{padding-left:18px;font-size:.78rem;color:var(--muted)}
+.ai-scenarios-note{font-size:.72rem;color:var(--muted);margin-bottom:0}

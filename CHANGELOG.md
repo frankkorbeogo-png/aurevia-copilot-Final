@@ -1,3 +1,11 @@
+## v2.3.32 — Diagnostic sécurisé du bot Telegram
+
+- Ajout d’un contrôle administrateur du token via la méthode officielle Telegram `getMe`.
+- Vérification exécutée exclusivement côté serveur avec `TELEGRAM_BOT_TOKEN` ; aucun secret n’est renvoyé au navigateur ou affiché dans le résultat.
+- Affichage de la validité du token et de l’identité publique du bot dans la console administrateur.
+- Gestion distincte des cas token absent, token invalide et indisponibilité Telegram.
+- Tests automatisés ajoutés pour le succès et le refus d’authentification Telegram.
+
 # AUREVIA COPILOT — Changelog
 
 ## 2.2.9 — 11 novembre 2026
@@ -259,3 +267,12 @@
 - Le message d’erreur indique désormais le statut et le motif retourné par l’API, sans exposer de jeton.
 - Les erreurs serveur de session sont consignées côté fonction Netlify pour diagnostic.
 - Le parcours « Se connecter » traite explicitement le cas d’un compte Auth créé pendant une tentative de connexion et appelle le refus serveur prévu.
+
+## 2.3.29 — Scénarios BUY/SELL anticipatifs
+
+- M30 et M15 deviennent les unités principales pour la direction et la structure (BOS/CHoCH).
+- H4 devient un contexte supérieur/filtre de cohérence, sans bloquer seul un scénario M30/M15 valide.
+- M5/M1 servent uniquement à préciser et confirmer le point d'entrée.
+- L'IA retourne deux scénarios conditionnels indépendants, BUY et SELL, même avant déclencheur M5/M1.
+- L'interface affiche les scénarios identifiés, leurs zones, SL/TP, conditions d'activation et invalidation.
+- Les scénarios incomplets, incohérents ou hors de l'historique analysé sont rejetés.

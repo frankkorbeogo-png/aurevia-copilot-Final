@@ -11,6 +11,41 @@ const adminHeaders=(key,extra={})=>({apikey:key,authorization:`Bearer ${key}`,'c
 async function audit(base,key,actor,action,target=null,details={}){
  await rpc(base,key,'aurevia_admin_audit',{p_actor_id:actor,p_action:action,p_target_user_id:target,p_details:details});
 }
+
+async function broadcastProductAnnouncement(base,key,announcement){
+ const token=env('TELEGRAM_BOT_TOKEN');
+ if(!token)return {status:'not_configured',sent:0,failed:0,skipped:0};
+ const id=announcement?.id;if(!id)return {status:'not_sent',sent:0,failed:0,skipped:0};
+ // Atomic claim: only the first publish transition may start a broadcast.
+ const claim=await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}&telegram_broadcast_started_at=is.null&select=id`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=representation'}),body:JSON.stringify({telegram_broadcast_started_at:new Date().toISOString()})});
+ if(!Array.isArray(claim)||!claim.length)return {status:'already_processed',sent:0,failed:0,skipped:0};
+ const recipients=await request(`${base}/rest/v1/telegram_connections?select=user_id,chat_id&notify_product_announcements=eq.true&chat_id=not.is.null&limit=5000`,{headers:adminHeaders(key)});
+ // Never send product announcements to administrator accounts, even if an admin
+ // accidentally enables the preference on their own Telegram settings.
+ const eligible=[];
+ const checkedAdmins=new Map();
+ for(const row of (Array.isArray(recipients)?recipients:[])){
+  const userId=String(row.user_id||'').trim(),chatId=String(row.chat_id||'').trim();
+  if(!userId||!chatId)continue;
+  if(!checkedAdmins.has(userId))checkedAdmins.set(userId,await rpc(base,key,'aurevia_is_admin',{p_user_id:userId})===true);
+  if(!checkedAdmins.get(userId))eligible.push(chatId);
+ }
+ const unique=[...new Set(eligible)];
+ const skipped= Math.max(0,(Array.isArray(recipients)?recipients.length:0)-eligible.length);
+ const esc=value=>String(value||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+ const safeUrl=(()=>{try{const u=new URL(String(announcement.source_url||''));return ['https:','http:'].includes(u.protocol)?u.href:null;}catch{return null;}})();
+ const message=`<b>📢 AUREVIA COPILOT · NOUVELLE ANNONCE</b>\n\n<b>${esc(announcement.title)}</b>\n\n${esc(announcement.body)}${safeUrl?`\n\n<a href="${esc(safeUrl)}">En savoir plus</a>`:''}`;
+ let sent=0,failed=0;const errors=[];
+ for(const chatId of unique){
+  try{const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId,text:message,parse_mode:'HTML',disable_web_page_preview:true}),signal:AbortSignal.timeout(9000)});const result=await response.json().catch(()=>null);if(!response.ok||!result?.ok)throw new Error(result?.description||`Telegram HTTP ${response.status}`);sent++;}
+  catch(error){failed++;if(errors.length<5)errors.push(String(error.message||error).slice(0,180));}
+  // Stay below Telegram's ordinary per-chat broadcast throughput.
+  await new Promise(resolve=>setTimeout(resolve,35));
+ }
+ const result={status:failed?(sent?'partial':'failed'):'sent',sent,failed,skipped,errors};
+ await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:adminHeaders(key),body:JSON.stringify({telegram_broadcast_completed_at:new Date().toISOString(),telegram_broadcast_result:result})});
+ return result;
+}
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'GET,POST,OPTIONS','access-control-allow-headers':'authorization,content-type'}};
  if(!['GET','POST'].includes(event.httpMethod))return json(405,{error:'Méthode non autorisée.'});
@@ -35,6 +70,22 @@ export async function handler(event){
    return json(200,{ok:true,users:Array.isArray(listing?.users)?listing.users:[],stats:stats||{},announcements:Array.isArray(announcements)?announcements:[],auditLog:Array.isArray(auditLog)?auditLog:[],pagination:{page,per_page:100,total:Number(listing?.total)||0,returned:Array.isArray(listing?.users)?listing.users.length:0,has_more:Boolean(listing?.has_more)}});
   }
   const action=String(body.action||'');
+  if(action==='telegram_bot_check'){
+   const token=env('TELEGRAM_BOT_TOKEN');
+   if(!token)return json(200,{ok:false,valid:false,status:'not_configured',message:'TELEGRAM_BOT_TOKEN absent côté serveur.'});
+   try{
+    const response=await fetch(`https://api.telegram.org/bot${token}/getMe`,{method:'GET',headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
+    const result=await response.json().catch(()=>null);
+    if(response.ok&&result?.ok&&result?.result?.is_bot===true){
+     const bot=result.result;
+     return json(200,{ok:true,valid:true,status:'valid',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)}});
+    }
+    if(response.status===401||result?.error_code===401)return json(200,{ok:true,valid:false,status:'invalid',message:'Telegram refuse le token (non valide ou révoqué).'});
+    return json(200,{ok:false,valid:false,status:'telegram_error',message:'Telegram n’a pas pu confirmer le bot. Réessayez plus tard.'});
+   }catch{
+    return json(200,{ok:false,valid:false,status:'unreachable',message:'Impossible de joindre Telegram pour le moment.'});
+   }
+  }
   const target=String(body.user_id||'');
   if(['suspend','activate','delete_user','revoke_session'].includes(action)&&!UUID.test(target))return json(400,{error:'Identifiant utilisateur invalide.'});
   if(['suspend','activate','delete_user','revoke_session'].includes(action)&&target===caller.id)return json(409,{error:'Cette action ne peut pas viser votre propre compte depuis la console.'});
@@ -69,14 +120,24 @@ export async function handler(event){
    if(!Number.isFinite(startsAt.getTime())||(endsAt&&!Number.isFinite(endsAt.getTime()))||(endsAt&&endsAt<=startsAt))return json(400,{error:'Dates de publication invalides : l’expiration doit être postérieure au début.'});
    const created=await request(`${base}/rest/v1/announcements`,{method:'POST',headers:adminHeaders(key,{'Prefer':'return=representation'}),body:JSON.stringify({title,body:content,category,source_url:body.source_url||null,starts_at:startsAt.toISOString(),ends_at:endsAt?.toISOString()||null,is_published:Boolean(body.is_published)})});
    await audit(base,key,caller.id,'announcement_create',created?.[0]?.id||null,{published:Boolean(body.is_published),ends_at:endsAt?.toISOString()||null});
-   return json(200,{ok:true,announcement:created?.[0]||null});
+   const item=created?.[0]||null;const telegram=body.is_published&&startsAt<=new Date()?await broadcastProductAnnouncement(base,key,item):{status:'not_due',sent:0,failed:0,skipped:0};
+   return json(200,{ok:true,announcement:item,telegram});
   }
   if(action==='announcement_publish'||action==='announcement_expire'){
    const id=String(body.announcement_id||'');if(!UUID.test(id))return json(400,{error:'Identifiant d’annonce invalide.'});
-   const update=action==='announcement_expire'?{ends_at:new Date().toISOString(),updated_at:new Date().toISOString()}:{is_published:Boolean(body.is_published),updated_at:new Date().toISOString()};
-   await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify(update)});
-   await audit(base,key,caller.id,action,id,action==='announcement_expire'?{expired:true}:{published:Boolean(body.is_published)});
-   return json(200,{ok:true});
+   let telegram={status:'not_applicable',sent:0,failed:0,skipped:0};
+   if(action==='announcement_publish'&&body.is_published){
+    const before=await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}&select=id,title,body,category,is_published,starts_at,ends_at,source_url,telegram_broadcast_started_at`,{headers:adminHeaders(key)});
+    const prior=before?.[0];
+    const update={is_published:true,updated_at:new Date().toISOString()};
+    await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify(update)});
+    if(prior&&!prior.is_published&&new Date(prior.starts_at||0)<=new Date())telegram=await broadcastProductAnnouncement(base,key,prior);
+   }else{
+    const update=action==='announcement_expire'?{ends_at:new Date().toISOString(),updated_at:new Date().toISOString()}:{is_published:Boolean(body.is_published),updated_at:new Date().toISOString()};
+    await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify(update)});
+   }
+   await audit(base,key,caller.id,action,id,action==='announcement_expire'?{expired:true}:{published:Boolean(body.is_published),telegram});
+   return json(200,{ok:true,telegram});
   }
   return json(400,{error:'Action d’administration inconnue.'});
  }catch(error){

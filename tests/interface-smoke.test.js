@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');
-test('l’interface expose les onze espaces fonctionnels',()=>{const pages=[...html.matchAll(/data-page-view="([^"]+)"/g)].map(x=>x[1]);assert.equal(new Set(pages).size,11);for(const page of ['accueil','marches','risque','journal','positions','dxy','actualites','telegram','parametres','guide','admin'])assert.ok(pages.includes(page));});
+test('l’interface expose les douze espaces fonctionnels',()=>{const pages=[...html.matchAll(/data-page-view="([^"]+)"/g)].map(x=>x[1]);assert.equal(new Set(pages).size,12);for(const page of ['accueil','marches','risque','journal','positions','dxy','actualites','annonces','telegram','parametres','guide','admin'])assert.ok(pages.includes(page));});
 test('le logo officiel, le décor cosmique et le réglage mobile sont présents',()=>{assert.match(html,/assets\/aurevia-logo-mark\.png/);assert.match(html,/id="galaxyCanvas"/);assert.match(html,/id="reduceMotion"/);assert.match(html,/auth-brand[^]*assets\/aurevia-logo-mark\.png/);assert.match(html,/id="installAppBtn"/);});
 test('le badge flottant de marque n’est pas présent dans la navigation',()=>{assert.doesNotMatch(html,/sidebar-foot|floating-brand-badge/);});
 test('le service worker met en cache les modules locaux requis',()=>{for(const file of ['app.js','analysis.js','confluence.js','fibonacci.js','volume-profile.js','trade-management.js','galaxy.js'])assert.ok(sw.includes(`/${file}`));});
@@ -110,3 +110,6 @@ test('connexion et inscription Google sont deux parcours distincts et l’inscri
   assert.match(auth,/Cette adresse Google possède déjà un compte AUREVIA/);
   assert.match(auth,/sessionStorage\.setItem\('aurevia_auth_intent'/);
 });
+
+test('le centre d’annonces expose filtres, badge et actions de lecture',async()=>{const app=await readFile(new URL('../app.js',import.meta.url),'utf8');const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');assert.match(html,/data-page="annonces"/);assert.match(html,/id="announcementUnreadBadge"/);assert.match(html,/data-announcement-filter="unread"/);assert.match(app,/markAllAnnouncementsAsRead/);assert.match(auth,/from\('announcement_reads'\)/);assert.match(auth,/ignoreDuplicates:true/);});
+test('la migration annonce conserve les annonces publiées expirées et isole les lectures par utilisateur',async()=>{const sql=await readFile(new URL('../supabase/migrations/20261112150000_announcement_reads.sql',import.meta.url),'utf8');assert.match(sql,/is_published = true/);assert.match(sql,/announcement_reads/);assert.match(sql,/auth\.uid\(\) = user_id/);assert.match(sql,/aurevia_session_is_active\(\)/);});

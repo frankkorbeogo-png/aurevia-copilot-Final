@@ -64,7 +64,6 @@ async function refreshProfile(){
  const isAdmin=await verifyAdminAccess();if(sequence!==profileRefreshSequence)return;
  const role=$('profileRole');if(role)role.textContent=isAdmin?'Administrateur':'Utilisateur';
  const name=$('profileName');if(name)name.textContent=currentProfile?.display_name||currentUser.email||'Compte connecté';
- const display=$('profileDisplayName');if(display&&document.activeElement!==display)display.value=currentProfile?.display_name||'';
 }
 function render(){
  const logged=Boolean(currentUser&&sessionReady);
@@ -150,8 +149,8 @@ export async function createTelegramPairingCode(){
  const preferences={...(data?.preferences||{}),telegram_pair_code:code,telegram_pair_expires_at:new Date(Date.now()+10*60*1000).toISOString()};
  const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return code;
 }
-export async function loadTelegramPreferences(){await ensureUser();if(!currentUser)return null;const {data,error}=await supabase.from('telegram_connections').select('chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);return data;}
-export async function saveTelegramPreferences(prefs){await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de modifier vos notifications.');const {error}=await supabase.from('telegram_connections').update({notify_all_analyses:Boolean(prefs.all),notify_validated_signals:Boolean(prefs.signals),notify_economic_announcements:Boolean(prefs.economic),updated_at:new Date().toISOString()}).eq('user_id',currentUser.id);if(error)throw new Error(error.message);}
+export async function loadTelegramPreferences(){await ensureUser();if(!currentUser)return null;const {data,error}=await supabase.from('telegram_connections').select('chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements,notify_product_announcements').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);return data;}
+export async function saveTelegramPreferences(prefs){await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de modifier vos notifications.');const {error}=await supabase.from('telegram_connections').update({notify_all_analyses:Boolean(prefs.all),notify_validated_signals:Boolean(prefs.signals),notify_economic_announcements:Boolean(prefs.economic),notify_product_announcements:Boolean(prefs.productAnnouncements),updated_at:new Date().toISOString()}).eq('user_id',currentUser.id);if(error)throw new Error(error.message);}
 
 
 export async function getAnalysisAccessToken(){
@@ -232,4 +231,26 @@ export async function syncTradeCloseToSupabase(group,child,closeEvent){
 
 export async function sendTelegramTest(){return sendTelegramNotification({type:'test',text:'✅ Test de réception AUREVIA COPILOT\n\nLa liaison Telegram fonctionne. Si vous voyez ce message, votre compte reçoit bien les notifications privées.'});}
 
-export async function updateDisplayName(name){await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour modifier votre profil.');const displayName=String(name||'').trim().slice(0,80);if(!displayName)throw new Error('Le nom affiché ne peut pas être vide.');const {error}=await supabase.from('profiles').update({display_name:displayName}).eq('id',currentUser.id);if(error)throw new Error(error.message);if(currentProfile)currentProfile.display_name=displayName;const label=document.getElementById('profileName');if(label)label.textContent=displayName;return displayName;}
+export async function loadPublishedAnnouncements(){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour consulter les annonces.');
+ const now=new Date().toISOString();
+ const {data:announcements,error}=await supabase.from('announcements').select('*').eq('is_published',true).or(`starts_at.is.null,starts_at.lte.${now}`).order('created_at',{ascending:false}).limit(200);
+ if(error)throw new Error(error.message);
+ const {data:reads,error:readError}=await supabase.from('announcement_reads').select('announcement_id,read_at').eq('user_id',currentUser.id);
+ if(readError)throw new Error(readError.message);
+ const readMap=new Map((reads||[]).map(row=>[row.announcement_id,row.read_at]));
+ return (announcements||[]).map(item=>({...item,read_at:readMap.get(item.id)||null,is_read:readMap.has(item.id)}));
+}
+export async function markAnnouncementAsRead(id){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour marquer une annonce comme lue.');
+ if(!id)throw new Error('Annonce invalide.');
+ const {error}=await supabase.from('announcement_reads').upsert({user_id:currentUser.id,announcement_id:id},{onConflict:'user_id,announcement_id',ignoreDuplicates:true});
+ if(error)throw new Error(error.message);return {success:true};
+}
+export async function markAllAnnouncementsAsRead(ids){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour marquer les annonces comme lues.');
+ const unique=[...new Set((ids||[]).filter(Boolean))];if(!unique.length)return {success:true,count:0};
+ const rows=unique.map(announcement_id=>({user_id:currentUser.id,announcement_id}));
+ const {error}=await supabase.from('announcement_reads').upsert(rows,{onConflict:'user_id,announcement_id',ignoreDuplicates:true});
+ if(error)throw new Error(error.message);return {success:true,count:unique.length};
+}
