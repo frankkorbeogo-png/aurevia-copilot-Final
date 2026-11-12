@@ -242,3 +242,12 @@
 - Correction du parcours OAuth : au rechargement après retour Google, la session Supabase restaurée est désormais revendiquée (`claim`) auprès du serveur AUREVIA avant de déverrouiller l’application.
 - Le contrôle précédent utilisait `heartbeat` pour une session qui n’avait pas encore été enregistrée côté AUREVIA, ce qui pouvait refuser l’accès et laisser l’écran de connexion affiché.
 - Les contrôles de session unique restent actifs : une session plus ancienne ne peut pas remplacer une session plus récente.
+
+
+## V2.3.25 — Réparation du claim OAuth et inscription obligatoire
+- Correction de `aurevia_session_touch` : une première session Google vérifiée peut être enregistrée même si la ligne `auth.sessions` n'est pas encore visible ; les heartbeats exigent toujours une session AUREVIA déjà enregistrée.
+- La restauration d'une session déjà connue utilise désormais `heartbeat` et ne peut pas reprendre la place d'un autre appareil ; une nouvelle authentification explicite utilise `claim`.
+- Le bouton « Se connecter » refuse une identité qui vient d'être créée par cette tentative et supprime uniquement ce compte temporaire, après vérification serveur de sa date de création.
+- Le bouton « Créer un compte » continue de refuser les identités Google déjà inscrites.
+- Ajout de l'endpoint Netlify `/api/account-reject-new-login` et de tests ciblés.
+- Migration SQL `20261112130000_fix_google_oauth_session_claim_v235.sql` ajoutée et fonction équivalente appliquée au projet Supabase de production.

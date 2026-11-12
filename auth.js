@@ -70,13 +70,25 @@ function render(){
  if(adminVerified)setAdminVisibility(true);else{document.querySelector('[data-page=\"admin\"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');}
  refreshProfile().catch(()=>setAdminVisibility(false));
 }
+function readJwtSessionId(accessToken){try{const payload=JSON.parse(atob(accessToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return typeof payload.session_id==='string'?payload.session_id:null;}catch{return null;}}
+let consumedAuthIntent=null;
 function consumeAuthIntent(user){
  let intent=null;try{intent=JSON.parse(sessionStorage.getItem('aurevia_auth_intent')||'null');}catch{}
  if(!intent)return null;
- sessionStorage.removeItem('aurevia_auth_intent');
+ consumedAuthIntent=intent;sessionStorage.removeItem('aurevia_auth_intent');
  const createdAt=Date.parse(user?.created_at||'');
- if(intent.mode==='signup'&&Number.isFinite(createdAt)&&createdAt<intent.startedAt-5000)return 'EXISTING_ACCOUNT';
+ if(!Number.isFinite(createdAt))return null;
+ if(intent.mode==='signup'&&createdAt<intent.startedAt-5000)return 'EXISTING_ACCOUNT';
+ if(intent.mode==='login'&&createdAt>=intent.startedAt-5000)return 'ACCOUNT_NOT_REGISTERED';
  return null;
+}
+async function rejectAccountCreatedDuringLogin(session,intentError){
+ const response=await fetch('/api/account-reject-new-login',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${session.access_token}`},body:JSON.stringify({confirmation:'REJECT_NEW_LOGIN',startedAt:consumedAuthIntent?.startedAt}),cache:'no-store'});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok||data.deleted!==true)throw new Error(data.error||'Impossible de refuser ce compte non inscrit.');
+ await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;render();
+ const message='Aucun compte AUREVIA n’est associé à cette adresse. Pour une première utilisation, choisissez « Créer un compte ». ';
+ const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);
 }
 async function activateSession(session,action){
  if(!session?.access_token){sessionReady=false;render();return;}
@@ -98,7 +110,7 @@ export async function initAuth(){
  const {data,error}=await supabase.auth.getSession();
  if(error){showStatus('Impossible de lire la session Google.',true);return;}
  currentUser=data.session?.user||null;
- if(data.session){await activateSession(data.session,'claim');window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event:'INITIAL_SESSION'}}));}else render();
+ if(data.session){const sessionId=readJwtSessionId(data.session.access_token);let known=false;try{known=Boolean(sessionId&&localStorage.getItem('aurevia_active_session_id')===sessionId);}catch{}await activateSession(data.session,known?'heartbeat':'claim');window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event:'INITIAL_SESSION'}}));}else render();
  supabase.auth.onAuthStateChange((event,session)=>{
   if(event==='SIGNED_OUT'){stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);render();window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}}));return;}
   if(event==='SIGNED_IN'){currentUser=session?.user||null;sessionReady=false;adminVerified=false;window.__aureviaAdminVerified=null;document.querySelector('[data-page=\"admin\"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');activateSession(session,'claim').then(()=>window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}})));return;}
@@ -108,7 +120,7 @@ export async function initAuth(){
  const bindGoogleAuth=(id,mode)=>$(id)?.addEventListener('click',e=>startGoogleAuth(e.currentTarget,mode));
  bindGoogleAuth('googleLoginBtn','login');bindGoogleAuth('googleSignupBtn','signup');
  bindGoogleAuth('googleLoginGateBtn','login');bindGoogleAuth('googleSignupGateBtn','signup');
- $('signOutBtn')?.addEventListener('click',async()=>{try{await sessionRequest('end');}catch{}const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}currentUser=null;currentProfile=null;sessionReady=false;setAdminVisibility(false);render();showStatus('Déconnexion effectuée.');});
+ $('signOutBtn')?.addEventListener('click',async()=>{try{await sessionRequest('end');}catch{}const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}try{localStorage.removeItem('aurevia_active_session_id');}catch{}currentUser=null;currentProfile=null;sessionReady=false;setAdminVisibility(false);render();showStatus('Déconnexion effectuée.');});
  $('deleteOwnAccountBtn')?.addEventListener('click',async(event)=>{const btn=event.currentTarget;if(!currentUser||!sessionReady){showStatus('Connectez-vous pour supprimer votre compte.',true);return;}const email=currentUser.email||'ce compte';const first=window.confirm(`Supprimer définitivement votre compte AUREVIA (${email}) ?\n\nToutes les données associées seront supprimées selon les règles de conservation. Cette action est irréversible. Votre compte Google ne sera pas supprimé.`);if(!first)return;const confirmation=window.prompt('Pour confirmer, saisissez SUPPRIMER :');if(confirmation!=='SUPPRIMER'){showStatus('Suppression annulée : confirmation incorrecte.',true);return;}btn.disabled=true;btn.textContent='Suppression en cours…';try{const token=await getAnalysisAccessToken();const response=await fetch('/api/account-delete',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({confirmation:'SUPPRIMER'}),cache:'no-store'});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Suppression impossible.');stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);await supabase.auth.signOut({scope:'local'});render();const status=$('authGateStatus');if(status)status.textContent='Votre compte AUREVIA a été supprimé. Vous pouvez fermer cette page.';showStatus('Compte AUREVIA supprimé.');}catch(error){showStatus(error.message,true);btn.disabled=false;btn.textContent='Supprimer définitivement mon compte';}});
 }
 

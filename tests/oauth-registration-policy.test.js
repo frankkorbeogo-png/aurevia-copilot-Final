@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
+const endpoint=await readFile(new URL('../netlify/functions/account-reject-new-login.mjs',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261112130000_fix_google_oauth_session_claim_v235.sql',import.meta.url),'utf8');
+test('la première ouverture restaure une session connue sans réclamer la session d’un autre appareil',()=>{assert.match(auth,/known\?'heartbeat':'claim'/);assert.match(auth,/aurevia_active_session_id/);});
+test('le retour OAuth refuse une nouvelle identité créée via le bouton connexion',()=>{assert.match(auth,/intent\.mode==='login'&&createdAt>=intent\.startedAt-5000/);assert.match(auth,/ACCOUNT_NOT_REGISTERED/);assert.match(auth,/account-reject-new-login/);});
+test('le retour OAuth refuse une inscription avec une identité existante',()=>{assert.match(auth,/intent\.mode==='signup'&&createdAt<intent\.startedAt-5000/);assert.match(auth,/EXISTING_ACCOUNT/);});
+test('le endpoint de refus ne supprime que le compte créé pendant la tentative de connexion',()=>{assert.match(endpoint,/verifyBearerUser/);assert.match(endpoint,/context\.user\.created_at/);assert.match(endpoint,/startedAt-30000/);assert.match(endpoint,/auth\/v1\/admin\/users/);});
+test('la fonction SQL autorise le premier claim sans dépendre exclusivement de auth.sessions',()=>{assert.match(migration,/if v_created_at is null then[\s\S]*if not p_claim then[\s\S]*return false/);assert.match(migration,/app_private\.aurevia_user_sessions/);});

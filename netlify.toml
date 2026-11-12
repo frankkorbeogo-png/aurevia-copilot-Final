@@ -53,3 +53,8 @@
 
 [functions."trade-watch"]
 schedule = "* * * * *"
+
+[[redirects]]
+  from = "/api/account-reject-new-login"
+  to = "/.netlify/functions/account-reject-new-login"
+  status = 200
