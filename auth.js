@@ -98,7 +98,7 @@ export async function initAuth(){
  const {data,error}=await supabase.auth.getSession();
  if(error){showStatus('Impossible de lire la session Google.',true);return;}
  currentUser=data.session?.user||null;
- if(data.session){await activateSession(data.session,'heartbeat');window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event:'INITIAL_SESSION'}}));}else render();
+ if(data.session){await activateSession(data.session,'claim');window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event:'INITIAL_SESSION'}}));}else render();
  supabase.auth.onAuthStateChange((event,session)=>{
   if(event==='SIGNED_OUT'){stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);render();window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}}));return;}
   if(event==='SIGNED_IN'){currentUser=session?.user||null;sessionReady=false;adminVerified=false;window.__aureviaAdminVerified=null;document.querySelector('[data-page=\"admin\"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');activateSession(session,'claim').then(()=>window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}})));return;}

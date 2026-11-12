@@ -236,3 +236,9 @@
 - Les endpoints OHLC, cotations et statut des services exigent désormais un JWT Google valide et une session AUREVIA active.
 - Le quota des historiques OHLC est appliqué par utilisateur authentifié plutôt que par adresse IP.
 - Les appels clients transmettent le jeton de session aux trois endpoints.
+
+
+## V2.3.24 — Correction du retour après authentification Google
+- Correction du parcours OAuth : au rechargement après retour Google, la session Supabase restaurée est désormais revendiquée (`claim`) auprès du serveur AUREVIA avant de déverrouiller l’application.
+- Le contrôle précédent utilisait `heartbeat` pour une session qui n’avait pas encore été enregistrée côté AUREVIA, ce qui pouvait refuser l’accès et laisser l’écran de connexion affiché.
+- Les contrôles de session unique restent actifs : une session plus ancienne ne peut pas remplacer une session plus récente.
