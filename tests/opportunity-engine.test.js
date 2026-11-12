@@ -7,7 +7,7 @@ const neutral=(bias='range',close=2000)=>({last:{close},structure:{bias,breaks:[
 test('génère un scénario BUY candidat depuis confluences techniques cohérentes',()=>{
  const analyses={H4:analysis('haussier'),H1:analysis('haussier'),M30:analysis('haussier'),M15:analysis('haussier'),M5:analysis('range')};
  const out=generateOpportunityScenarios({analyses,frames});
- assert.equal(out.buy?.status,'IDENTIFIED');assert.equal(out.buy?.entryStatus,'PENDING');assert.ok(out.buy.stopLoss<out.buy.entry);assert.equal(out.buy.takeProfits.length,3);
+ assert.equal(out.buy?.status,'IDENTIFIED');assert.equal(out.buy?.entryStatus,'PENDING');assert.ok(out.buy.stopLoss<out.buy.entry);assert.equal(out.buy.takeProfits.length,3);assert.equal(out.buy.pendingOrderType,'BUY LIMIT');assert.equal(out.buy.limitPrice,out.buy.entry);assert.equal(out.buy.triggerPrice,null);
 });
 test('ne fabrique aucun scénario sans contexte directionnel',()=>{
  const analyses={H4:neutral(),H1:neutral(),M30:neutral(),M15:neutral(),M5:neutral()};
@@ -25,4 +25,39 @@ test('identifie un scénario conditionnel par confluence EMA/MACD/RSI même si l
  assert.equal(out.buy?.status,'IDENTIFIED');
  assert.equal(out.buy?.entryStatus,'PENDING');
  assert.ok(out.buy.entry>out.buy.stopLoss);
+});
+
+test('autorise un seul scénario BUY quand M30 fournit une confluence suffisante, sans exiger un scénario SELL ni un vote M15',()=>{
+ const m30=analysis('haussier');
+ const analyses={H4:neutral(),H1:neutral(),M30:m30,M15:neutral(),M5:analysis('range')};
+ const out=generateOpportunityScenarios({analyses,frames});
+ assert.equal(out.buy?.status,'IDENTIFIED');
+ assert.equal(out.sell,null);
+ assert.equal(out.buy?.entryStatus,'PENDING');
+ assert.ok(out.buy.entry>out.buy.stopLoss);
+ assert.equal(out.buy.takeProfits.length,3);
+});
+test('un seul signal isolé ne suffit toujours pas à créer un trade',()=>{
+ const m30=neutral();m30.indicators.ema200=1990;
+ const analyses={H4:neutral(),H1:neutral(),M30:m30,M15:neutral(),M5:neutral()};
+ const out=generateOpportunityScenarios({analyses,frames});
+ assert.equal(out.buy,null);
+ assert.equal(out.sell,null);
+});
+
+test('propose un ordre SELL LIMIT sur une zone de résistance au-dessus du cours',()=>{
+ const analyses={H4:analysis('baissier'),H1:analysis('baissier'),M30:analysis('baissier'),M15:analysis('baissier'),M5:neutral()};
+ const out=generateOpportunityScenarios({analyses,frames});
+ assert.equal(out.sell?.status,'IDENTIFIED');assert.equal(out.sell.pendingOrderType,'SELL LIMIT');assert.equal(out.sell.limitPrice,out.sell.entry);assert.equal(out.sell.triggerPrice,null);
+});
+test('le scénario potentiel expose le type d’ordre sans le confondre avec une entrée confirmée',()=>{
+ const analyses={H4:analysis('haussier'),H1:analysis('haussier'),M30:analysis('haussier'),M15:analysis('haussier'),M5:analysis('range')};
+ const out=generateOpportunityScenarios({analyses,frames});
+ assert.equal(out.buy.entryStatus,'PENDING');assert.ok(['BUY LIMIT','BUY STOP'].includes(out.buy.pendingOrderType));assert.match(out.buy.orderRationale,/confirmation M5|clôture M5/);
+});
+test('l’interface affiche le type d’ordre et sa logique pour chaque scénario potentiel',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/Type d’ordre potentiel/);
+ assert.match(app,/Logique de l’ordre/);
 });

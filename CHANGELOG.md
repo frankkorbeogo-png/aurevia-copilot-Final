@@ -1,4 +1,19 @@
-## V2.3.53 — déconnexion Telegram fiabilisée
+# Journal des modifications
+
+## v2.3.56 — Proposition IA possible sur un seul setup
+- Le moteur technique peut désormais présenter un unique scénario BUY ou SELL si une confluence opérationnelle suffisante est détectée sur M30 ou M15.
+- Il n’exige plus que plusieurs confirmations réparties entre M30 et M15, ni que les deux directions BUY et SELL produisent chacune un scénario.
+- Un signal isolé reste insuffisant : seuil de confluence maintenu, données fraîches obligatoires, niveaux SL/TP cohérents et confirmation M5 toujours nécessaire avant de qualifier une entrée de confirmée.
+- Ajout de tests couvrant un seul scénario valide et le rejet d’un indice isolé.
+
+
+## v2.3.55 — Correctifs compte, Telegram et données macro
+- Ajout des routes Netlify manquantes pour la suppression du compte par son propriétaire et le contexte macroéconomique.
+- Correction de la liaison Telegram : recherche réelle du code temporaire dans `user_preferences`, contrôle d’expiration et refus des codes ambigus.
+- Validation des réponses Telegram lors de l’envoi, journalisation serveur sans exposer les secrets et nettoyage du code temporaire lors d’une déconnexion par `/stop`.
+- Confirmation des deux emplacements d’affichage du calendrier dans l’interface et conservation d’un état d’erreur explicite si la source publique est indisponible.
+- Ajout de tests de régression pour la liaison Telegram et les routes Netlify.
+
 - La déliaison Telegram passe par une fonction serveur authentifiée qui vérifie la session AUREVIA active et supprime uniquement la liaison de l’utilisateur connecté.
 - Nettoyage du code de liaison temporaire dans les préférences ; avertissement explicite si ce nettoyage secondaire échoue.
 - L’interface désactive immédiatement le bouton de déliaison et les actions de notification après succès.
@@ -361,3 +376,10 @@
 - Ajout des commandes `/stop`, `/disconnect` et `/deconnecter` pour arrêter les notifications directement dans la conversation Telegram.
 - Suppression de la liaison correspondant au chat privé uniquement, avec confirmation envoyée par le bot.
 - Conservation de la possibilité de délier Telegram depuis les paramètres AUREVIA.
+
+
+## V2.3.57 — Scénario conditionnel avec type d’ordre anticipé
+- Chaque scénario potentiel identifie la zone de prix à attendre avant la confirmation M5.
+- Déduit un type d’ordre en attente cohérent avec la position de la zone par rapport au dernier cours M5 : BUY/SELL LIMIT ou BUY/SELL STOP.
+- Affiche le niveau de déclenchement ou le prix limite, ainsi que la logique de choix.
+- Maintient la distinction entre scénario potentiel, déclencheur confirmé et décision globale ; aucun ordre broker n’est envoyé.

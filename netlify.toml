@@ -71,3 +71,13 @@ schedule = "* * * * *"
 
 [functions."scenario-watch"]
 schedule = "* * * * *"
+
+[[redirects]]
+  from = "/api/account-delete"
+  to = "/.netlify/functions/account-delete"
+  status = 200
+
+[[redirects]]
+  from = "/api/macro-context"
+  to = "/.netlify/functions/macro-context"
+  status = 200

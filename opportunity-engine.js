@@ -6,7 +6,7 @@ const biasFor = side => side === 'BUY' ? 'haussier' : 'baissier';
  * Le moteur ne transforme jamais un scénario candidat en ordre confirmé.
  */
 export function generateOpportunityScenarios({analyses, frames, staleFrames=[]}) {
-  const result = { buy: null, sell: null, engine: 'technical-candidate-v2' };
+  const result = { buy: null, sell: null, engine: 'technical-candidate-v3-single-setup' };
   if (!analyses || !frames || staleFrames.length) return result;
   const current = analyses.M5?.last?.close;
   const atr = analyses.M5?.indicators?.atr14 || analyses.M15?.indicators?.atr14;
@@ -56,9 +56,11 @@ export function generateOpportunityScenarios({analyses, frames, staleFrames=[]})
       score-=10;conflicts.push(`M30 structure ${structureBias}`);
     }
     score=Math.max(0,Math.min(100,Math.round(score)));
-    // Au moins deux indices opérationnels M30/M15 et un score minimal sont requis.
-    // H4/H1 pondèrent le contexte mais ne peuvent pas, seuls, créer un scénario.
-    if(operationalVotes<2 || score<22) continue;
+    // Un seul côté BUY ou SELL peut suffire : on exige au moins une confluence
+    // opérationnelle M30/M15 et un score minimal. Il n'est pas nécessaire que
+    // les deux directions soient identifiées, ni que M30 et M15 soient toutes
+    // deux alignées. H4/H1 pondèrent le contexte sans créer seuls un scénario.
+    if(operationalVotes<1 || score<22) continue;
 
     const swings=m15?.structure?.swings?.length?m15.structure.swings:(m30?.structure?.swings||[]);
     const highs=swings.filter(x=>x.type==='high').map(x=>x.price).filter(finite);
@@ -77,10 +79,14 @@ export function generateOpportunityScenarios({analyses, frames, staleFrames=[]})
       const r=Math.max(stop-entry,atr*.8);targets=[entry-r,entry-r*2,entry-r*3];
     }
     const conflictsText=conflicts.length?` Conflits à surveiller : ${conflicts.join('; ')}.`:'';
+    const pendingOrderType=side==='BUY'?(entry<current?'BUY LIMIT':entry>current?'BUY STOP':null):(entry>current?'SELL LIMIT':entry<current?'SELL STOP':null);
+    const orderPrice=round(entry);
     result[side.toLowerCase()]={status:'IDENTIFIED',side,score,entryStatus:m5Trigger&&sweep?'CONFIRMED':'PENDING',
-      entry:round(entry),entryZoneLow:round(entry-pad),entryZoneHigh:round(entry+pad),stopLoss:round(stop),
+      pendingOrderType,triggerPrice:pendingOrderType?.includes('STOP')?orderPrice:null,limitPrice:pendingOrderType?.includes('LIMIT')?orderPrice:null,
+      orderRationale:pendingOrderType?.includes('LIMIT')?'Ordre limite proposé sur la zone de repli (support/résistance) avant confirmation M5.':pendingOrderType?.includes('STOP')?'Ordre stop proposé au franchissement du niveau de déclenchement ; attendre la clôture M5 de confirmation.':'Type d’ordre non déterminable : zone confondue avec le prix actuel, attendre un meilleur emplacement.',
+      entry:orderPrice,entryZoneLow:round(entry-pad),entryZoneHigh:round(entry+pad),stopLoss:round(stop),
       takeProfits:targets.map(x=>round(x)),
-      reason:`Scénario conditionnel ${side} détecté par ${operationalVotes} indices opérationnels M30/M15. Score de confluence ${score}/100, non statistique. ${reasons.join('; ')}.${conflictsText}`,
+      reason:`Scénario conditionnel ${side} détecté avec ${operationalVotes} confirmation(s) opérationnelle(s) M30/M15. Score de confluence ${score}/100, non statistique. ${reasons.join('; ')}.${conflictsText}`,
       activationConditions:[...conditions,'Attendre le retest de la zone et vérifier que la structure M30/M15 reste valide.'],
       entryTrigger:m5Trigger&&sweep?'Sweep et clôture M5 dans le sens du scénario détectés.':'Attendre un sweep de liquidité puis un BOS/CHoCH confirmé en clôture M5.',
       invalidation:`Invalidation si clôture au-delà du stop indicatif ${round(stop)} ou invalidation de la structure M30.`,
