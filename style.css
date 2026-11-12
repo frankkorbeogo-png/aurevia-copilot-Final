@@ -470,37 +470,3 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .scenario-summary-label{display:grid;gap:8px;padding:0 20px;color:#d9c9e2;font-size:11px;font-weight:650}.scenario-summary-label textarea{width:100%;min-height:340px;resize:vertical;padding:18px 19px;border:1px solid #654477;border-radius:13px;background:#0c0911;color:#f1e8f5;font:12px/1.85 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;outline:none;box-shadow:inset 0 2px 12px #0004}.scenario-summary-label textarea:focus{border-color:#bd72e0;box-shadow:0 0 0 3px #a54dce24,inset 0 2px 12px #0004}.scenario-editor-footer{display:flex;justify-content:space-between;gap:10px;padding:8px 21px 13px;color:#9c8aa6;font-size:9px}
 .scenario-save-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 20px 0}.scenario-save-actions .primary-btn{width:auto;margin:0;padding:11px 17px}.scenario-save-actions .small-btn{padding:10px 14px}.scenario-editor-pro .analysis-save-status{margin:12px 20px 18px;padding:10px 12px;border:1px solid #3b2b46;border-radius:9px;background:#17111d;min-height:38px}
 @media(max-width:650px){.scenario-editor-heading{padding:17px 14px}.scenario-editor-heading h3{font-size:18px}.scenario-meta-strip{grid-template-columns:1fr 1fr;padding:11px 12px}.scenario-editor-toolbar{align-items:flex-start;flex-direction:column;padding:14px 13px 10px}.scenario-toolbar-actions{width:100%}.scenario-summary-label{padding:0 12px}.scenario-summary-label textarea{min-height:300px;padding:13px;font-size:11px}.scenario-editor-footer{padding:8px 13px;flex-direction:column}.scenario-save-actions{padding:10px 12px 0;display:grid;grid-template-columns:1fr}.scenario-save-actions button{width:100%!important}.scenario-editor-pro .analysis-save-status{margin:10px 12px 14px}}
-
-/* AUREVIA 2.3.49 — fond cosmique plus net, dézoomé et harmonisé */
-.space-scene{perspective:1400px;transform-style:preserve-3d;background:#030817!important;overflow:hidden}
-.nebula-photo-plane{position:absolute;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(180deg,rgba(3,7,20,.34),rgba(3,7,20,.48)),url("assets/aurevia-nebula-reference.jpg");background-size:cover;background-position:center 48%;background-repeat:no-repeat;transform:translate3d(0,0,-55px) scale(1);transform-origin:center;filter:saturate(.86) contrast(1.08) brightness(.72);will-change:transform;animation:nebulaPhotoDrift 64s ease-in-out infinite alternate}
-#galaxyCanvas{position:absolute;z-index:1!important;opacity:.34!important;mix-blend-mode:screen}
-.space-scene .space-nebula{z-index:2;opacity:.075;mix-blend-mode:screen;filter:blur(46px)}
-.space-vignette{z-index:3!important;pointer-events:none}
-@keyframes nebulaPhotoDrift{0%{transform:translate3d(-.25%,.15%,-55px) scale(1)}50%{transform:translate3d(.15%,-.2%,-45px) scale(1.015)}100%{transform:translate3d(.25%,.15%,-55px) scale(1)}}
-@media(max-width:700px){.nebula-photo-plane{background-position:center center;filter:saturate(.82) contrast(1.06) brightness(.66);animation-duration:72s}}
-@media(prefers-reduced-motion:reduce){.nebula-photo-plane{animation:none!important;transform:translate3d(0,0,-55px) scale(1)!important}}
-.space-scene{perspective:1100px;transform-style:preserve-3d;background:#02040b!important;overflow:hidden}
-.nebula-photo-plane{position:absolute;inset:-5.5%;z-index:0;pointer-events:none;background-image:linear-gradient(180deg,rgba(2,4,12,.12),rgba(2,4,12,.34)),url("assets/aurevia-nebula-reference.jpg");background-size:cover;background-position:center 48%;background-repeat:no-repeat;transform:translate3d(0,0,-90px) scale(1.14);transform-origin:center;filter:saturate(1.12) contrast(1.04);will-change:transform;animation:nebulaPhotoDrift 42s ease-in-out infinite alternate}
-#galaxyCanvas{position:absolute;z-index:1!important;opacity:.28!important;mix-blend-mode:screen}
-.space-scene .space-nebula{z-index:2;opacity:.12;mix-blend-mode:screen}
-.space-vignette{z-index:3!important;pointer-events:none}
-@keyframes nebulaPhotoDrift{0%{transform:translate3d(-1.1%,.5%,-90px) scale(1.14) rotateX(.35deg) rotateY(-.45deg)}50%{transform:translate3d(.6%,-.65%,-70px) scale(1.18) rotateX(-.25deg) rotateY(.35deg)}100%{transform:translate3d(1.1%,.8%,-90px) scale(1.14) rotateX(.4deg) rotateY(.5deg)}}
-@media(max-width:700px){.nebula-photo-plane{inset:-3%;background-position:center center;animation-duration:52s}#galaxyCanvas{opacity:.20!important}}
-@media(prefers-reduced-motion:reduce){.nebula-photo-plane{animation:none!important;transform:translate3d(0,0,-80px) scale(1.14)}}
-
-/* Calendrier économique classique, filtrable et lisible */
-.calendar-filters{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 8px}
-.calendar-filter{min-width:145px;max-width:100%;padding:9px 12px;border:1px solid rgba(137,151,190,.25);border-radius:10px;background:rgba(12,18,38,.88);color:var(--text,#edf1ff);font:inherit}
-.calendar-count{font-size:.82rem;color:var(--muted,#9aa6c5);margin:8px 0}
-.calendar-table-wrap{width:100%;overflow-x:auto;border:1px solid rgba(137,151,190,.18);border-radius:12px}
-.calendar-table{width:100%;min-width:850px;border-collapse:collapse;font-size:.84rem}
-.calendar-table th,.calendar-table td{padding:11px 12px;text-align:left;border-bottom:1px solid rgba(137,151,190,.12);white-space:nowrap}
-.calendar-table thead th{position:sticky;top:0;background:rgba(16,23,47,.98);color:#aebbe0;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em}
-.calendar-table tbody tr:hover{background:rgba(88,105,160,.09)}
-.calendar-table .calendar-event-name{white-space:normal;min-width:220px;font-weight:600;color:var(--text,#edf1ff)}
-.calendar-table .calendar-no-events{text-align:center;padding:24px;color:var(--muted,#9aa6c5)}
-.calendar-table .impact-row-high td:nth-child(3){color:#ff8b9b;font-weight:700}
-.calendar-table .impact-row-medium td:nth-child(3){color:#f5c879;font-weight:700}
-.calendar-table .impact-row-low td:nth-child(3){color:#8fd7bd;font-weight:700}
-@media(max-width:700px){.calendar-filters{display:grid;grid-template-columns:1fr 1fr}.calendar-filter{min-width:0;width:100%}}

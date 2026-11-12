@@ -153,18 +153,11 @@ export async function loadTelegramPreferences(){await ensureUser();if(!currentUs
 export async function unlinkTelegramAccount(){
  await ensureUser();
  if(!currentUser)throw new Error('Connectez-vous avant de délier Telegram.');
- const {error}=await supabase.from('telegram_connections').delete().eq('user_id',currentUser.id);
- if(error)throw new Error(error.message);
- const {data,error:prefError}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();
- if(prefError)throw new Error(prefError.message);
- if(data?.preferences){
-  const preferences={...data.preferences};
-  delete preferences.telegram_pair_code;
-  delete preferences.telegram_pair_expires_at;
-  const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});
-  if(saved.error)throw new Error(saved.error.message);
- }
- return true;
+ const token=await getAnalysisAccessToken();
+ const response=await fetch('/api/telegram-unlink',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:'{}',cache:'no-store'});
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(result.error||'La déliaison Telegram a échoué.');
+ return result;
 }
 export async function saveTelegramPreferences(prefs){await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de modifier vos notifications.');const {error}=await supabase.from('telegram_connections').update({notify_all_analyses:Boolean(prefs.all),notify_validated_signals:Boolean(prefs.signals),notify_economic_announcements:Boolean(prefs.economic),notify_product_announcements:Boolean(prefs.productAnnouncements),updated_at:new Date().toISOString()}).eq('user_id',currentUser.id);if(error)throw new Error(error.message);}
 

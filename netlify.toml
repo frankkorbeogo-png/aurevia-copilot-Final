@@ -42,6 +42,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/telegram-unlink"
+  to = "/.netlify/functions/telegram-unlink"
+  status = 200
+
+[[redirects]]
   from = "/api/admin"
   to = "/.netlify/functions/admin-api"
   status = 200

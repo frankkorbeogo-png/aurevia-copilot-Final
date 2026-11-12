@@ -1,3 +1,17 @@
+## V2.3.53 — déconnexion Telegram fiabilisée
+- La déliaison Telegram passe par une fonction serveur authentifiée qui vérifie la session AUREVIA active et supprime uniquement la liaison de l’utilisateur connecté.
+- Nettoyage du code de liaison temporaire dans les préférences ; avertissement explicite si ce nettoyage secondaire échoue.
+- L’interface désactive immédiatement le bouton de déliaison et les actions de notification après succès.
+- Validation locale : 170 tests automatisés réussis. Build Netlify local réussi ; aucune publication Netlify effectuée.
+
+## V2.3.52 — moteur de scénarios et fond galactique restauré
+- Renforcement du moteur de scénarios conditionnels : confluence EMA200, MACD et RSI sur M30/M15 en complément de la structure.
+- H4/H1 pondèrent le contexte sans bloquer à eux seuls un scénario intraday.
+- WAIT reste réservé à l'absence de déclencheur d'entrée confirmé en M5 ; les scénarios candidats restent visibles séparément.
+- Retour au fond animé galactique précédent (canvas d'étoiles et nébuleuses CSS), retrait du plan photo ajouté en V2.3.48/2.3.49.
+- Reconstruction de dist/ depuis les sources.
+- Validation locale : 169 tests automatisés réussis.
+
 ## v2.3.49 — Affinage du fond galaxie
 - Remplacement de la texture de nébuleuse basse résolution par un visuel haute définition.
 - Réduction du zoom et du mouvement, contraste et saturation harmonisés pour préserver la lisibilité.
@@ -341,3 +355,9 @@
 - Les horodatages H4/H1 périmés ou invérifiables ne bloquent plus à eux seuls l’appel IA ni la génération des scénarios candidats ; la fraîcheur M30/M15 reste exigée pour l’analyse opérationnelle.
 - Le statut global reste WAIT tant que le déclencheur M5 n’est pas confirmé ; les scénarios potentiels doivent rester visibles séparément.
 - Tests automatisés : 162 réussis ; build Netlify local réussi. Aucune publication Netlify ni migration Supabase exécutée.
+
+
+## V2.3.54 — Déconnexion Telegram depuis le bot
+- Ajout des commandes `/stop`, `/disconnect` et `/deconnecter` pour arrêter les notifications directement dans la conversation Telegram.
+- Suppression de la liaison correspondant au chat privé uniquement, avec confirmation envoyée par le bot.
+- Conservation de la possibilité de délier Telegram depuis les paramètres AUREVIA.

@@ -5,10 +5,24 @@ export async function handler(event){
  const expected=process.env.TELEGRAM_WEBHOOK_SECRET,received=event.headers?.['x-telegram-bot-api-secret-token']||event.headers?.['X-Telegram-Bot-Api-Secret-Token'];if(!expected||received!==expected)return json(401,{error:'Unauthorized webhook.'});
  let update;try{update=JSON.parse(event.body||'{}')}catch{return json(400,{error:'Invalid JSON.'});}
  const message=update.message;if(!message?.text||!message.chat?.id||message.chat.type!=='private'||message.from?.is_bot||String(message.from?.id)!==String(message.chat.id))return json(200,{ok:true,ignored:true});
- const match=message.text.trim().match(/^\/start\s+([A-Z0-9]{6,12})$/i);if(!match)return json(200,{ok:true,ignored:true});
- const code=match[1].toUpperCase(),token=process.env.TELEGRAM_BOT_TOKEN;if(!token)return json(503,{error:'Telegram bot not configured.'});
+ const command=message.text.trim();
+ const token=process.env.TELEGRAM_BOT_TOKEN;if(!token)return json(503,{error:'Telegram bot not configured.'});
  try{
-  const prefs=await rest(`user_preferences?select=user_id,preferences&preferences->>telegram_pair_code=eq.${encodeURIComponent(code)}`);
+  // Permettre à l'utilisateur d'arrêter les notifications directement depuis Telegram.
+  if(/^\/(stop|disconnect|deconnecter)(?:@[^\s]+)?(?:\s|$)/i.test(command)){
+   const chatId=String(message.chat.id);
+   const owners=await rest(`telegram_connections?select=user_id&chat_id=eq.${encodeURIComponent(chatId)}`);
+   if(!owners?.length){
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId,text:'Aucun compte AUREVIA n’est associé à cette conversation.'})});
+    return json(200,{ok:true,unlinked:false,reason:'not_linked'});
+   }
+   if(owners.length!==1)return json(409,{ok:false,error:'Cette conversation est associée à plusieurs comptes. Contactez le support.'});
+   await rest(`telegram_connections?chat_id=eq.${encodeURIComponent(chatId)}`,{method:'DELETE',prefer:'return=minimal'});
+   await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId,text:'🔕 Notifications AUREVIA arrêtées. Votre compte Telegram est déconnecté. Pour les réactiver, retournez dans AUREVIA et générez un nouveau code de liaison.'})});
+   return json(200,{ok:true,unlinked:true});
+  }
+  const match=command.match(/^\/start\s+([A-Z0-9]{6,12})$/i);if(!match)return json(200,{ok:true,ignored:true});
+  const code=match[1].toUpperCase();
   const row=prefs?.[0],expires=row?.preferences?.telegram_pair_expires_at?Date.parse(row.preferences.telegram_pair_expires_at):0;
   if(!row||!Number.isFinite(expires)||expires<Date.now())return json(200,{ok:true,paired:false,reason:'code_invalid_or_expired'});
   const chatOwners=await rest(`telegram_connections?select=user_id&chat_id=eq.${encodeURIComponent(String(message.chat.id))}`);
