@@ -52,4 +52,4 @@
   status = 200
 
 [functions."trade-watch"]
-schedule = "@every 1m"
+schedule = "* * * * *"
