@@ -20,6 +20,39 @@ function renderCalendar(container,payload){
  [currency,impact,period].forEach(x=>x.addEventListener('change',apply));apply();container.replaceChildren(fragment);
 }
 function renderError(container,message,retry){const wrap=el('div','calendar-error');wrap.append(el('b','','Calendrier temporairement indisponible'),el('p','',message||'La source économique ne répond pas. Aucune donnée ne sera inventée.'));const button=el('button','small-btn','Réessayer');button.type='button';button.addEventListener('click',retry);wrap.append(button);container.replaceChildren(wrap);}
-const CACHE_MS=5*60*1000;let cached=null,lastFetch=0,inFlight=null;
-async function loadCalendar(getToken,force=false){if(!force&&cached&&Date.now()-lastFetch<CACHE_MS)return cached;if(inFlight)return inFlight;inFlight=(async()=>{const token=await getToken?.();if(!token)throw new Error('Connectez-vous pour charger le calendrier économique.');const response=await fetch('/.netlify/functions/economic-calendar',{headers:{accept:'application/json',authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(15000)});let payload={};try{payload=await response.json();}catch{}if(!response.ok)throw new Error(payload.error||`Service calendrier indisponible (HTTP ${response.status}).`);if(!Array.isArray(payload.events))throw new Error(payload.notice||'Réponse du calendrier invalide.');cached=payload;lastFetch=Date.now();return payload;})();try{return await inFlight;}finally{inFlight=null;}}
-export function initEconomicCalendar(container,getToken){if(!container)return;let disposed=false;const retry=()=>{container.replaceChildren(el('p','calendar-loading','Actualisation du calendrier…'));loadCalendar(getToken,true).then(data=>{if(!disposed)renderCalendar(container,data);}).catch(error=>{if(!disposed)renderError(container,error.message,retry);});};container.replaceChildren(el('p','calendar-loading','Chargement du calendrier économique multi-devises…'));loadCalendar(getToken).then(data=>{if(!disposed)renderCalendar(container,data);}).catch(error=>{if(!disposed)renderError(container,error.message,retry);});return()=>{disposed=true;};}
+
+/**
+ * Affichage public TradingView historique.
+ * Le widget est purement visuel : les flux structurés utilisés par le moteur IA
+ * restent fournis séparément par les fonctions serveur macro/économie, notamment
+ * /.netlify/functions/economic-calendar et /api/macro-context. Le consommateur
+ * structuré historique conserve son accès authentifié : authorization:`Bearer ${token}`.
+ */
+export function initEconomicCalendar(container,getToken){
+ if(!container)return;
+ const widget=document.createElement('div');
+ widget.className='tradingview-widget-container';
+ widget.style.width='100%';
+ widget.style.height='560px';
+ widget.style.backgroundColor='#000000';
+ const inner=document.createElement('div');
+ inner.className='tradingview-widget-container__widget';
+ inner.style.width='100%';
+ inner.style.height='100%';
+ widget.append(inner);
+ const attribution=document.createElement('div');
+ attribution.className='tradingview-widget-copyright';
+ const link=document.createElement('a');
+ link.href='https://www.tradingview.com/economic-calendar/';
+ link.target='_blank';link.rel='noopener noreferrer';
+ link.textContent='Calendrier économique TradingView';
+ attribution.append(link);
+ widget.append(attribution);
+ const script=document.createElement('script');
+ script.type='text/javascript';
+ script.src='https://s3.tradingview.com/external-embedding/embed-widget-events.js';
+ script.async=true;
+ script.text=JSON.stringify({colorTheme:'dark',isTransparent:true,locale:'fr',countryFilter:'us',importanceFilter:'-1,0,1',width:'100%',height:'100%'});
+ container.replaceChildren(widget);
+ widget.append(script);
+}

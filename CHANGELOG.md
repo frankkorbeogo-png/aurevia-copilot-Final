@@ -383,3 +383,22 @@
 - Déduit un type d’ordre en attente cohérent avec la position de la zone par rapport au dernier cours M5 : BUY/SELL LIMIT ou BUY/SELL STOP.
 - Affiche le niveau de déclenchement ou le prix limite, ainsi que la logique de choix.
 - Maintient la distinction entre scénario potentiel, déclencheur confirmé et décision globale ; aucun ordre broker n’est envoyé.
+
+## V2.3.58 — Correctifs de reconnexion et scénarios IA chiffrés
+
+- Affichage du calendrier économique TradingView historique dans la page dédiée ; le flux structuré serveur reste distinct pour le moteur d'analyse.
+- Les plans BUY et SELL restent visibles avec niveaux calculés depuis le dernier cours et l'ATR, même sans déclencheur immédiat.
+- Distinction explicite entre plan indicatif WATCH et scénario identifié ; aucune probabilité statistique n'est inventée.
+- Après déliaison Telegram, les commandes de reconnexion, préférences et test sont réactivables ; contrôle de liaison après génération du code.
+- Correction du texte de suppression de compte pour préciser que le compte Google personnel n'est pas supprimé.
+
+
+## V2.3.59 — Suppression personnelle du compte
+- Correction du parcours de suppression personnelle : validation de l'identité via le jeton Supabase Auth, sans dépendre du heartbeat de session active.
+- Le serveur supprime exclusivement l'identifiant utilisateur authentifié et exige toujours la confirmation explicite `SUPPRIMER`.
+- Ajout de tests de régression dédiés à la sécurité et à la confirmation.
+
+
+## V2.3.60 — Calendrier TradingView noir
+- Calendrier économique TradingView forcé en thème sombre avec fond transparent sur un conteneur noir pur (#000000).
+- Conservation du calendrier structuré indépendant utilisé par le moteur IA.

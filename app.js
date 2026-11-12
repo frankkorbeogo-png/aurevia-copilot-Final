@@ -117,7 +117,8 @@ async function loadAnalysis(){
   $('chartSource').textContent='TradingView + Twelve Data OHLC · H4 / H1 / M30 / M15 / M5';
   $('chartStatus').textContent=state.message||'Données externes';
   $('mtfRows').innerHTML=state.rows?.length?state.rows.map(r=>`<tr><td>${r.tf}</td><td>${r.ema200===null?'—':Number(r.ema200).toFixed(2)}</td><td>${r.rsi14===null?'—':Number(r.rsi14).toFixed(1)}</td><td>${escapeText(r.bias)} · ${escapeText(r.breaks)}</td></tr>`).join(''):`<tr><td colspan="4" class="empty-cell">${state.tableMessage||'Données multi-timeframes indisponibles.'}</td></tr>`;
-  $('signalState').textContent=state.decision||'WAIT';const macro=state.macroContext;$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`source FRED · dernières observations au ${macro.asOf||'date inconnue'} · DXY, rendements, taux Fed, CPI et chômage transmis au moteur (données retardées).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
+  const availablePlans=['buy','sell'].filter(side=>['IDENTIFIED','WATCH'].includes(state.scenarios?.[side]?.status));
+  $('signalState').textContent=(state.decision==='WAIT'&&availablePlans.length)?'PLANS CHIFFRÉS':(state.decision||'WAIT');const macro=state.macroContext;$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`source FRED · dernières observations au ${macro.asOf||'date inconnue'} · DXY, rendements, taux Fed, CPI et chômage transmis au moteur (données retardées).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
   if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
   $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} / 100`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
@@ -144,11 +145,11 @@ function renderAITradePlan(state){
 function renderAIScenarios(state){
   const host=$('aiScenarios'),grid=$('aiScenariosGrid');if(!host||!grid)return;
   const scenarios=state.decisionDetails?.scenarios||state.scenarios||{};
-  const entries=[['BUY',scenarios.buy],['SELL',scenarios.sell]].filter(([,x])=>x&&x.status==='IDENTIFIED');
+  const entries=[['BUY',scenarios.buy],['SELL',scenarios.sell]].filter(([,x])=>x&&['IDENTIFIED','WATCH'].includes(x.status));
   host.hidden=!entries.length;
   if(!entries.length){grid.innerHTML='';return;}
   const esc=v=>String(v??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  grid.innerHTML=entries.map(([side,x])=>`<article class="ai-scenario-card ${side.toLowerCase()}"><header><strong>${side} POTENTIEL</strong><span>${x.entryStatus==='CONFIRMED'?'ENTRÉE CONFIRMÉE':'EN ATTENTE DU DÉCLENCHEUR'}</span></header><p>${esc(x.reason)}</p><dl><div><dt>Zone à surveiller</dt><dd>${esc(x.entryZoneLow)} – ${esc(x.entryZoneHigh)}</dd></div><div><dt>Type d’ordre potentiel</dt><dd>${esc(x.pendingOrderType||'À déterminer')}</dd></div><div><dt>Entrée indicative</dt><dd>${esc(x.entry)}</dd></div><div><dt>Déclenchement</dt><dd>${esc(x.triggerPrice??'—')}</dd></div><div><dt>Prix limite</dt><dd>${esc(x.limitPrice??'—')}</dd></div><div><dt>Stop Loss</dt><dd>${esc(x.stopLoss)}</dd></div><div><dt>Objectifs</dt><dd>${(x.takeProfits||[]).map(esc).join(' · ')||'—'}</dd></div></dl><section><b>Conditions d’activation</b><ul>${(x.activationConditions||[]).map(v=>`<li>${esc(v)}</li>`).join('')||'<li>Voir les confirmations de structure.</li>'}</ul></section><p><b>Logique de l’ordre :</b> ${esc(x.orderRationale||'Type proposé selon la position de la zone par rapport au dernier cours.')}</p><p><b>Déclencheur M5 :</b> ${esc(x.entryTrigger)}</p><p><b>Invalidation :</b> ${esc(x.invalidation)}</p></article>`).join('');
+  grid.innerHTML=entries.map(([side,x])=>`<article class="ai-scenario-card ${side.toLowerCase()}"><header><strong>${side} POTENTIEL</strong><span>${x.confidenceLabel|| (x.entryStatus==='CONFIRMED'?'ENTRÉE CONFIRMÉE':'EN ATTENTE DU DÉCLENCHEUR')}</span></header><p>${esc(x.reason)}</p><dl><div><dt>Zone à surveiller</dt><dd>${esc(x.entryZoneLow)} – ${esc(x.entryZoneHigh)}</dd></div><div><dt>Type d’ordre potentiel</dt><dd>${esc(x.pendingOrderType||'À déterminer')}</dd></div><div><dt>Entrée indicative</dt><dd>${esc(x.entry)}</dd></div><div><dt>Déclenchement</dt><dd>${esc(x.triggerPrice??'—')}</dd></div><div><dt>Prix limite</dt><dd>${esc(x.limitPrice??'—')}</dd></div><div><dt>Stop Loss</dt><dd>${esc(x.stopLoss)}</dd></div><div><dt>Objectifs</dt><dd>${(x.takeProfits||[]).map(esc).join(' · ')||'—'}</dd></div></dl><section><b>Conditions d’activation</b><ul>${(x.activationConditions||[]).map(v=>`<li>${esc(v)}</li>`).join('')||'<li>Voir les confirmations de structure.</li>'}</ul></section><p><b>Logique de l’ordre :</b> ${esc(x.orderRationale||'Type proposé selon la position de la zone par rapport au dernier cours.')}</p><p><b>Déclencheur M5 :</b> ${esc(x.entryTrigger)}</p><p><b>Invalidation :</b> ${esc(x.invalidation)}</p></article>`).join('');
 }
 
 function renderStructureAnalysis(state){
@@ -499,7 +500,7 @@ function bindEvents(){
   $('clearAnalysisHistory').addEventListener('click',()=>{localStorage.removeItem('aurevia_analysis_history');renderAnalysisHistory();});
   $('createPositionBtn').addEventListener('click',createPositionFromForm);
   $('savePartialClose').addEventListener('click',savePartialCloseFromForm);
-  $('generateTelegramCode').addEventListener('click',async()=>{try{$('telegramPairStatus').textContent='Génération du code…';const code=await createTelegramPairingCode();$('telegramPairCode').textContent=code;$('telegramPairStatus').textContent='Code valable 10 minutes. Envoyez /start '+code+' au bot officiel.';}catch(error){$('telegramPairStatus').textContent=error.message;}});
+  $('generateTelegramCode').addEventListener('click',async()=>{const generate=$('generateTelegramCode'),unlink=$('unlinkTelegramAccount'),save=$('saveTelegramPrefs'),test=$('sendTelegramTest');try{generate.disabled=true;$('telegramPairStatus').textContent='Génération du code…';const code=await createTelegramPairingCode();$('telegramPairCode').textContent=code;$('telegramPairStatus').textContent='Code valable 10 minutes. Envoyez /start '+code+' au bot officiel.';unlink.disabled=false;save.disabled=false;test.disabled=false;for(let attempt=0;attempt<10;attempt++){await new Promise(resolve=>setTimeout(resolve,2000));const connection=await loadTelegramPreferences();if(connection?.chat_id){$('telegramConnectionStatus').textContent='Telegram connecté · conversation privée vérifiée.';$('telegramPairStatus').textContent='Liaison confirmée. Vous pouvez enregistrer vos préférences et envoyer un test.';break;}}}catch(error){$('telegramPairStatus').textContent='Connexion Telegram impossible : '+error.message;}finally{generate.disabled=false;}});
   $('unlinkTelegramAccount')?.addEventListener('click',async()=>{
     const button=$('unlinkTelegramAccount'),status=$('telegramConnectionStatus');
     if(!confirm('Délier ce compte Telegram ? Les notifications vers cette conversation seront arrêtées. Vous pourrez le relier à tout moment.'))return;
@@ -509,7 +510,7 @@ function bindEvents(){
       status.textContent='Compte Telegram délié. Les notifications vers cette conversation sont arrêtées.'+(result.warning?' '+result.warning:'');
       $('telegramPairCode').textContent='Aucun code généré.';
       $('telegramPairStatus').textContent='Vous pouvez relier un compte Telegram à tout moment.';
-      button.disabled=true;$('saveTelegramPrefs').disabled=true;$('sendTelegramTest').disabled=true;
+      button.disabled=true;$('saveTelegramPrefs').disabled=true;$('sendTelegramTest').disabled=true;$('generateTelegramCode').disabled=false;
       $('notifyAll').checked=false;$('notifySignals').checked=true;$('notifyEconomic').checked=false;$('notifyProductAnnouncements').checked=false;
     }catch(error){status.textContent='Déliaison impossible : '+error.message;button.disabled=false;}
   });

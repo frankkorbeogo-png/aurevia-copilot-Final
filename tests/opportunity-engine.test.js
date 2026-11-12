@@ -9,9 +9,9 @@ test('génère un scénario BUY candidat depuis confluences techniques cohérent
  const out=generateOpportunityScenarios({analyses,frames});
  assert.equal(out.buy?.status,'IDENTIFIED');assert.equal(out.buy?.entryStatus,'PENDING');assert.ok(out.buy.stopLoss<out.buy.entry);assert.equal(out.buy.takeProfits.length,3);assert.equal(out.buy.pendingOrderType,'BUY LIMIT');assert.equal(out.buy.limitPrice,out.buy.entry);assert.equal(out.buy.triggerPrice,null);
 });
-test('ne fabrique aucun scénario sans contexte directionnel',()=>{
+test('fournit des niveaux indicatifs WATCH sans contexte directionnel, sans les présenter comme un signal',()=>{
  const analyses={H4:neutral(),H1:neutral(),M30:neutral(),M15:neutral(),M5:neutral()};
- assert.equal(generateOpportunityScenarios({analyses,frames}).buy,null);
+ const out=generateOpportunityScenarios({analyses,frames});assert.equal(out.buy?.status,'WATCH');assert.equal(out.sell?.status,'WATCH');assert.equal(out.buy?.probability,null);
 });
 test('ne génère pas de scénario si les données critiques sont périmées',()=>{
  const analyses={H4:analysis('haussier'),H1:analysis('haussier'),M30:analysis('haussier'),M15:analysis('haussier'),M5:analysis('haussier')};
@@ -32,17 +32,17 @@ test('autorise un seul scénario BUY quand M30 fournit une confluence suffisante
  const analyses={H4:neutral(),H1:neutral(),M30:m30,M15:neutral(),M5:analysis('range')};
  const out=generateOpportunityScenarios({analyses,frames});
  assert.equal(out.buy?.status,'IDENTIFIED');
- assert.equal(out.sell,null);
+ assert.equal(out.sell?.status,'WATCH');
  assert.equal(out.buy?.entryStatus,'PENDING');
  assert.ok(out.buy.entry>out.buy.stopLoss);
  assert.equal(out.buy.takeProfits.length,3);
 });
-test('un seul signal isolé ne suffit toujours pas à créer un trade',()=>{
+test('un signal isolé produit seulement un plan WATCH, jamais une entrée identifiée',()=>{
  const m30=neutral();m30.indicators.ema200=1990;
  const analyses={H4:neutral(),H1:neutral(),M30:m30,M15:neutral(),M5:neutral()};
  const out=generateOpportunityScenarios({analyses,frames});
- assert.equal(out.buy,null);
- assert.equal(out.sell,null);
+ assert.equal(out.buy?.status,'WATCH');
+ assert.equal(out.sell?.status,'WATCH');
 });
 
 test('propose un ordre SELL LIMIT sur une zone de résistance au-dessus du cours',()=>{

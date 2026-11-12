@@ -1,4 +1,4 @@
-import {verifyBearerUser,assertActiveSession,rpc,json} from './_session-auth.mjs';
+import {verifyBearerUser,json} from './_session-auth.mjs';
 const headers=(key)=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'POST,OPTIONS','access-control-allow-headers':'authorization,content-type'}};
@@ -6,7 +6,7 @@ export async function handler(event){
  let body;try{body=JSON.parse(event.body||'{}')}catch{return json(400,{error:'Corps JSON invalide.'});}
  if(body.confirmation!=='SUPPRIMER')return json(400,{error:'Confirmation de suppression manquante.'});
  try{
-  const context=await verifyBearerUser(event);await assertActiveSession(context);
+  const context=await verifyBearerUser(event);
   // A final server-side identity check prevents deleting a different account.
   const response=await fetch(`${context.base}/auth/v1/admin/users/${encodeURIComponent(context.user.id)}`,{method:'DELETE',headers:headers(context.service),signal:AbortSignal.timeout(10000)});
   const data=await response.json().catch(()=>null);
