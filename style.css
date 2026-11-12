@@ -337,3 +337,67 @@ th,td,.table-wrap table,table{font-size:14px}
 #galaxyCanvas{opacity:.68;mix-blend-mode:screen}
 @media(max-width:720px){.space-nebula{filter:blur(54px) saturate(1.2);opacity:.13}#galaxyCanvas{opacity:.42}}
 @media(prefers-reduced-motion:reduce){.space-nebula{animation:none!important}}
+
+/* Analyse manuelle et calendrier économique lisibles */
+.analyze-btn{margin-top:12px;min-height:46px;font-size:13px;letter-spacing:.02em}.analyze-btn:disabled{opacity:.7;cursor:progress;filter:saturate(.65)}.analyze-status{margin:5px 15px 0;color:#b9a7c5;font-size:11px;line-height:1.45;text-align:center}#page-marches .calendar-frame{height:520px;background:#050507;border:1px solid #29232f;border-radius:10px;overflow:hidden}#page-marches .calendar-frame iframe{min-height:100%;background:#050507}@media(max-width:900px){#page-marches .calendar-frame{height:460px}}@media(max-width:600px){#page-marches .calendar-frame{height:430px}}
+
+/* AUREVIA native USD economic calendar */
+.calendar-frame{height:100%;min-height:155px;background:#07070b;color:#eee;}
+.calendar-source-line{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:3px 2px 10px;border-bottom:1px solid #2c2533;font-size:9px;color:#a99bb4}
+.calendar-source-label{color:#d8c5e4;font-weight:650}.calendar-events{display:grid;gap:8px;padding-top:9px}
+.calendar-event{padding:10px;border:1px solid #302638;border-radius:9px;background:linear-gradient(110deg,#15101b,#0c0a10)}
+.calendar-event-top{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.calendar-impact{font-size:9px;font-weight:700;border-radius:20px;padding:3px 8px;background:#29212e;color:#c9bacf}
+.impact-high{background:#4b202b;color:#ffb1bd}.impact-medium{background:#49351c;color:#f3d18c}
+.calendar-event-time{font-size:9px;color:#b9a9c3;font-variant-numeric:tabular-nums}
+.calendar-event-title{font-size:12px;line-height:1.35;margin:7px 0;color:#f3eaf7}
+.calendar-event-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.calendar-value{padding:6px 7px;background:#0c0910;border-radius:6px;min-width:0}
+.calendar-value small{display:block;color:#97889f;font-size:8px}.calendar-value b{display:block;color:#e8dcec;font-size:10px;overflow-wrap:anywhere;margin-top:2px}
+.calendar-event-note,.calendar-empty,.calendar-loading,.calendar-error p{font-size:9px;color:#a99bb4;margin:7px 0 0;line-height:1.5}
+.calendar-attribution{font-size:8px;color:#807488;margin:10px 2px 0}.calendar-attribution a{color:#c58ae4;text-decoration:underline}
+.calendar-error{padding:14px;border:1px solid #57313a;border-radius:8px;background:#1a1015}.calendar-error b{font-size:11px;color:#f0c3c9}
+
+
+/* Mandatory Google authentication gate: blocks the complete application on every device. */
+.auth-required-gate{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:22px;background:radial-gradient(ellipse at 50% 35%,rgba(43,72,145,.35),rgba(4,7,18,.96) 68%);backdrop-filter:blur(18px)}
+.auth-required-gate[hidden]{display:none!important}
+.auth-gate-card{width:min(100%,480px);padding:34px 26px;border:1px solid rgba(133,165,255,.24);border-radius:24px;background:linear-gradient(155deg,rgba(16,25,52,.96),rgba(7,11,26,.98));box-shadow:0 28px 100px rgba(0,0,0,.55);text-align:center}
+.auth-gate-logo{width:76px;height:76px;object-fit:contain;margin:0 auto 18px;filter:drop-shadow(0 0 22px rgba(91,139,255,.35))}
+.auth-gate-card h1{font-size:clamp(25px,5vw,36px);line-height:1.15;margin:12px 0}
+.auth-gate-card h1 span{display:block;color:#9cbcff}
+.auth-gate-card>p:not(.footnote){color:#b9c4df;line-height:1.65;margin:0 auto 22px;max-width:390px}
+.auth-gate-card .primary-btn{width:100%;justify-content:center;min-height:52px}
+.auth-gate-card .footnote{min-height:22px;margin:14px 0;color:#aab8d8}
+.auth-gate-card small{color:#7786a8;letter-spacing:.08em;text-transform:uppercase}
+body.auth-required>header,body.auth-required>aside,body.auth-required>main{visibility:hidden!important;pointer-events:none!important}
+
+
+/* V2.3.19 — nébuleuse inspirée de la référence fournie : cyan, turquoise, violet et magenta. */
+.space-scene{isolation:isolate;background-color:#02040b;background-image:
+  radial-gradient(ellipse 48% 62% at 22% 52%,rgba(0,204,190,.28),transparent 72%),
+  radial-gradient(ellipse 42% 58% at 77% 28%,rgba(166,37,220,.30),transparent 72%),
+  radial-gradient(ellipse 36% 44% at 56% 78%,rgba(43,92,220,.22),transparent 74%),
+  radial-gradient(ellipse 24% 34% at 86% 73%,rgba(222,34,181,.20),transparent 72%),
+  radial-gradient(ellipse at 50% 48%,#0a1024 0%,#050817 55%,#02040b 100%);}
+.space-scene::before{content:"";display:block!important;position:absolute;inset:-18%;z-index:0;pointer-events:none;opacity:.72;
+  background:
+    radial-gradient(ellipse 28% 22% at 20% 38%,rgba(0,224,196,.52),transparent 78%),
+    radial-gradient(ellipse 35% 28% at 36% 66%,rgba(35,111,226,.42),transparent 78%),
+    radial-gradient(ellipse 30% 34% at 72% 24%,rgba(185,44,231,.52),transparent 78%),
+    radial-gradient(ellipse 25% 22% at 82% 68%,rgba(239,48,178,.42),transparent 78%),
+    radial-gradient(ellipse 18% 18% at 52% 46%,rgba(112,87,224,.30),transparent 80%);
+  filter:blur(34px) saturate(1.35);transform:translate3d(0,0,0) scale(1.04);animation:aurevia-nebula-drift 95s ease-in-out infinite alternate;}
+.space-scene #galaxyCanvas{position:absolute;inset:0;z-index:1;opacity:.9;mix-blend-mode:screen}
+.space-scene .space-nebula{z-index:0;opacity:.18;mix-blend-mode:screen;filter:blur(78px) saturate(1.5)}
+.space-scene .nebula-a{background:radial-gradient(ellipse,rgba(0,222,193,.7),rgba(31,88,177,.22) 48%,transparent 76%)}
+.space-scene .nebula-b{background:radial-gradient(ellipse,rgba(188,49,232,.68),rgba(93,45,159,.22) 48%,transparent 76%)}
+.space-scene .nebula-c{background:radial-gradient(ellipse,rgba(43,115,222,.58),rgba(0,183,177,.18) 48%,transparent 76%)}
+.space-scene .space-vignette{z-index:2;background:linear-gradient(180deg,rgba(2,4,12,.12),rgba(2,4,12,.30)),radial-gradient(ellipse at center,transparent 35%,rgba(2,4,12,.58) 100%)}
+@keyframes aurevia-nebula-drift{0%{transform:translate3d(-2%,1%,0) scale(1.02) rotate(-2deg)}50%{transform:translate3d(1%,-1%,0) scale(1.09) rotate(1deg)}100%{transform:translate3d(2%,2%,0) scale(1.04) rotate(3deg)}}
+@media(max-width:720px){.space-scene::before{inset:-12%;opacity:.52;filter:blur(28px) saturate(1.25)}.space-scene #galaxyCanvas{opacity:.72}}
+@media(prefers-reduced-motion:reduce){.space-scene::before{animation:none!important}}
+.auth-choice-actions{display:grid;gap:11px;width:100%;margin:16px 0}
+.auth-choice-actions button{width:100%;justify-content:center;min-height:50px}
+.auth-choice-actions .secondary-btn{border:1px solid rgba(143,170,255,.38);background:rgba(35,49,88,.62);color:#e5ecff;border-radius:12px;padding:12px 18px;font-weight:700;cursor:pointer}
+.auth-choice-actions button:disabled{opacity:.6;cursor:wait}

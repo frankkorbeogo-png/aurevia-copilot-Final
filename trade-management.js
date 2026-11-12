@@ -15,7 +15,7 @@ export function splitVolume(total, count, step=0.01) {
 }
 
 export function createTradeGroup(input) {
-  const {mode='unique', instrument, direction, lot, lotStep=0.01, entry, stopLoss, takeProfits=[], autoJournal=true, contractSize=null, quoteToAccount=1, feesPerLot=0, orderType='MARKET', triggerPrice=null, limitPrice=null} = input;
+  const {mode='unique', instrument, direction, lot, lotStep=0.01, entry, stopLoss, takeProfits=[], autoJournal=true, contractSize=null, quoteToAccount=1, feesPerLot=0, orderType='MARKET', triggerPrice=null, limitPrice=null, expiresAt=null} = input;
   if (!instrument?.trim() || !['BUY','SELL'].includes(direction) || !Number.isFinite(lot) || lot<=0 || !Number.isFinite(entry) || entry<=0 || !Number.isFinite(stopLoss) || stopLoss<=0) throw new Error('Paramètres de position incomplets ou invalides.');
   if(!['unique','separate'].includes(mode)) throw new Error('Mode de gestion invalide.');
   if(!Number.isFinite(lotStep)||lotStep<=0) throw new Error('Le pas de volume broker doit être strictement positif.');
@@ -41,7 +41,8 @@ export function createTradeGroup(input) {
   const groupId=id();
   const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:'OPEN',realizedPnl:0,fees:0,closes:[],createdAt:new Date().toISOString()}));
   const effectiveLimitPrice = orderType.endsWith('LIMIT') && !orderType.includes('STOP LIMIT') ? (limitPrice ?? entry) : limitPrice;
-  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,requestedLot:lot,lotStep,children,autoJournal:Boolean(autoJournal),contractSize,quoteToAccount,feesPerLot,status:'OPEN',createdAt:new Date().toISOString()};
+  if(expiresAt){const expiry=new Date(expiresAt);if(Number.isNaN(expiry.getTime())||expiry.getTime()<=Date.now())throw new Error('La date d’expiration doit être valide et située dans le futur.');if(orderType==='MARKET')throw new Error('Une position au marché ne possède pas de date d’expiration d’ordre en attente.');}
+  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep,children,autoJournal:Boolean(autoJournal),contractSize,quoteToAccount,feesPerLot,status:'OPEN',createdAt:new Date().toISOString()};
   return group;
 }
 
@@ -78,5 +79,58 @@ function read(key){try{const v=JSON.parse(localStorage.getItem(key)||'[]');retur
 function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
 export function saveTradeGroup(group){const rows=read(STORAGE_KEY);rows.unshift(group);if(!write(STORAGE_KEY,rows))throw new Error('Stockage local indisponible.');if(group.autoJournal){const journal=read(JOURNAL_KEY);if(group.mode==='unique'){journal.unshift({id:id(),groupId:group.id,mode:'unique',instrument:group.instrument,direction:group.direction,childIds:group.children.map(c=>c.id),createdAt:group.createdAt,realizedPnl:0,status:'OPEN'});}else{for(const child of group.children)journal.unshift({id:id(),groupId:group.id,childId:child.id,mode:'separate',instrument:group.instrument,direction:group.direction,tpLabel:child.tpLabel,takeProfit:child.takeProfit,lot:child.lot,createdAt:group.createdAt,realizedPnl:0,status:'OPEN'});}if(!write(JOURNAL_KEY,journal)){write(STORAGE_KEY,rows.filter(x=>x.id!==group.id));throw new Error('Impossible de créer la fiche journal liée ; la position n’a pas été conservée.');}}return group;}
 export function loadTradeGroups(){return read(STORAGE_KEY);}
-export function persistTradeGroup(updated){const rows=read(STORAGE_KEY),i=rows.findIndex(x=>x.id===updated.id);if(i<0)throw new Error('Groupe de positions introuvable.');rows[i]=updated;if(!write(STORAGE_KEY,rows))throw new Error('Stockage local indisponible.');const journal=read(JOURNAL_KEY);if(updated.mode==='unique'){const item=journal.find(x=>x.groupId===updated.id&&!x.childId);if(item){const s=groupSummary(updated);item.realizedPnl=s.realized;item.status=s.status;}}else{for(const child of updated.children){const item=journal.find(x=>x.groupId===updated.id&&x.childId===child.id);if(item){item.realizedPnl=child.realizedPnl;item.status=child.status;}}}if(!write(JOURNAL_KEY,journal))throw new Error('Position mise à jour, mais la synchronisation du journal local a échoué.');return updated;}
+export function persistTradeGroup(updated){
+  const rows=read(STORAGE_KEY),i=rows.findIndex(x=>x.id===updated.id);
+  if(i<0)throw new Error('Groupe de positions introuvable.');
+  const previousRows=rows.slice(), previousJournal=read(JOURNAL_KEY);
+  rows[i]=updated;
+  if(!write(STORAGE_KEY,rows))throw new Error('Stockage local indisponible.');
+  const journal=previousJournal.map(item=>{
+    if(item.groupId!==updated.id)return item;
+    if(updated.mode==='unique'&&!item.childId){
+      const summary=groupSummary(updated);
+      return {...item,instrument:updated.instrument,direction:updated.direction,entry:updated.children[0]?.entry,stopLoss:updated.children[0]?.stopLoss,takeProfits:updated.children.map(c=>({label:c.tpLabel,price:c.takeProfit})),realizedPnl:summary.realized,remainingLot:summary.remaining,status:summary.status,updatedAt:new Date().toISOString()};
+    }
+    const child=updated.children.find(c=>c.id===item.childId);
+    return child?{...item,instrument:updated.instrument,direction:updated.direction,entry:child.entry,stopLoss:child.stopLoss,takeProfit:child.takeProfit,lot:child.initialLot,remainingLot:child.remainingLot,realizedPnl:child.realizedPnl,fees:child.fees,status:child.status,closes:child.closes,updatedAt:new Date().toISOString()}:item;
+  });
+  if(!write(JOURNAL_KEY,journal)){
+    write(STORAGE_KEY,previousRows);
+    throw new Error('Synchronisation du journal impossible : la position a été restaurée à son état précédent.');
+  }
+  return updated;
+}
 export function loadLinkedJournal(){return read(JOURNAL_KEY);}
+
+export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
+  const local=read(STORAGE_KEY),byId=new Map(local.map(g=>[g.id,g]));
+  for(const group of cloudGroups||[])byId.set(group.id,group);
+  const merged=[...byId.values()].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  if(!write(STORAGE_KEY,merged))throw new Error('Impossible de restaurer les positions dans le stockage local.');
+  const journal=read(JOURNAL_KEY),cloudIds=new Set((cloudJournal||[]).map(x=>x.cloudId||x.id));
+  const cloudKeys=new Set((cloudJournal||[]).map(x=>`${x.groupId}:${x.childId||'parent'}`));
+  const localOnly=journal.filter(x=>!cloudIds.has(x.cloudId||x.id)&&!cloudKeys.has(`${x.groupId}:${x.childId||'parent'}`));
+  const mapped=(cloudJournal||[]).map(x=>({...x,id:x.cloudId||x.id}));
+  if(!write(JOURNAL_KEY,[...mapped,...localOnly]))throw new Error('Positions restaurées, mais le journal local n’a pas pu être restauré.');
+  return merged;
+}
+
+export function deleteClosedTradeGroup(groupId){
+  const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
+  if(!group)throw new Error('Groupe de positions introuvable.');
+  if(group.status!=='CLOSED'||group.children.some(c=>c.status!=='CLOSED'||c.remainingLot>1e-8))throw new Error('Seul un groupe entièrement clôturé peut être supprimé.');
+  if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
+  const journal=read(JOURNAL_KEY).filter(x=>x.groupId!==groupId);
+  if(!write(JOURNAL_KEY,journal))throw new Error('Position supprimée, mais la suppression de sa fiche journal locale a échoué.');
+  return true;
+}
+
+export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
+  if(!group||group.status!=='OPEN'||group.children.some(c=>c.status!=='OPEN'||(c.closes||[]).length))throw new Error('Seul un groupe ouvert sans clôture enregistrée peut être modifié.');
+  if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0)throw new Error('Prix d’entrée et Stop Loss invalides.');
+  if(group.direction==='BUY'&&stopLoss>=entry)throw new Error('Pour un BUY, le Stop Loss doit rester sous l’entrée.');
+  if(group.direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le Stop Loss doit rester au-dessus de l’entrée.');
+  if(!Array.isArray(takeProfits)||takeProfits.length!==group.children.length||takeProfits.some(v=>!Number.isFinite(v)||v<=0||(group.direction==='BUY'?v<=entry:v>=entry)))throw new Error('Chaque TP doit être valide et rester du côté favorable de l’entrée.');
+  group.children.forEach((child,i)=>{child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
+  group.updatedAt=new Date().toISOString();return group;
+}

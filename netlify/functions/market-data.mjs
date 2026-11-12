@@ -1,3 +1,4 @@
+import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 const ALLOWED=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
 const INTERVALS=new Set(['1min','5min','15min','30min','1h','4h','1day']);
 const cache=new Map();
@@ -7,9 +8,10 @@ const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'GET,OPTIONS','access-control-allow-headers':'content-type'}};
  if(event.httpMethod!=='GET')return json(405,{error:'Méthode non autorisée.'});
+ let context;try{context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Connexion requise.',code:error.code||null});}
  const params=new URLSearchParams(event.rawQuery||'');const symbol=(params.get('symbol')||'').toUpperCase();const interval=params.get('interval')||'5min';const requestedSize=Number(params.get('outputsize')||250);if(!Number.isInteger(requestedSize)||requestedSize<30)return json(400,{error:'Taille d’historique invalide.'});const outputsize=Math.min(500,Math.max(50,requestedSize));
  if(!ALLOWED.has(symbol)||!INTERVALS.has(interval))return json(400,{error:'Instrument ou intervalle non autorisé.'});
- const clientIp=event.headers?.['x-nf-client-connection-ip']||event.headers?.['x-forwarded-for']?.split(',')[0]?.trim()||'unknown';if(!rateAllowed(`market:${clientIp}`))return json(429,{error:'Limite de requêtes marché atteinte. Réessayez dans une minute.'});
+ const clientIp=context.user.id;if(!rateAllowed(`market:${clientIp}`))return json(429,{error:'Limite de requêtes marché atteinte. Réessayez dans une minute.'});
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux de marché non configuré côté serveur.'});
  const cacheKey=`${symbol}:${interval}:${outputsize}`,cached=cache.get(cacheKey);if(cached&&Date.now()-cached.at<15000)return json(200,{...cached.value,cached:true});
  try{

@@ -1,9 +1,11 @@
+import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 const ALLOWED=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
 const cache=new Map();
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'same-origin'},body:JSON.stringify(body)});
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'GET,OPTIONS','access-control-allow-headers':'content-type'}};
  if(event.httpMethod!=='GET')return json(405,{error:'Méthode non autorisée.'});
+ try{const context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Connexion requise.',code:error.code||null});}
  const symbol=(new URLSearchParams(event.rawQuery||'').get('symbol')||'').toUpperCase();
  if(!ALLOWED.has(symbol))return json(400,{error:'Instrument non autorisé.'});
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux Twelve Data non configuré côté serveur.'});

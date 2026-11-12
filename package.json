@@ -1,6 +1,6 @@
 {
   "name": "aurevia-copilot",
-  "version": "2.3.0",
+  "version": "2.3.23",
   "private": true,
   "type": "module",
   "scripts": {

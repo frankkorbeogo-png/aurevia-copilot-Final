@@ -43,3 +43,45 @@ test('refuse une clôture partielle hors pas broker',()=>{const g=createTradeGro
 test('les identifiants de position restent au format UUID compatible Supabase',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.match(g.id,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);assert.match(g.children[0].id,/^[0-9a-f-]{36}$/i);});
 
 test('un ordre BUY STOP LIMIT refuse un prix limite au-dessus du déclenchement',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2010,stopLoss:1990,takeProfits:[{price:2020}],orderType:'BUY STOP LIMIT',triggerPrice:2005,limitPrice:2010}),/prix limite/));
+
+test('une position ouverte sans clôture peut modifier entrée, SL et TP', async()=>{
+ const {editOpenTradeGroup}=await import('../trade-management.js');
+ const group=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ editOpenTradeGroup(group,{entry:2002,stopLoss:1992,takeProfits:[2012,2022,2032]});
+ assert.equal(group.children[0].entry,2002);assert.equal(group.children[2].takeProfit,2032);
+ assert.throws(()=>editOpenTradeGroup({...group,status:'CLOSED'},{entry:2002,stopLoss:1992,takeProfits:[2012,2022,2032]}),/groupe ouvert/);
+});
+
+test('conserve une expiration future pour un ordre en attente et refuse une date passée',()=>{
+ const future=new Date(Date.now()+3600000).toISOString();
+ const group=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT',expiresAt:future});
+ assert.equal(group.expiresAt,future);
+ assert.throws(()=>createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT',expiresAt:'2000-01-01T00:00:00.000Z'}),/expiration.*futur/);
+ assert.throws(()=>createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'MARKET',expiresAt:future}),/position au marché/);
+});
+
+test('la synchronisation du journal met à jour les prix, volumes restants et clôtures', async()=>{
+  const {persistTradeGroup,loadTradeGroups}=await import('../trade-management.js');
+  const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+  const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}]});
+  saveTradeGroup(group);
+  group.children[0].entry=2001;group.children[0].stopLoss=1991;group.children[0].takeProfit=2011;
+  recordPartialClose(group,group.children[0].id,{volume:group.children[0].lot,exit:2011,contractSize:100});
+  persistTradeGroup(group);
+  const journal=loadLinkedJournal()[0];
+  assert.equal(journal.status,'OPEN');assert.equal(journal.remainingLot,group.children[1].lot);
+  assert.equal(journal.takeProfits[0].price,2011);assert.equal(journal.realizedPnl,group.children[0].realizedPnl);
+  assert.equal(loadTradeGroups()[0].id,group.id);
+  delete globalThis.localStorage;
+});
+
+test('si le journal ne peut pas être synchronisé, la position est restaurée', async()=>{
+  const {persistTradeGroup}=await import('../trade-management.js');
+  const memory=new Map();let failJournal=false;
+  globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>{if(failJournal&&k==='aurevia-linked-journal-v2')throw new Error('quota');memory.set(k,v)}};
+  const group=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});saveTradeGroup(group);
+  const before=memory.get('aurevia-position-groups-v2');group.children[0].entry=2001;failJournal=true;
+  assert.throws(()=>persistTradeGroup(group),/restaurée à son état précédent/);
+  assert.equal(memory.get('aurevia-position-groups-v2'),before);
+  delete globalThis.localStorage;
+});

@@ -2,8 +2,8 @@ import { loadInstrumentAnalysis, getAnalysisState } from './analysis.js';
 import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
 import { initEconomicCalendar } from './news.js';
-import { initAuth, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, sendTelegramTest, updateDisplayName, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken } from './auth.js';
-import { createTradeGroup, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, groupSummary } from './trade-management.js';
+import { initAuth, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, sendTelegramTest, updateDisplayName, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase } from './auth.js';
+import { createTradeGroup, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, editOpenTradeGroup } from './trade-management.js';
 
 const $ = id => document.getElementById(id);
 const symbols = {
@@ -21,7 +21,7 @@ let deferredInstallPrompt=null;
 async function refreshMarketQuotes(){
   await Promise.all(Object.entries(quoteSymbols).map(async ([code,pair])=>{
     const price=$(`price-${code}`),change=$(`change-${code}`);if(!price)return;
-    try{const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(pair)}`,{cache:'no-store'});const data=await response.json();if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
+    try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise.');const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(pair)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});const data=await response.json();if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
       const value=Number(data.price),digits=code.endsWith('JPY')?3:(code.includes('USD')&&['EURUSD','GBPUSD','USDJPY'].includes(code)?5:(code==='BTCUSD'||code==='ETHUSD'?2:2));
       price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});if(change)change.textContent='Twelve Data · '+new Date(data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
     }catch(error){if(change)change.textContent='Twelve Data · '+(error.message||'indisponible');}
@@ -50,6 +50,11 @@ function zonedParts(date,timeZone){
   const parts=new Intl.DateTimeFormat('en-GB',{timeZone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date);
   return Object.fromEntries(parts.filter(p=>p.type==='hour'||p.type==='minute').map(p=>[p.type,Number(p.value)]));
 }
+function zoneOffsetMinutes(date,timeZone){
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(date);
+  const v=Object.fromEntries(parts.map(p=>[p.type,Number(p.value)]));
+  return (Date.UTC(v.year,v.month-1,v.day,v.hour,v.minute,v.second)-Math.floor(date.getTime()/1000)*1000)/60000;
+}
 function renderSessions(now){
   const sessions=[
     {name:'Sydney',zone:'Australia/Sydney',open:8,close:17},
@@ -57,7 +62,7 @@ function renderSessions(now){
     {name:'Londres',zone:'Europe/London',open:8,close:17},
     {name:'New York',zone:'America/New_York',open:8,close:17}
   ];
-  const html=sessions.map(s=>{const p=zonedParts(now,s.zone),minute=p.hour*60+p.minute,start=s.open*60,end=s.close*60,open=minute>=start&&minute<end;return `<div class="session ${open?'open':''}"><span class="state">${open?'OUVERTE':'FERMÉE'}</span><b>${s.name}</b><small>${formatMinutes(start)} – ${formatMinutes(end)} · heure locale</small></div>`}).join('');
+  const html=sessions.map(s=>{const p=zonedParts(now,s.zone),minute=p.hour*60+p.minute,start=s.open*60,end=s.close*60,open=minute>=start&&minute<end,offset=zoneOffsetMinutes(now,s.zone),bfStart=((start-offset)%1440+1440)%1440,bfEnd=((end-offset)%1440+1440)%1440;return `<div class="session ${open?'open':''}"><span class="state">${open?'OUVERTE':'FERMÉE'}</span><b>${s.name}</b><small>${formatMinutes(bfStart)} – ${formatMinutes(bfEnd)} · heure Burkina Faso (UTC)</small></div>`}).join('');
   if($('sessionList'))$('sessionList').innerHTML=html;if($('homeSessionList'))$('homeSessionList').innerHTML=html;
 }
 function formatMinutes(m){return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;}
@@ -101,14 +106,19 @@ function setSelectedSymbol(symbol){
 }
 function setTimeframe(tf){selectedTf=tf;document.querySelectorAll('#timeframes button').forEach(b=>b.classList.toggle('selected',b.dataset.tf===tf));mountTradingView();}
 async function loadAnalysis(){
+  const analyzeButton=$('analyzeBtn'),analyzeStatus=$('analyzeStatus');
+  if(analyzeButton){analyzeButton.disabled=true;analyzeButton.textContent='Analyse en cours…';}
+  if(analyzeStatus)analyzeStatus.textContent=`Chargement des données ${symbols[selectedSymbol]?.label||selectedSymbol} · H4 / M30 / M15 / M5 / M1…`;
   $('signalState').textContent='WAIT';$('signalExplain').textContent='Analyse descriptive en cours. Aucun signal n’est confirmé.';$('probabilityValue').textContent='—';$('probabilityBar').style.width='0%';
-  const result=await loadInstrumentAnalysis(selectedSymbol);
+  let result;
+  try{result=await loadInstrumentAnalysis(selectedSymbol);}finally{if(analyzeButton){analyzeButton.disabled=false;analyzeButton.textContent='⌁ Analyser le marché';}}
   const state=getAnalysisState();
   if(result?.price){const price=$(`price-${selectedSymbol}`),change=$(`change-${selectedSymbol}`);if(price)price.textContent=Number(result.price).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});if(change)change.textContent=`Twelve Data · OHLC M1 · ${result.status}`;}
   $('chartSource').textContent='TradingView + Twelve Data OHLC · H4 / M30 / M15 / M5 / M1';
   $('chartStatus').textContent=state.message||'Données externes';
   $('mtfRows').innerHTML=state.rows?.length?state.rows.map(r=>`<tr><td>${r.tf}</td><td>${r.ema200===null?'—':Number(r.ema200).toFixed(2)}</td><td>${r.rsi14===null?'—':Number(r.rsi14).toFixed(1)}</td><td>${escapeText(r.bias)} · ${escapeText(r.breaks)}</td></tr>`).join(''):`<tr><td colspan="4" class="empty-cell">${state.tableMessage||'Données multi-timeframes indisponibles.'}</td></tr>`;
-  $('signalState').textContent=state.decision||'WAIT';$('signalExplain').textContent=state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.';
+  $('signalState').textContent=state.decision||'WAIT';const macro=state.macroContext;$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`source FRED · dernières observations au ${macro.asOf||'date inconnue'} · DXY, rendements, taux Fed, CPI et chômage transmis au moteur (données retardées).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
+  if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
   $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} %`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
   renderStructureAnalysis(state);
@@ -202,7 +212,7 @@ function restoreMyAnalysis(){
 
 async function loadServiceStatus(){
   const labels={ai:['serviceGroq','Moteur IA Groq'],marketData:['serviceMarketData','Données Twelve Data'],supabase:['serviceSupabase','Supabase serveur'],telegram:['serviceTelegram','Notifications Telegram']};
-  try{const response=await fetch('/api/service-status',{cache:'no-store'});if(!response.ok)throw new Error('Statut serveur indisponible.');const data=await response.json();for(const [key,[id,label]] of Object.entries(labels)){const el=$(id);const configured=Boolean(data.services?.[key]?.configured);const text=`${label} : ${configured?'configuré côté serveur':'non configuré côté serveur'}`;if(el){el.textContent=text;el.dataset.state=configured?'ready':'missing';}const adminId={ai:'adminServiceGroq',marketData:'adminServiceMarketData',supabase:'adminServiceSupabase',telegram:'adminServiceTelegram'}[key];if($(adminId))$(adminId).textContent=text;}}
+  try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise.');const response=await fetch('/api/service-status',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!response.ok)throw new Error('Statut serveur indisponible.');const data=await response.json();for(const [key,[id,label]] of Object.entries(labels)){const el=$(id);const configured=Boolean(data.services?.[key]?.configured);const text=`${label} : ${configured?'configuré côté serveur':'non configuré côté serveur'}`;if(el){el.textContent=text;el.dataset.state=configured?'ready':'missing';}const adminId={ai:'adminServiceGroq',marketData:'adminServiceMarketData',supabase:'adminServiceSupabase',telegram:'adminServiceTelegram'}[key];if($(adminId))$(adminId).textContent=text;}}
   catch{for(const [key,[id,label]] of Object.entries(labels)){const text=`${label} : statut indisponible (vérification au prochain accès)`;if($(id))$(id).textContent=text;const adminId={ai:'adminServiceGroq',marketData:'adminServiceMarketData',supabase:'adminServiceSupabase',telegram:'adminServiceTelegram'}[key];if($(adminId))$(adminId).textContent=text;}}
 }
 
@@ -265,10 +275,11 @@ function renderJournalStats(){
   const manual=loadJournalTrades(),linked=loadLinkedJournal();
   const closedLinked=linked.filter(x=>x.status==='CLOSED');
   const wins=manual.filter(x=>Number(x.result)>0).length+closedLinked.filter(x=>Number(x.realizedPnl)>0).length;
+  const losses=manual.filter(x=>Number(x.result)<0).length+closedLinked.filter(x=>Number(x.realizedPnl)<0).length;
   const closedCount=manual.length+closedLinked.length;
   const totalCount=manual.length+linked.length;
   const net=manual.reduce((sum,x)=>sum+Number(x.result||0),0)+linked.reduce((sum,x)=>sum+Number(x.realizedPnl||0),0);
-  $('journalCount').textContent=totalCount;$('journalWins').textContent=wins;$('journalWinRate').textContent=closedCount?`${(wins/closedCount*100).toFixed(1)} %`:'—';$('journalNet').textContent=net.toFixed(2);
+  $('journalCount').textContent=totalCount;$('journalWins').textContent=wins;$('journalLosses').textContent=losses;$('journalWinRate').textContent=closedCount?`${(wins/closedCount*100).toFixed(1)} %`:'—';$('journalNet').textContent=net.toFixed(2);
 }
 
 function renderLinkedJournal(){const host=$('linkedJournalRows');if(!host)return;const rows=loadLinkedJournal();host.innerHTML=rows.length?rows.map(r=>`<tr><td>${escapeText(r.instrument)}</td><td>${r.mode==='unique'?'Position unique':'Trades séparés'}</td><td>${r.direction}</td><td>${escapeText(r.tpLabel||`${r.childIds?.length||0} TP`)}${r.lot?` · ${Number(r.lot).toFixed(2)} lot` : ''}</td><td>${Number(r.realizedPnl||0).toFixed(2)}</td><td>${r.status==='OPEN'?'OUVERTE':'CLÔTURÉE'}</td></tr>`).join(''):'<tr><td colspan="6" class="empty-cell">Aucune fiche liée.</td></tr>';renderJournalStats(); }
@@ -276,15 +287,17 @@ function renderPositions(){
   const host=$('positionRows');if(!host)return;
   const groups=loadTradeGroups();$('positionCount').textContent=`${groups.length} groupe(s)`;
   const rows=groups.flatMap(g=>g.children.map(c=>({g,c})));
-  host.innerHTML=rows.length?rows.map(({g,c})=>`<tr><td>${escapeText(g.instrument)}</td><td>${g.mode==='unique'?'Position unique':'Trades séparés'}</td><td>${c.direction}</td><td>${escapeText(c.tpLabel)} · ${Number(c.takeProfit)}</td><td>${Number(c.initialLot).toFixed(2)}</td><td>${Number(c.remainingLot).toFixed(2)}</td><td class="${c.realizedPnl>=0?'good':'bad'}">${Number(c.realizedPnl).toFixed(2)}</td><td>${c.status==='OPEN'?'OUVERTE':'CLÔTURÉE'}</td><td>${c.status==='OPEN'?`<button class="small-btn" data-close-child="${c.id}">Clôturer</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="9" class="empty-cell">Aucune position enregistrée.</td></tr>';
+  host.innerHTML=rows.length?rows.map(({g,c})=>`<tr><td>${escapeText(g.instrument)}</td><td>${g.mode==='unique'?'Position unique':'Trades séparés'}</td><td>${c.direction}</td><td>${escapeText(c.tpLabel)} · ${Number(c.takeProfit)}</td><td>${Number(c.initialLot).toFixed(2)}</td><td>${Number(c.remainingLot).toFixed(2)}</td><td class="${c.realizedPnl>=0?'good':'bad'}">${Number(c.realizedPnl).toFixed(2)}</td><td>${c.status==='OPEN'?'OUVERTE':'CLÔTURÉE'}</td><td>${c.status==='OPEN'?`<button class="small-btn" data-close-child="${c.id}">Clôturer</button>${g.children.at(-1)?.id===c.id&&!g.children.some(x=>(x.closes||[]).length)?` <button class="small-btn" data-edit-group="${g.id}">Modifier</button>`:''}`:(g.status==='CLOSED'&&g.children.at(-1)?.id===c.id?`<button class="small-btn" data-delete-closed-group="${g.id}">Supprimer</button>`:'—')}</td></tr>`).join(''):'<tr><td colspan="9" class="empty-cell">Aucune position enregistrée.</td></tr>';
   renderLinkedJournal();
+  host.querySelectorAll('[data-edit-group]').forEach(btn=>btn.addEventListener('click',()=>{const group=groups.find(g=>g.id===btn.dataset.editGroup);if(!group)return;$('editGroupId').value=group.id;$('editEntry').value=group.children[0].entry;$('editSL').value=group.children[0].stopLoss;[1,2,3].forEach(i=>{const child=group.children[i-1],wrap=$(`editTP${i}Wrap`);if(wrap)wrap.hidden=!child;if(child)$(`editTP${i}`).value=child.takeProfit;});$('editPositionDialog').showModal();}));
+  host.querySelectorAll('[data-delete-closed-group]').forEach(btn=>btn.addEventListener('click',async()=>{const groupId=btn.dataset.deleteClosedGroup;if(!confirm('Supprimer définitivement cette position clôturée et sa fiche liée au journal ?'))return;try{const cloud=await deleteClosedTradeGroupFromSupabase(groupId);if(!cloud.synced&&cloud.reason!=='not_found')throw new Error('Connectez-vous pour confirmer la suppression côté cloud.');}catch(error){alert(`Suppression cloud impossible : ${error.message}`);return;}try{deleteClosedTradeGroup(groupId);renderPositions();renderJournal();}catch(error){alert(error.message);}}));
   host.querySelectorAll('[data-close-child]').forEach(btn=>btn.addEventListener('click',()=>{const childId=btn.dataset.closeChild,group=groups.find(g=>g.children.some(c=>c.id===childId)),child=group?.children.find(c=>c.id===childId);$('closeChildId').value=childId;$('closeVolume').value='';$('closeVolume').step=String(group?.lotStep||0.01);$('closeVolume').min=String(group?.lotStep||0.01);$('closeVolume').max=String(child?.remainingLot||'');$('closeExit').value='';$('closeFees').value='';$('closePositionDialog').showModal();}));
 }
 function mountStandaloneDxy(){const host=$('dxyStandalone');if(!host||host.dataset.loaded)return;host.dataset.loaded='1';const frame=document.createElement('iframe');frame.title='Graphique DXY sur TradingView';frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';frame.style.width='100%';frame.style.height='420px';frame.style.border='0';frame.src='https://s.tradingview.com/widgetembed/?frameElementId=dxy_standalone&symbol=TVC%3ADXY&interval=D&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=0b1222&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';host.replaceChildren(frame);}
 function createPositionFromForm(){
   const tps=[1,2,3].map(i=>({label:`TP${i}`,price:Number($(`posTP${i}`).value)})).filter(x=>Number.isFinite(x.price)&&x.price>0);
   try{
-    const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:Number($('posLot').value),lotStep:Number($('posLotStep').value),entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,contractSize:$('posContract').value.trim()?Number($('posContract').value):null,quoteToAccount:Number($('posConversion').value||1),feesPerLot:Number($('posFees').value||0)});
+    const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:Number($('posLot').value),lotStep:Number($('posLotStep').value),entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,expiresAt:$('posExpiry').value?new Date($('posExpiry').value).toISOString():null,contractSize:$('posContract').value.trim()?Number($('posContract').value):null,quoteToAccount:Number($('posConversion').value||1),feesPerLot:Number($('posFees').value||0)});
     saveTradeGroup(group);renderPositions();const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];sendTelegramNotification({type:'trade_open',text:tradeLines.join('\n')}).catch(()=>{});syncTradeGroupToSupabase(group).then(r=>{if(r.synced)alert(`Position enregistrée et synchronisée : ${group.children.length} trade(s).`);else alert(`Position enregistrée sur cet appareil : connectez-vous à Supabase pour la synchroniser. ${group.autoJournal?'Fiche locale liée au journal créée.':'Journal automatique désactivé.'}`);}).catch(error=>alert(`Position conservée localement, mais synchronisation cloud impossible : ${error.message}`));
   }catch(error){alert(error.message);}
 }
@@ -298,7 +311,7 @@ function savePartialCloseFromForm(){
 }
 function bindEvents(){
   let pendingAdminRoute=false;
-  window.addEventListener('aurevia:authchange',()=>loadAnalysis());
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();loadAnalysis();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:adminchange',event=>{
     const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
     if(allowed&&pendingAdminRoute){pendingAdminRoute=false;showPage('admin');}
@@ -309,6 +322,7 @@ function bindEvents(){
   document.querySelectorAll('.ticker').forEach(t=>t.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(t.dataset.symbol);}));
   document.querySelectorAll('#timeframes button').forEach(b=>b.addEventListener('click',()=>setTimeframe(b.dataset.tf)));
   $('refreshBtn').addEventListener('click',()=>{mountTradingView();loadAnalysis();});
+  $('analyzeBtn')?.addEventListener('click',()=>loadAnalysis());
   $('menuToggle').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
   const showPage = requestedPage => {
     let page=requestedPage;
@@ -343,6 +357,7 @@ function bindEvents(){
     $('riskResult').textContent=result.error||`Calcul estimatif pour ${$('riskInstrument').value} · ${result.lots.toFixed(2)} lot(s) · risque réellement engagé : ${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;
     $('riskMoneyOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('lotsOut').textContent=result.error?'—':result.lots.toFixed(2);$('lossOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('gainOut').textContent=result.error||result.gain===null?'—':`${result.gain.toFixed(2)} ${$('accountCurrency').value}`;$('rrOut').textContent=result.error||result.rr===null?'—':`1:${result.rr.toFixed(2)}`;$('riskPctOut').textContent=result.error||result.riskPercentActual===null?'—':`${result.riskPercentActual.toFixed(2)} %`;$('marginOut').textContent=result.error||result.margin===null?'—':`${result.margin.toFixed(2)} ${$('accountCurrency').value}`;
   });
+  $('savePositionEdit')?.addEventListener('click',async()=>{try{const group=loadTradeGroups().find(g=>g.id===$('editGroupId').value);if(!group)throw new Error('Position introuvable.');const tps=group.children.map((_,i)=>Number($(`editTP${i+1}`).value));editOpenTradeGroup(group,{entry:Number($('editEntry').value),stopLoss:Number($('editSL').value),takeProfits:tps});persistTradeGroup(group);$('editPositionDialog').close();renderPositions();try{const result=await syncTradeGroupToSupabase(group);if(!result.synced)alert('Modification enregistrée localement ; connectez-vous pour la synchroniser.');}catch(error){alert(`Modification locale enregistrée, mais synchronisation cloud impossible : ${error.message}`);}}catch(error){alert(error.message);}});
   $('addTradeBtn').addEventListener('click',()=>$('tradeDialog').showModal());
   $('journalRows')?.addEventListener('click',event=>{const btn=event.target.closest('[data-delete-journal]');if(!btn)return;if(!confirm('Supprimer définitivement cette entrée du journal local ?'))return;const result=deleteJournalTrade(btn.dataset.deleteJournal);if(!result.ok){alert(result.error);return;}renderJournal();renderJournalStats();});
   $('saveTrade').addEventListener('click',()=>{
@@ -373,8 +388,12 @@ function bindEvents(){
   $('saveTelegramPrefs').addEventListener('click',async()=>{try{await saveTelegramPreferences({all:$('notifyAll').checked,signals:$('notifySignals').checked,economic:$('notifyEconomic').checked});$('telegramConnectionStatus').textContent='Préférences enregistrées.';}catch(error){$('telegramConnectionStatus').textContent=error.message;}});
   $('sendTelegramTest')?.addEventListener('click',async()=>{const status=$('telegramTestStatus');status.textContent='Envoi du test en cours…';$('sendTelegramTest').disabled=true;try{const result=await sendTelegramTest();status.textContent=result.sent?'Test accepté par Telegram. Vérifiez votre conversation avec @AureviaCopilotBot.':'Test non envoyé : '+(result.reason||'raison inconnue');}catch(error){status.textContent='Échec du test : '+error.message;}finally{$('sendTelegramTest').disabled=false;}});
   $('posMode').addEventListener('change',()=>{$('posModeHelp').textContent=$('posMode').value==='unique'?'Position unique : le lot saisi est réparti entre les TP sélectionnés.':'Trades séparés : le lot saisi est appliqué individuellement à chaque TP sélectionné.';});
+  const syncOrderFields=()=>{const type=$('posOrderType').value;const isBuy=type.startsWith('BUY '),isSell=type.startsWith('SELL '),isStop=type.includes('STOP'),isLimit=type.endsWith('LIMIT');if(isBuy||isSell)$('posDirection').value=isBuy?'BUY':'SELL';$('posTriggerWrap').hidden=!isStop;$('posLimitWrap').hidden=!(isLimit||type.includes('STOP LIMIT'));$('posExpiryWrap').hidden=type==='MARKET';$('posTrigger').required=isStop;$('posLimit').required=isLimit||type.includes('STOP LIMIT');$('posTrigger').disabled=!isStop;$('posLimit').disabled=!(isLimit||type.includes('STOP LIMIT'));$('posExpiry').disabled=type==='MARKET';$('posLimit').placeholder=type.includes('STOP LIMIT')?'Prix limite après déclenchement':'Prix d’entrée limite';};
+  $('posOrderType').addEventListener('change',syncOrderFields);$('posDirection').addEventListener('change',()=>{const type=$('posOrderType').value;if(type!=='MARKET'&&((type.startsWith('BUY')&&$('posDirection').value==='SELL')||(type.startsWith('SELL')&&$('posDirection').value==='BUY')))$('posOrderType').value='MARKET';syncOrderFields();});syncOrderFields();
   $('reduceMotion').addEventListener('change',e=>{localStorage.setItem('aurevia_reduce_motion',e.target.checked?'1':'0');document.documentElement.classList.toggle('reduce-motion',e.target.checked);window.dispatchEvent(new CustomEvent('aurevia:motionchange',{detail:{reduced:e.target.checked}}));});
   $('reduceMotion').checked=localStorage.getItem('aurevia_reduce_motion')==='1';document.documentElement.classList.toggle('reduce-motion',$('reduceMotion').checked);initAppInstallation();
 }
-function init(){bindEvents();initAuth();if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});restoreMyAnalysis();initJournal();renderJournal();renderPositions();renderLinkedJournal();initEconomicCalendar($('calendarWidget'));initEconomicCalendar($('calendarStandalone'));updateClock();setInterval(updateClock,1000);mountTradingView();mountDxyChart();mountTickerTape();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / M30 / M15 / M5 / M1.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';}
+let authenticatedBooted=false;
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;restoreMyAnalysis();initJournal();renderJournal();renderPositions();renderLinkedJournal();initEconomicCalendar($('calendarWidget'));initEconomicCalendar($('calendarStandalone'));updateClock();setInterval(updateClock,1000);mountTradingView();mountDxyChart();mountTickerTape();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / M30 / M15 / M5 / M1.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';}
+function init(){bindEvents();if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth();}
 init();

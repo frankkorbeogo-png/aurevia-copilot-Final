@@ -54,9 +54,12 @@ export async function handler(event){
    return json(200,{ok:true,revoked:Boolean(revoked)});
   }
   if(action==='delete_user'){
+   // Revoke the AUREVIA session before deleting the Auth identity. This immediately
+   // invalidates the app session; protected APIs also revalidate the Google user.
+   await rpc(base,key,'aurevia_admin_revoke_session',{p_actor_id:caller.id,p_target_user_id:target});
    await request(`${base}/auth/v1/admin/users/${encodeURIComponent(target)}`,{method:'DELETE',headers:adminHeaders(key)});
-   await audit(base,key,caller.id,'delete_user',target,{source:'admin_console'});
-   return json(200,{ok:true,deleted:true});
+   await audit(base,key,caller.id,'delete_user',target,{source:'admin_console',session_revoked:true});
+   return json(200,{ok:true,deleted:true,session_revoked:true});
   }
   if(action==='announcement_create'){
    const title=String(body.title||'').trim().slice(0,120),content=String(body.body||'').trim().slice(0,4000),category=String(body.category||'general').trim().slice(0,40);
