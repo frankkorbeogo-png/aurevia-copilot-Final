@@ -58,3 +58,11 @@ schedule = "* * * * *"
   from = "/api/account-reject-new-login"
   to = "/.netlify/functions/account-reject-new-login"
   status = 200
+
+[[redirects]]
+  from = "/api/scenario"
+  to = "/.netlify/functions/scenario-api"
+  status = 200
+
+[functions."scenario-watch"]
+schedule = "* * * * *"

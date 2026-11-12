@@ -85,3 +85,10 @@ test('si le journal ne peut pas être synchronisé, la position est restaurée',
   assert.equal(memory.get('aurevia-position-groups-v2'),before);
   delete globalThis.localStorage;
 });
+
+test('les ordres en attente démarrent PENDING et les ordres MARKET restent OPEN',()=>{
+ const pending=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT'});
+ const market=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'MARKET'});
+ assert.equal(pending.children[0].status,'PENDING');
+ assert.equal(market.children[0].status,'OPEN');
+});

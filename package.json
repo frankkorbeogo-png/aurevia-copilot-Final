@@ -1,11 +1,12 @@
 {
   "name": "aurevia-copilot",
-  "version": "2.3.33",
+  "version": "2.3.43",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "worker:quotes": "node workers/market-quote-stream.mjs"
   },
   "engines": {
     "node": ">=20"

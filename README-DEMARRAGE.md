@@ -2,9 +2,15 @@
 
 Application web responsive d'analyse multi-marchés, de préparation des ordres, de gestion du risque, de suivi manuel des positions et de journalisation.
 
+## Version 2.3.43 — déclenchement des trades à l’entrée
+
+Les ordres LIMIT/STOP sont conservés en `EN ATTENTE` jusqu’à l’atteinte de leur prix d’entrée. BUY déclenche sur ASK et SELL sur BID. Après activation, les sorties sont évaluées sur BID pour fermer un BUY et ASK pour fermer un SELL. Le suivi reste interne à AUREVIA et ne transmet aucun ordre à un broker.
+
+**Mise en service supplémentaire obligatoire :** appliquer `supabase/migrations/20261112180000_trade_entry_price_activation.sql`, puis déployer le service permanent décrit dans `workers/README.md`. Sans ce flux prix simple du marché frais, `trade-watch` suspend volontairement les déclenchements plutôt que d’utiliser un cours moyen.
+
 ## Lancer en développement
 
-- Node.js 20+ recommandé.
+- Node.js 20+ recommandé pour l’application ; Node.js 22 est requis pour le worker WebSocket prix simple du marché.
 - `npm test` lance les tests automatisés.
 - Node.js 22 est la version recommandée (`.nvmrc`), Node.js 20+ est accepté.
 - Pour tester les fonctions serveur, utiliser Netlify CLI puis `netlify dev` depuis la racine.
@@ -50,11 +56,17 @@ Ne jamais placer de clé secrète dans `index.html`, les fichiers JavaScript du 
 
 Les annonces économiques sont visibles via le widget calendrier externe ; leur envoi automatique Telegram nécessite encore une source d'événements disposant d'un flux serveur autorisé. Ne pas activer cette fonction comme si elle était déjà opérationnelle.
 
+## Worker de cotations prix simple du marché
+
+Le suivi exact ASK/BID nécessite le service permanent `workers/market-quote-stream.mjs` (Node 22). Il doit être hébergé séparément de Netlify et utiliser les secrets Supabase service-role et Twelve Data. Voir `workers/README.md`. Le plan Twelve Data doit autoriser le streaming des symboles utilisés.
+
 ## Supabase
 
 Projet associé : `Aurevia-copilot` (`imkwbizyblzuevkodzqc`). La migration `20261110170930_add_trading_position_tracking` est déjà enregistrée sur le projet. Elle crée les tables de groupes, positions et clôtures, étend le journal et applique des politiques RLS propriétaires.
 
 Les rôles sont gérés côté serveur. Le propriétaire `frankkorbeogo@gmail.com` a déjà été provisionné dans `app_private.admin_users` lors d'une opération antérieure ; la version V2.2.9 ne recrée pas ce compte et ne fournit aucun parcours de promotion. L’API contrôle l’appartenance à la table privée `app_private.admin_users` ; `profiles.role` n’est pas utilisé comme autorité d’accès. La console est cachée par défaut, et les routes/actions sont revalidées côté serveur. Elle permet la recherche serveur de comptes, l’affichage des emails, dates d’inscription/connexion, heartbeat, statut en ligne et session active, la suspension/réactivation, la révocation de session, la suppression confirmée des comptes non administrateurs, les statistiques, la configuration des services, les annonces avec expiration et la consultation de l’audit privé.
+
+**Migration requise pour le suivi des entrées V2.3.42 :** `supabase/migrations/20261112180000_trade_entry_price_activation.sql`. Elle ajoute les statuts en attente, les champs d’activation, la RPC atomique d’activation et la table de suivi du prix de marché. La migration complémentaire `20261112190000_market_last_price_mode.sql` ajoute le champ `price` et rend prix simple du marché facultatifs.
 
 **Migration requise avant déploiement V2.2.9 :** `supabase/migrations/20261111180000_single_session_and_admin_console_v229.sql`. Elle crée le registre privé de session unique, les fonctions de heartbeat/contrôle, les RPC d’administration et renforce les politiques RLS des tables personnelles. Cette migration est fournie dans l’archive mais n’a pas été appliquée au projet de production. Ne pas déployer le code V2.2.9 avant d’avoir relu et appliqué cette migration dans un environnement contrôlé, puis vérifié les politiques et fonctions. Elle ne doit pas être exécutée automatiquement par Netlify. Les migrations `20261110193242_secure_admin_console_and_indexes` et `20261110193341_admin_audit_listing.sql` existent déjà dans l’historique antérieur du projet ; ne pas les réappliquer. Les utilisateurs ne peuvent modifier que les champs de profil autorisés ; la colonne `profiles.role` reste protégée.
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluatePositionThreshold} from '../netlify/functions/trade-watch.mjs';
+import {evaluatePositionThreshold,evaluateEntryTrigger} from '../netlify/functions/trade-watch.mjs';
 test('surveillance interne détecte TP et SL BUY avec priorité SL si les deux niveaux sont franchis',()=>{
  const p={direction:'BUY',stop_loss:1980,take_profit:2020};
  assert.equal(evaluatePositionThreshold(p,2021),'TP');
@@ -26,7 +26,7 @@ test('surveillance ne supprime pas une alerte partagée lorsqu’une autre exéc
  const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
  assert.match(source,/rpc\/aurevia_record_position_close_worker/);
- assert.doesNotMatch(source,/trading_positions\?id=eq\.\$\{p\.id\}.*PATCH/s);
+ assert.doesNotMatch(source,/trading_positions\?id=eq\.\$\{p\.id\}[^\n]*PATCH[^\n]*body:\{status:'CLOSED'/s);
  assert.match(source,/status:'cancelled'/);
 });
 test('identifiant d’alerte réutilisé comme identifiant de clôture pour rendre l’écriture idempotente',async()=>{
@@ -51,7 +51,7 @@ test('la clôture TP/SL planifiée utilise une transaction SQL service_role pour
  const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
  const sql=await readFile(new URL('../supabase/migrations/20261112120000_atomic_worker_position_close_v234.sql',import.meta.url),'utf8');
  assert.match(source,/rpc\/aurevia_record_position_close_worker/);
- assert.doesNotMatch(source,/trading_positions\?id=eq\.\$\{p\.id\}.*PATCH/s);
+ assert.doesNotMatch(source,/trading_positions\?id=eq\.\$\{p\.id\}[^\n]*PATCH[^\n]*body:\{status:'CLOSED'/s);
  assert.match(sql,/auth\.role\(\).*service_role/s);
  assert.match(sql,/for update/i);
  assert.match(sql,/trading_position_closes/);
@@ -95,7 +95,7 @@ test('une alerte annulée pour métadonnées manquantes peut être réactivée a
  assert.match(source,/alert\.status==='cancelled'/);
  assert.match(source,/status=eq\.cancelled/);
  assert.match(source,/body:\{status:'pending',locked_at:null\}/);
- assert.match(source,/if\(!reactivated\?\.length\) continue/);
+ assert.match(source,/if\(!reactivated\?\.length\)continue/);
 });
 
 
@@ -113,4 +113,42 @@ test('surveillance ignore les cotations, niveaux ou directions invalides au lieu
  assert.equal(evaluatePositionThreshold({direction:'HOLD',stop_loss:1980,take_profit:2020},2021),null);
  assert.equal(evaluatePositionThreshold({direction:'BUY',stop_loss:1980,take_profit:2020},NaN),null);
  assert.equal(evaluatePositionThreshold({direction:'BUY',stop_loss:1980,take_profit:2020},0),null);
+});
+
+
+test('BUY LIMIT et BUY STOP utilisent le prix simple du marché',()=>{
+ const q={price:2000};
+ assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'BUY',order_type:'BUY LIMIT'},q),'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:1999},{direction:'BUY',order_type:'BUY STOP'},q),'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:1999},{direction:'BUY',order_type:'BUY LIMIT'},q),null);
+});
+test('SELL LIMIT et SELL STOP utilisent le même prix simple du marché',()=>{
+ const q={price:2000};
+ assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'SELL',order_type:'SELL LIMIT'},q),'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:2001},{direction:'SELL',order_type:'SELL STOP'},q),'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:2001},{direction:'SELL',order_type:'SELL LIMIT'},q),null);
+});
+test('STOP LIMIT utilise le prix simple pour le déclenchement puis le retour',()=>{
+ const group={direction:'BUY',order_type:'BUY STOP LIMIT'};
+ assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2001,trigger_seen:false},group,{price:2001}),'TRIGGER_SEEN');
+ assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2001,trigger_seen:true},group,{price:1999}),'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2001,trigger_seen:false},group,{price:1999}),null);
+});
+test('un prix absent ne déclenche aucune entrée',()=>{
+ assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'BUY',order_type:'BUY LIMIT'},{bid:2000,ask:2000.2}),null);
+});
+
+test('le calcul P/L utilise le prix d’activation enregistré plutôt que le prix indicatif',async()=>{
+ const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
+ const p={volume_remaining:0.1,entry_price:2000,activation_price:2002,contract_size:100,quote_to_account:1,fees_per_lot:0};
+ assert.deepEqual(calculateInternalClosePnl(p,'BUY',2010),{gross:80,fees:0,net:80,volume:0.1});
+});
+test('la migration autorise PENDING et réserve l’activation au worker service_role',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const sql=await readFile(new URL('../supabase/migrations/20261112180000_trade_entry_price_activation.sql',import.meta.url),'utf8');
+ assert.match(sql,/PENDING.*OPEN.*CLOSED.*CANCELLED/s);
+ assert.match(sql,/aurevia_activate_pending_position_worker/);
+ assert.match(sql,/grant execute .* to service_role/i);
+ assert.match(sql,/revoke all .*authenticated/i);
+ assert.match(sql,/aurevia_market_quotes/);
 });

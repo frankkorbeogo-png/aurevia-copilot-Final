@@ -1,3 +1,20 @@
+## 2.3.43 — suivi au prix simple du marché
+- Entrées, TP et SL comparés au dernier prix de marché (`Last Price`), sans dépendance BID/ASK.
+- `trade-watch` récupère le prix via Twelve Data REST `/price` lorsque le cache de cotation est absent ou périmé.
+- Clôtures internes automatiques au dernier prix observé, avec mention explicite qu’il ne s’agit pas d’une exécution broker et sans prise en compte du spread/slippage.
+- Worker WebSocket facultatif pour les mises à jour plus fréquentes.
+- Migration complémentaire `20261112190000_market_last_price_mode.sql`.
+
+## 2.3.42 — déclenchement des positions au prix d’entrée
+
+- Ajout du statut EN ATTENTE pour les ordres LIMIT/STOP et activation automatique sur ASK (BUY) ou BID (SELL).
+- Gestion séquentielle du STOP LIMIT : franchissement du trigger, puis retour au prix limite.
+- Activation transactionnelle Supabase, horodatage/prix d’activation, notification Telegram et synchronisation du journal.
+- Surveillance TP/SL sur le côté de sortie (BID pour BUY, ASK pour SELL) et calcul P/L basé sur le prix d’activation.
+- Ajout d’un worker WebSocket Twelve Data permanent qui détecte l’activation sur chaque tick, avec table sécurisée de cotations BID/ASK ; aucune substitution par un prix moyen en cas de données manquantes.
+- Migration requise : `20261112180000_trade_entry_price_activation.sql`. Worker externe à déployer séparément.
+- Vérification : 159 tests réussis ; build réussi. Aucun déploiement Netlify ni application de migration Supabase de production effectué.
+
 ## v2.3.32 — Diagnostic sécurisé du bot Telegram
 
 - Ajout d’un contrôle administrateur du token via la méthode officielle Telegram `getMe`.

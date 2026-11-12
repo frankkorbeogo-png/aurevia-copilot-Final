@@ -418,3 +418,43 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .ai-scenario-card dt{font-size:.68rem;color:var(--muted)}.ai-scenario-card dd{margin:3px 0 0;font-weight:700;font-size:.82rem;overflow-wrap:anywhere}
 .ai-scenario-card ul{padding-left:18px;font-size:.78rem;color:var(--muted)}
 .ai-scenarios-note{font-size:.72rem;color:var(--muted);margin-bottom:0}
+
+
+/* AUREVIA v2.3.37 — calendrier économique : défilement tactile et vertical */
+.calendar-frame{
+  box-sizing:border-box;
+  overflow-x:hidden !important;
+  overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
+  touch-action:pan-y;
+  scrollbar-width:thin;
+  scrollbar-color:#76508a #100b16;
+}
+.calendar-frame .calendar-events{
+  min-height:0;
+  overflow:visible;
+  touch-action:pan-y;
+}
+#page-marches .calendar-frame{
+  overflow-x:hidden !important;
+  overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch;
+  touch-action:pan-y;
+}
+#page-marches .calendar-frame .calendar-event{
+  flex-shrink:0;
+}
+@media(max-width:600px){
+  #page-marches .calendar-frame{
+    height:430px;
+    max-height:65vh;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+  #calendarStandalone{
+    max-height:65vh;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+}
