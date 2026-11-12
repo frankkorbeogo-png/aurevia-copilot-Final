@@ -108,18 +108,18 @@ function setTimeframe(tf){selectedTf=tf;document.querySelectorAll('#timeframes b
 async function loadAnalysis(){
   const analyzeButton=$('analyzeBtn'),analyzeStatus=$('analyzeStatus');
   if(analyzeButton){analyzeButton.disabled=true;analyzeButton.textContent='Analyse en cours…';}
-  if(analyzeStatus)analyzeStatus.textContent=`Chargement des données ${symbols[selectedSymbol]?.label||selectedSymbol} · M30 / M15 / M5…`;
+  if(analyzeStatus)analyzeStatus.textContent=`Chargement des données ${symbols[selectedSymbol]?.label||selectedSymbol} · H4 / H1 / M30 / M15 / M5…`;
   $('signalState').textContent='WAIT';$('signalExplain').textContent='Analyse descriptive en cours. Aucun signal n’est confirmé.';$('probabilityValue').textContent='—';$('probabilityBar').style.width='0%';
   let result;
   try{result=await loadInstrumentAnalysis(selectedSymbol);}finally{if(analyzeButton){analyzeButton.disabled=false;analyzeButton.textContent='⌁ Analyser le marché';}}
   const state=getAnalysisState();
   if(result?.price){const price=$(`price-${selectedSymbol}`),change=$(`change-${selectedSymbol}`);if(price)price.textContent=Number(result.price).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});if(change)change.textContent=`Twelve Data · OHLC M1 · ${result.status}`;}
-  $('chartSource').textContent='TradingView + Twelve Data OHLC · M30 / M15 / M5';
+  $('chartSource').textContent='TradingView + Twelve Data OHLC · H4 / H1 / M30 / M15 / M5';
   $('chartStatus').textContent=state.message||'Données externes';
   $('mtfRows').innerHTML=state.rows?.length?state.rows.map(r=>`<tr><td>${r.tf}</td><td>${r.ema200===null?'—':Number(r.ema200).toFixed(2)}</td><td>${r.rsi14===null?'—':Number(r.rsi14).toFixed(1)}</td><td>${escapeText(r.bias)} · ${escapeText(r.breaks)}</td></tr>`).join(''):`<tr><td colspan="4" class="empty-cell">${state.tableMessage||'Données multi-timeframes indisponibles.'}</td></tr>`;
   $('signalState').textContent=state.decision||'WAIT';const macro=state.macroContext;$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`source FRED · dernières observations au ${macro.asOf||'date inconnue'} · DXY, rendements, taux Fed, CPI et chômage transmis au moteur (données retardées).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
   if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
-  $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} %`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
+  $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} / 100`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
   renderAIScenarios(state);
   renderStructureAnalysis(state);
@@ -155,9 +155,9 @@ function renderStructureAnalysis(state){
   const cards=$('structureCards'),checks=$('confluenceChecks'),patternsHost=$('patternList');
   if(!cards||!checks||!patternsHost)return;
   if(!state.analysis){cards.innerHTML='<div class="structure-card muted">'+escapeText(state.tableMessage||'Historiques OHLC indisponibles.')+'</div>';checks.innerHTML='<span class="muted">Confluence indisponible.</span>';patternsHost.innerHTML='<span class="muted">Aucune figure analysée.</span>';return;}
-  cards.innerHTML=['M30','M15','M5'].map(tf=>{const a=state.analysis[tf],st=a.structure,ind=a.indicators,sw=st.swings||[],high=sw.filter(x=>x.type==='high').at(-1),low=sw.filter(x=>x.type==='low').at(-1);const breaks=(st.breaks||[]).map(x=>x.type).join(' · ')||'Aucune cassure confirmée';const sweeps=(st.sweeps||[]).map(x=>x.type).join(' · ')||'Aucun sweep confirmé';return `<article class="structure-card"><div class="structure-card-head"><b>${tf}</b><span>${escapeText(st.bias||'indéterminé')}</span></div><div class="structure-metrics"><span>EMA20 <b>${ind.ema20===null?'—':Number(ind.ema20).toFixed(2)}</b></span><span>EMA50 <b>${ind.ema50===null?'—':Number(ind.ema50).toFixed(2)}</b></span><span>EMA100 <b>${ind.ema100===null?'—':Number(ind.ema100).toFixed(2)}</b></span><span>EMA200 <b>${ind.ema200===null?'—':Number(ind.ema200).toFixed(2)}</b></span><span>RSI14 <b>${ind.rsi14===null?'—':Number(ind.rsi14).toFixed(1)}</b></span><span>MACD <b>${ind.macd?Number(ind.macd.line).toFixed(3):'—'}</b></span><span>ATR14 <b>${ind.atr14===null?'—':Number(ind.atr14).toFixed(3)}</b></span><span>BB haute / basse <b>${ind.bollinger?Number(ind.bollinger.upper).toFixed(2)+' / '+Number(ind.bollinger.lower).toFixed(2):'—'}</b></span></div><p><small>Structure</small>${escapeText(breaks)}</p><p><small>Liquidité</small>${escapeText(sweeps)}</p><p><small>FVG / OB candidats</small>${(st.fvg||[]).filter(x=>!x.mitigated).length} FVG actifs · ${(st.orderBlocks||[]).filter(x=>!x.mitigated).length} OB non mitigés</p><p><small>Fibonacci 38,2 / 50 / 61,8</small>${a.fibonacci?a.fibonacci.levels.map(x=>Number(x.price).toFixed(2)).join(' · '):'Indisponible'}</p><p><small>Volume Profile fixe · POC / VAL / VAH</small>${a.volumeProfile?[a.volumeProfile.poc,a.volumeProfile.val,a.volumeProfile.vah].map(x=>Number(x).toFixed(2)).join(' · '):'Volume indisponible ou historique insuffisant'}</p><p><small>Derniers niveaux</small>H ${high?Number(high.price).toFixed(2):'—'} · L ${low?Number(low.price).toFixed(2):'—'}</p></article>`;}).join('');
+  cards.innerHTML=['H4','H1','M30','M15','M5'].map(tf=>{const a=state.analysis[tf],st=a.structure,ind=a.indicators,sw=st.swings||[],high=sw.filter(x=>x.type==='high').at(-1),low=sw.filter(x=>x.type==='low').at(-1);const breaks=(st.breaks||[]).map(x=>x.type).join(' · ')||'Aucune cassure confirmée';const sweeps=(st.sweeps||[]).map(x=>x.type).join(' · ')||'Aucun sweep confirmé';return `<article class="structure-card"><div class="structure-card-head"><b>${tf}</b><span>${escapeText(st.bias||'indéterminé')}</span></div><div class="structure-metrics"><span>EMA20 <b>${ind.ema20===null?'—':Number(ind.ema20).toFixed(2)}</b></span><span>EMA50 <b>${ind.ema50===null?'—':Number(ind.ema50).toFixed(2)}</b></span><span>EMA100 <b>${ind.ema100===null?'—':Number(ind.ema100).toFixed(2)}</b></span><span>EMA200 <b>${ind.ema200===null?'—':Number(ind.ema200).toFixed(2)}</b></span><span>RSI14 <b>${ind.rsi14===null?'—':Number(ind.rsi14).toFixed(1)}</b></span><span>MACD <b>${ind.macd?Number(ind.macd.line).toFixed(3):'—'}</b></span><span>ATR14 <b>${ind.atr14===null?'—':Number(ind.atr14).toFixed(3)}</b></span><span>BB haute / basse <b>${ind.bollinger?Number(ind.bollinger.upper).toFixed(2)+' / '+Number(ind.bollinger.lower).toFixed(2):'—'}</b></span></div><p><small>Structure</small>${escapeText(breaks)}</p><p><small>Liquidité</small>${escapeText(sweeps)}</p><p><small>FVG / OB candidats</small>${(st.fvg||[]).filter(x=>!x.mitigated).length} FVG actifs · ${(st.orderBlocks||[]).filter(x=>!x.mitigated).length} OB non mitigés</p><p><small>Fibonacci 38,2 / 50 / 61,8</small>${a.fibonacci?a.fibonacci.levels.map(x=>Number(x.price).toFixed(2)).join(' · '):'Indisponible'}</p><p><small>Volume Profile fixe · POC / VAL / VAH</small>${a.volumeProfile?[a.volumeProfile.poc,a.volumeProfile.val,a.volumeProfile.vah].map(x=>Number(x).toFixed(2)).join(' · '):'Volume indisponible ou historique insuffisant'}</p><p><small>Derniers niveaux</small>H ${high?Number(high.price).toFixed(2):'—'} · L ${low?Number(low.price).toFixed(2):'—'}</p></article>`;}).join('');
   checks.innerHTML=(state.scoreComponents||[]).map(x=>`<span class="confluence-item ${x.passed?'passed':'pending'}"><b>${x.passed?'✓':'○'}</b>${escapeText(x.label)}</span>`).join('')||'<span class="muted">Confluence indisponible.</span>';
-  const found=['M30','M15','M5'].flatMap(tf=>(state.analysis[tf].patterns||[]).map(p=>({tf,...p})));
+  const found=['H4','H1','M30','M15','M5'].flatMap(tf=>(state.analysis[tf].patterns||[]).map(p=>({tf,...p})));
   patternsHost.innerHTML=found.length?found.map(p=>`<span class="pattern-chip"><b>${escapeText(p.name)}</b><small>${p.tf} · ${escapeText(p.confirmation||'à confirmer')}</small></span>`).join(''):'<span class="muted">Aucune figure détectée sur les dernières bougies.</span>';
 }
 async function notifyLatestAnalysis(state,symbol){
@@ -165,7 +165,7 @@ async function notifyLatestAnalysis(state,symbol){
   const key=`${symbol}:${candle}:${state.decision||'WAIT'}`;
   if(localStorage.getItem('aurevia_last_telegram_analysis')===key)return;
   const details=state.decisionDetails||{};
-  const lines=[`AUREVIA COPILOT · ${symbol}`,`Décision : ${state.decision||'WAIT'}`,`Score de confirmation : ${Number.isFinite(state.score)?state.score+'/100':'indisponible'}`,`Motif : ${details.reason||state.signalReason||'Confluence insuffisante.'}`];
+  const lines=[`AUREVIA COPILOT · ${symbol}`,`Décision : ${state.decision||'WAIT'}`,`Score de confluence : ${Number.isFinite(state.score)?state.score+'/100':'indisponible'}`,`Motif : ${details.reason||state.signalReason||'Confluence insuffisante.'}`];
   if(state.decision==='BUY'||state.decision==='SELL'){
     lines.push(`Type d'ordre : ${details.pendingOrderType||'non proposé'}`);
     if(details.entry!==null&&details.entry!==undefined)lines.push(`Entrée : ${details.entry}`);
@@ -177,6 +177,47 @@ async function notifyLatestAnalysis(state,symbol){
   }
   const result=await sendTelegramNotification({type:state.decision==='BUY'||state.decision==='SELL'?'signal':'analysis',text:lines.join('\n')});
   if(result.sent||result.reason==='disabled_by_user')localStorage.setItem('aurevia_last_telegram_analysis',key);
+}
+
+function updateScenarioEditorMeta(){
+ const text=$('scenarioFinalSummary')?.value||'';
+ if($('scenarioCharCount'))$('scenarioCharCount').textContent=`${text.length.toLocaleString('fr-FR')} caractère${text.length>1?'s':''}`;
+ if($('summaryMetaInstrument'))$('summaryMetaInstrument').textContent=$('myAnalysisInstrument')?.selectedOptions?.[0]?.text||selectedSymbol;
+ if($('summaryMetaDirection'))$('summaryMetaDirection').textContent=$('myAnalysisDirection')?.selectedOptions?.[0]?.text||'À définir';
+ if($('summaryMetaStatus'))$('summaryMetaStatus').textContent=text.trim()?'À valider':'En attente';
+ if($('summaryMetaEdited'))$('summaryMetaEdited').textContent=text.trim()?new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'—';
+}
+function saveScenarioDraft(){
+ const text=$('scenarioFinalSummary')?.value||'';
+ localStorage.setItem('aurevia_scenario_summary_draft',JSON.stringify({text,updatedAt:new Date().toISOString(),instrument:$('myAnalysisInstrument')?.value||selectedSymbol,direction:$('myAnalysisDirection')?.value||'WAIT'}));
+ if($('scenarioDraftBadge'))$('scenarioDraftBadge').textContent='BROUILLON MODIFIÉ';updateScenarioEditorMeta();
+}
+function restoreScenarioDraft(){
+ try{const d=JSON.parse(localStorage.getItem('aurevia_scenario_summary_draft')||'null');if(!d?.text){$('scenarioSaveStatus').textContent='Aucun brouillon local à restaurer.';return;}$('scenarioFinalSummary').value=d.text;if(d.instrument&&$('myAnalysisInstrument'))$('myAnalysisInstrument').value=d.instrument;if(d.direction&&$('myAnalysisDirection'))$('myAnalysisDirection').value=d.direction;$('scenarioSaveStatus').textContent='Brouillon local restauré. Vérifiez les niveaux avant enregistrement.';updateScenarioEditorMeta();if($('scenarioDraftBadge'))$('scenarioDraftBadge').textContent='BROUILLON RESTAURÉ';}catch{$('scenarioSaveStatus').textContent='Impossible de restaurer le brouillon local.';}
+}
+function structureScenarioSummary(){
+ const area=$('scenarioFinalSummary'),raw=area?.value.trim();if(!area)return;
+ if(!raw)area.value=['CONTEXTE DE MARCHÉ','Tendance supérieure (H4 / H1) :','Structure opérationnelle (M30 / M15) :','','CONFIRMATIONS TECHNIQUES','Liquidité / BOS / CHoCH :','Indicateurs et figures :','','PLAN DU SCÉNARIO','Direction :','Zone d’entrée :','Entrée indicative :','Stop Loss :','TP1 :','TP2 :','TP3 :','','CONDITIONS ET RISQUES','Déclencheur attendu (M5 / M1) :','Conditions d’activation :','Invalidation :','Risques / données manquantes :','','CONCLUSION','Décision et éléments restant à confirmer :'].join('\n');
+ else if(!/^CONTEXTE DE MARCHÉ/m.test(raw))area.value=`CONTEXTE DE MARCHÉ\n${raw}\n\nCONFIRMATIONS TECHNIQUES\nÀ compléter : structure H4/H1/M30/M15, liquidité, BOS/CHoCH et indicateurs.\n\nPLAN DU SCÉNARIO\nDirection / entrée / zone / SL / TP : vérifier les niveaux issus de l’analyse avant validation.\n\nCONDITIONS ET RISQUES\nDéclencheur M5/M1 : à préciser.\nInvalidation : à préciser.\nRisques et données manquantes : à préciser.\n\nCONCLUSION\nScénario conditionnel. Aucune exécution automatique.`;
+ saveScenarioDraft();$('scenarioSaveStatus').textContent='Structure professionnelle insérée. Complétez les rubriques sans ajouter de niveaux non vérifiés.';
+}
+async function saveScenarioFromUi(source='synthesis'){
+ const status=$('scenarioSaveStatus'),button=source==='ai'?$('saveAiScenarioDirect'):$('saveFinalScenario');
+ const instrument=$('myAnalysisInstrument')?.value||selectedSymbol,state=instrument===selectedSymbol?getAnalysisState():null;
+ const decision=state?.decision;const direction=source==='ai'&&['BUY','SELL'].includes(decision)?decision:($('myAnalysisDirection')?.value||'WAIT');
+ const candidate=state?.scenarios?.[direction.toLowerCase()],summary=$('scenarioFinalSummary')?.value?.trim()||'';
+ if(!['BUY','SELL'].includes(direction)){status.textContent='Choisissez BUY ou SELL avant d’enregistrer un scénario à surveiller.';return;}
+ if(!candidate||candidate.status!=='IDENTIFIED'){status.textContent=`Aucun scénario ${direction} identifié par le moteur pour ${instrument}. Impossible d’activer une surveillance sans niveaux techniques validés.`;return;}
+ const entry=Number(candidate.entry),low=Number(candidate.entryZoneLow),high=Number(candidate.entryZoneHigh),sl=Number(candidate.stopLoss),tps=(candidate.takeProfits||[]).map(Number).filter(Number.isFinite);
+ if(![entry,low,high,sl].every(v=>Number.isFinite(v)&&v>0)||!tps.length){status.textContent='Les niveaux du scénario sont incomplets. Complétez l’analyse avant de l’enregistrer.';return;}
+ if(!summary||summary.length<8){status.textContent='La synthèse est vide ou trop courte. Rédigez le compte rendu avant validation.';return;}
+ button.disabled=true;status.textContent='Validation des niveaux et enregistrement sécurisé…';
+ try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise pour enregistrer et surveiller un scénario.');
+  const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'save',instrument,direction,entry_low:low,entry_high:high,entry,stop_loss:sl,take_profits:tps.slice(0,3),summary,source,order_type:candidate.pendingOrderType||null}),cache:'no-store'});
+  const result=await response.json().catch(()=>({error:'Réponse serveur illisible.'}));if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
+  status.textContent=`Scénario ${direction} enregistré. Surveillance AUREVIA activée. ${result.telegram?.sent?'Notification Telegram envoyée.':result.telegram?.reason==='not_connected'?'Telegram non connecté.':'Notification Telegram non envoyée.'}`;
+  localStorage.removeItem('aurevia_scenario_summary_draft');if($('scenarioDraftBadge'))$('scenarioDraftBadge').textContent='ENREGISTRÉ';
+ }catch(error){status.textContent=error.message||'Erreur lors de l’enregistrement.';}finally{button.disabled=false;}
 }
 
 function readMyAnalysis(){
@@ -195,7 +236,7 @@ function saveMyAnalysis(){
 async function compareMyAnalysis(){
  const data=readMyAnalysis();saveMyAnalysis();
  const state=data.instrument===selectedSymbol?getAnalysisState():null;
- if(!state?.analysis||!state?.scenarios){$('independentAnalysisTitle').textContent='Analyse IA non disponible';$('independentAnalysisText').textContent='Lancez d’abord une analyse complète M30/M15/M5 sur le même instrument. AUREVIA ne simulera pas une confrontation sans données.';$('confrontationTitle').textContent='Confrontation en attente';$('confrontationText').textContent='Aucune confrontation réalisée : données techniques non disponibles pour cet instrument.';return;}
+ if(!state?.analysis||!state?.scenarios){$('independentAnalysisTitle').textContent='Analyse IA non disponible';$('independentAnalysisText').textContent='Lancez d’abord une analyse complète H4/H1/M30/M15/M5 sur le même instrument. AUREVIA ne simulera pas une confrontation sans données.';$('confrontationTitle').textContent='Confrontation en attente';$('confrontationText').textContent='Aucune confrontation réalisée : données techniques non disponibles pour cet instrument.';return;}
  const candidate=state.scenarios[data.direction.toLowerCase()],aiDirection=candidate?.status==='IDENTIFIED'?data.direction:'WAIT';
  $('independentAnalysisTitle').textContent=`Analyse IA · ${state.decision||'WAIT'} · ${state.score??'—'}/100`;
  $('independentAnalysisText').textContent=state.signalReason||'Analyse M30/M15/M5 disponible.';
@@ -209,7 +250,7 @@ async function compareMyAnalysis(){
  lines.push('La synthèse ci-dessous est éditable. L’enregistrement reste manuel et déclenche seul la surveillance.');
  $('confrontationTitle').textContent=candidate?.status==='IDENTIFIED'?'Confrontation IA / trader':'Divergence ou scénario IA non identifié';
  $('confrontationText').textContent=lines.join('\n\n');
- $('scenarioFinalSummary').value=lines.join('\n\n');
+ $('scenarioFinalSummary').value=lines.join('\n\n');saveScenarioDraft();if($('scenarioDraftBadge'))$('scenarioDraftBadge').textContent='SYNTHÈSE GÉNÉRÉE';
  let history=[];try{history=JSON.parse(localStorage.getItem('aurevia_analysis_history')||'[]')}catch{}
  history.unshift({date:new Date().toISOString(),instrument:data.instrument,timeframe:'M30/M15/M5',userDirection:data.direction,aiDirection,summary:candidate?.reason||state.signalReason||'Confrontation effectuée.'});
  localStorage.setItem('aurevia_analysis_history',JSON.stringify(history.slice(0,30)));renderAnalysisHistory();
@@ -379,7 +420,11 @@ function bindEvents(){
     $('riskMoneyOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('lotsOut').textContent=result.error?'—':result.lots.toFixed(2);$('lossOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('gainOut').textContent=result.error||result.gain===null?'—':`${result.gain.toFixed(2)} ${$('accountCurrency').value}`;$('rrOut').textContent=result.error||result.rr===null?'—':`1:${result.rr.toFixed(2)}`;$('riskPctOut').textContent=result.error||result.riskPercentActual===null?'—':`${result.riskPercentActual.toFixed(2)} %`;$('marginOut').textContent=result.error||result.margin===null?'—':`${result.margin.toFixed(2)} ${$('accountCurrency').value}`;
   });
   $('savePositionEdit')?.addEventListener('click',async()=>{try{const group=loadTradeGroups().find(g=>g.id===$('editGroupId').value);if(!group)throw new Error('Position introuvable.');const tps=group.children.map((_,i)=>Number($(`editTP${i+1}`).value));editOpenTradeGroup(group,{entry:Number($('editEntry').value),stopLoss:Number($('editSL').value),takeProfits:tps});persistTradeGroup(group);$('editPositionDialog').close();renderPositions();try{const result=await syncTradeGroupToSupabase(group);if(!result.synced)alert('Modification enregistrée localement ; connectez-vous pour la synchroniser.');}catch(error){alert(`Modification locale enregistrée, mais synchronisation cloud impossible : ${error.message}`);}}catch(error){alert(error.message);}});
-  $('addTradeBtn').addEventListener('click',()=>$('tradeDialog').showModal());
+  $('addTradeBtn').addEventListener('click',()=>{const dialog=$('tradeDialog');$('tradeForm').reset();if(!dialog.open)dialog.showModal();});
+  $('closeTradeDialog')?.addEventListener('click',()=>{$('tradeDialog').close('cancel');});
+  $('tradeDialog')?.addEventListener('click',event=>{if(event.target===$('tradeDialog'))$('tradeDialog').close('cancel');});
+  $('tradeDialog')?.addEventListener('cancel',()=>{$('tradeForm').reset();});
+  $('tradeDialog')?.addEventListener('close',()=>{$('tradeForm').reset();});
   $('journalRows')?.addEventListener('click',event=>{const btn=event.target.closest('[data-delete-journal]');if(!btn)return;if(!confirm('Supprimer définitivement cette entrée du journal local ?'))return;const result=deleteJournalTrade(btn.dataset.deleteJournal);if(!result.ok){alert(result.error);return;}renderJournal();renderJournalStats();});
   $('saveTrade').addEventListener('click',()=>{
     const result=addJournalTrade({instrument:$('tradeInstrument').value,direction:$('tradeDirection').value,result:Number($('tradeResult').value),date:$('tradeDate').value,note:$('tradeNote').value});
@@ -443,8 +488,14 @@ function bindEvents(){
   $('saveMyAnalysis').addEventListener('click',saveMyAnalysis);
   $('saveFinalScenario')?.addEventListener('click',()=>saveScenarioFromUi('synthesis'));
   $('saveAiScenarioDirect')?.addEventListener('click',()=>saveScenarioFromUi('ai'));
-  $('scenarioFinalSummary')?.addEventListener('input',()=>{if($('scenarioSaveStatus'))$('scenarioSaveStatus').textContent='Synthèse modifiée non enregistrée.';});
+  $('scenarioFinalSummary')?.addEventListener('input',()=>{if($('scenarioSaveStatus'))$('scenarioSaveStatus').textContent='Synthèse modifiée non enregistrée. Le brouillon est conservé sur cet appareil.';saveScenarioDraft();});
+  $('structureScenarioText')?.addEventListener('click',structureScenarioSummary);
+  $('restoreScenarioDraft')?.addEventListener('click',restoreScenarioDraft);
   $('compareMyAnalysis').addEventListener('click',compareMyAnalysis);
+  updateScenarioEditorMeta();
+  if(localStorage.getItem('aurevia_scenario_summary_draft'))restoreScenarioDraft();
+  $('myAnalysisInstrument')?.addEventListener('change',updateScenarioEditorMeta);
+  $('myAnalysisDirection')?.addEventListener('change',updateScenarioEditorMeta);
   $('clearAnalysisHistory').addEventListener('click',()=>{localStorage.removeItem('aurevia_analysis_history');renderAnalysisHistory();});
   $('createPositionBtn').addEventListener('click',createPositionFromForm);
   $('savePartialClose').addEventListener('click',savePartialCloseFromForm);
@@ -471,6 +522,6 @@ function bindEvents(){
   $('reduceMotion').checked=localStorage.getItem('aurevia_reduce_motion')==='1';document.documentElement.classList.toggle('reduce-motion',$('reduceMotion').checked);initAppInstallation();
 }
 let authenticatedBooted=false;
-function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;restoreMyAnalysis();refreshScenarioWatchList();initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarWidget'));initEconomicCalendar($('calendarStandalone'));updateClock();setInterval(updateClock,1000);mountTradingView();mountDxyChart();mountTickerTape();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';}
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;restoreMyAnalysis();refreshScenarioWatchList();initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarWidget'),getAnalysisAccessToken);initEconomicCalendar($('calendarStandalone'),getAnalysisAccessToken);updateClock();setInterval(updateClock,1000);mountTradingView();mountDxyChart();mountTickerTape();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';}
 function init(){bindEvents();if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth();}
 init();

@@ -1,3 +1,9 @@
+## 2.3.46 — éditeur professionnel de synthèse finale
+- Refonte de l’espace « Synthèse finale du scénario » en éditeur de rapport structuré, avec métadonnées, état de brouillon, compteur de caractères et zone d’édition agrandie.
+- Ajout d’une structuration guidée du rapport (contexte, confirmations, plan, risques, conclusion) sans inventer de données de marché.
+- Brouillon conservé localement et restaurable sur le même appareil.
+- Ajout de l’enregistrement manuel via l’API sécurisée des scénarios : seuls les scénarios BUY/SELL réellement identifiés et dotés de niveaux valides peuvent activer la surveillance. Aucun ordre broker n’est exécuté.
+
 ## 2.3.43 — suivi au prix simple du marché
 - Entrées, TP et SL comparés au dernier prix de marché (`Last Price`), sans dépendance BID/ASK.
 - `trade-watch` récupère le prix via Twelve Data REST `/price` lorsque le cache de cotation est absent ou périmé.
@@ -293,3 +299,24 @@
 - L'IA retourne deux scénarios conditionnels indépendants, BUY et SELL, même avant déclencheur M5/M1.
 - L'interface affiche les scénarios identifiés, leurs zones, SL/TP, conditions d'activation et invalidation.
 - Les scénarios incomplets, incohérents ou hors de l'historique analysé sont rejetés.
+
+## V2.3.44 — Refonte initiale du contexte multi-timeframe
+- Ajout du chargement OHLC H4 et H1 dans le moteur d'analyse, en complément de M30/M15/M5.
+- H4 et H1 participent désormais au score de confluence (20 points cumulés) et les conflits de contexte sont explicitement signalés sans blocage mécanique.
+- Extension des tableaux, cartes de structure et détection de figures à H4/H1.
+- Clarification de l'affichage : score de confluence sur 100, jamais présenté comme une probabilité statistique.
+- Prompt IA mis à jour pour confronter H4/H1 à la structure opérationnelle M30/M15 et conserver M5 comme déclencheur d'entrée.
+- Compatibilité conservée pour les appels historiques du endpoint IA où H4/H1 ne sont pas fournis.
+
+## V2.3.45 — Génération autonome des scénarios candidats
+- Ajout d’un moteur technique déterministe BUY/SELL indépendant de la réponse IA.
+- Calcul de scénarios candidats à partir des biais H4/H1/M30/M15/M5, EMA200, MACD, RSI, BOS/CHoCH, sweeps et ATR.
+- Affichage des scénarios candidats même si le service IA est indisponible ; l’IA peut les compléter mais une réponse vide ne les efface plus.
+- Distinction explicite entre score de confluence et probabilité statistique.
+- Les scénarios sont indicatifs, restent soumis à validation et ne déclenchent aucun ordre broker.
+- Ajout de tests dédiés à la génération, aux données périmées et à l’absence de contexte directionnel.
+
+## V2.3.47 — calendrier économique et fermeture du formulaire journal
+- Le calendrier USD passe par une fonction Netlify serveur authentifiée afin d’éviter les blocages CORS du navigateur et d’unifier les données des deux vues.
+- Ajout d’un état d’erreur explicite et d’un bouton Réessayer ; aucune donnée économique n’est inventée.
+- La fenêtre « Ajouter un trade clôturé » possède une fermeture explicite, une fermeture par clic sur l’arrière-plan et une remise à zéro sûre du formulaire à la fermeture.

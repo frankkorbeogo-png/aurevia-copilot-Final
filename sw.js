@@ -1,7 +1,7 @@
-const CACHE = 'aurevia-shell-v2.3.29';
+const CACHE = 'aurevia-shell-v2.3.45';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/analysis.js', '/indicators.js',
-  '/structure.js', '/patterns.js', '/risk.js', '/journal.js', '/trade-management.js', '/confluence.js', '/fibonacci.js', '/volume-profile.js',
+  '/structure.js', '/patterns.js', '/risk.js', '/journal.js', '/trade-management.js', '/confluence.js', '/fibonacci.js', '/volume-profile.js', '/opportunity-engine.js',
   '/auth.js', '/news.js', '/galaxy.js', '/manifest.webmanifest',
   '/assets/aurevia-logo-mark.png', '/assets/aurevia-app-icon.png',
   '/assets/aurevia-app-icon-192.png', '/assets/aurevia-app-icon-maskable.png',
