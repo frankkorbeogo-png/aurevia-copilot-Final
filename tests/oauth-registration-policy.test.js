@@ -9,3 +9,10 @@ test('le retour OAuth refuse une nouvelle identité créée via le bouton connex
 test('le retour OAuth refuse une inscription avec une identité existante',()=>{assert.match(auth,/intent\.mode==='signup'&&createdAt<intent\.startedAt-5000/);assert.match(auth,/EXISTING_ACCOUNT/);});
 test('le endpoint de refus ne supprime que le compte créé pendant la tentative de connexion',()=>{assert.match(endpoint,/verifyBearerUser/);assert.match(endpoint,/context\.user\.created_at/);assert.match(endpoint,/startedAt-30000/);assert.match(endpoint,/auth\/v1\/admin\/users/);});
 test('la fonction SQL autorise le premier claim sans dépendre exclusivement de auth.sessions',()=>{assert.match(migration,/if v_created_at is null then[\s\S]*if not p_claim then[\s\S]*return false/);assert.match(migration,/app_private\.aurevia_user_sessions/);});
+
+test('les boutons de connexion sont liés avant la restauration de session Supabase',()=>{
+ const init=auth.slice(auth.indexOf('export async function initAuth()'),auth.indexOf('export async function createTelegramPairingCode'));
+ assert.ok(init.indexOf("bindGoogleAuth('googleLoginGateBtn','login')")<init.indexOf('supabase.auth.getSession()'));
+ assert.ok(init.indexOf("bindGoogleAuth('googleSignupGateBtn','signup')")<init.indexOf('supabase.auth.getSession()'));
+ assert.match(init,/button\.dataset\.authBound==='1'/);
+});

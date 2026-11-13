@@ -448,3 +448,8 @@
 - Saisie manuelle du lot et du mode de gestion par commande Telegram privée.
 - Création atomique des positions et du journal après validation des paramètres broker propres à l'instrument.
 - Aucun ordre broker/MT5 n'est exécuté.
+
+
+## V2.3.95 — Authentification
+- Liaison immédiate des boutons Google avant la restauration de session.
+- Affichage des erreurs et nouvelle tentative au clic en cas d’échec du chargement Supabase.
