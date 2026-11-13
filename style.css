@@ -488,3 +488,10 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 
 #page-marches .calendar-frame,#page-actualites .calendar-frame{height:auto;min-height:220px;max-height:680px;overflow:auto;background:#000;padding:12px}
 #page-marches .calendar-frame .tradingview-widget-container,#page-actualites .calendar-frame .tradingview-widget-container{min-height:420px;background:#000}
+
+/* V2.3.62a — calendrier TradingView visible immédiatement */
+.aurevia-calendar-tv{margin-top:18px;padding:14px;background:#050505;border:1px solid rgba(151,111,255,.28);border-radius:14px;color:#f4f0ff}
+.calendar-tv-heading{font-weight:700;letter-spacing:.02em;margin-bottom:6px}
+.calendar-tv-description{color:#b9b2c9;font-size:.85rem;margin:0 0 12px}
+.aurevia-calendar-tv-mount{width:100%;min-height:420px;background:#000;border-radius:10px;overflow:hidden}
+.aurevia-calendar-tv-mount .tradingview-widget-container{min-height:420px}

@@ -36,10 +36,13 @@ export function initEconomicCalendar(container,getToken){
  let disposed=false;
  const root=document.createElement('div');root.className='aurevia-calendar-root';
  const structured=document.createElement('div');structured.className='aurevia-calendar-structured';
- const tvSection=document.createElement('details');tvSection.className='aurevia-calendar-tv';
- const tvSummary=document.createElement('summary');tvSummary.textContent='Ouvrir le calendrier TradingView complémentaire';tvSection.append(tvSummary);
- const tvMount=document.createElement('div');tvMount.className='aurevia-calendar-tv-mount';tvSection.append(tvMount);
+ const tvSection=document.createElement('section');tvSection.className='aurevia-calendar-tv';
+ const tvHeading=el('div','calendar-tv-heading','Calendrier économique TradingView');
+ const tvDescription=el('p','calendar-tv-description','Vue interactive complémentaire · fond noir · indépendante des données utilisées par le moteur d’analyse.');
+ const tvMount=document.createElement('div');tvMount.className='aurevia-calendar-tv-mount';
+ tvSection.append(tvHeading,tvDescription,tvMount);
  root.append(structured,tvSection);container.replaceChildren(root);
+ // Le widget est monté immédiatement : il ne dépend plus d’un clic sur un accordéon.
  const load=async()=>{
   structured.replaceChildren(el('p','calendar-loading','Chargement des événements économiques…'));
   try{
@@ -52,6 +55,6 @@ export function initEconomicCalendar(container,getToken){
   }catch(error){if(!disposed)renderError(structured,error.message,load);}
  };
  load();
- tvSummary.addEventListener('click',()=>{if(!tvMount.childElementCount)renderTradingView(tvMount);});
+ renderTradingView(tvMount);
  return ()=>{disposed=true;};
 }

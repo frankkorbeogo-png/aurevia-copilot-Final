@@ -8,11 +8,12 @@ test('le calendrier structuré est réellement chargé depuis son endpoint authe
  assert.match(s,/renderCalendar\(structured,payload\)/);
  assert.match(s,/renderError\(structured/);
 });
-test('TradingView reste complémentaire et se charge à la demande',async()=>{
+test('TradingView est visible immédiatement en complément du calendrier structuré',async()=>{
  const s=await read('news.js');
- assert.match(s,/details/);
+ assert.match(s,/Calendrier économique TradingView/);
  assert.match(s,/renderTradingView\(tvMount\)/);
  assert.match(s,/colorTheme:'dark'/);
+ assert.doesNotMatch(s,/tvSummary/);
 });
 test('la source du calendrier d’affichage reste séparée du contexte macro',async()=>{
  const s=await read('news.js');
@@ -20,7 +21,7 @@ test('la source du calendrier d’affichage reste séparée du contexte macro',a
  assert.doesNotMatch(s,/\/api\/macro-context/);
 });
 test('le cache PWA est versionné pour la mise à jour',async()=>{
- const s=await read('sw.js');assert.match(s,/aurevia-shell-v2\.3\.61/);
+ const s=await read('sw.js');assert.match(s,/aurevia-shell-v2\.3\.62/);
 });
 test('la route publique interne pointe vers la fonction serveur calendrier',async()=>{
  const s=await read('netlify.toml');

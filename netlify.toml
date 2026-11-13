@@ -18,6 +18,11 @@
   to = "/.netlify/functions/ai-analysis"
   status = 200
 
+[[redirects]]
+  from = "/api/ai-confrontation"
+  to = "/.netlify/functions/ai-confrontation"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]

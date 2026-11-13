@@ -1,99 +1,51 @@
 const finite = Number.isFinite;
-const round = (n, d=2) => Number.isFinite(n) ? Number(n.toFixed(d)) : null;
-const biasFor = side => side === 'BUY' ? 'haussier' : 'baissier';
+const round = (n, d=2) => finite(n) ? Number(n.toFixed(d)) : null;
 
-/** Scénarios conditionnels fondés sur plusieurs indices indépendants.
- * Le moteur ne transforme jamais un scénario candidat en ordre confirmé.
- */
+/** M15 is the sole decision timeframe. Other timeframes are deliberately ignored. */
 export function generateOpportunityScenarios({analyses, frames, staleFrames=[]}) {
-  const result = { buy: null, sell: null, engine: 'technical-candidate-v3-single-setup' };
-  if (!analyses || !frames || staleFrames.length) return result;
-  const current = analyses.M5?.last?.close ?? analyses.M15?.last?.close;
-  const atr = analyses.M5?.indicators?.atr14 || analyses.M15?.indicators?.atr14;
-  if (!finite(current) || !finite(atr) || atr <= 0) return result;
-
-  const tfWeights = {H4:1.5,H1:1.5,M30:3,M15:2.5,M5:1};
-  for (const side of ['BUY','SELL']) {
-    const expected = biasFor(side);
-    let score=0, operationalVotes=0, directionalVotes=0;
-    const reasons=[], conditions=[], conflicts=[];
-    for (const [tf,w] of Object.entries(tfWeights)) {
-      const a=analyses[tf]; if (!a) continue;
-      const bias=a.structure?.bias;
-      if (bias===expected) {
-        score += w*5; directionalVotes++;
-        if (['M30','M15'].includes(tf)) operationalVotes++;
-        reasons.push(`${tf} structure ${expected}`);
-      } else if (bias && ['haussier','baissier'].includes(bias)) {
-        conflicts.push(`${tf} structure ${bias}`);
-      }
-      const close=a.last?.close, ema=a.indicators?.ema200;
-      if (finite(close)&&finite(ema)) {
-        const aligned=side==='BUY'?close>ema:close<ema;
-        if(aligned){score+=w*2.2;if(['M30','M15'].includes(tf))operationalVotes++;directionalVotes++;reasons.push(`${tf} prix ${side==='BUY'?'au-dessus':'au-dessous'} EMA200`);}
-      }
-      const hist=a.indicators?.macd?.histogram;
-      if(finite(hist)&&(side==='BUY'?hist>0:hist<0)){
-        score+=w*1.5;if(['M30','M15'].includes(tf))operationalVotes++;directionalVotes++;
-        conditions.push(`MACD ${tf} orienté ${side}`);
-      }
-      const rsi=a.indicators?.rsi14;
-      if(finite(rsi)&&(side==='BUY'?rsi>=50&&rsi<75:rsi<=50&&rsi>25)){
-        score+=w*.9;if(['M30','M15'].includes(tf))operationalVotes++;
-        conditions.push(`RSI ${tf} compatible (${round(rsi,1)})`);
-      }
-    }
-    const m30=analyses.M30,m15=analyses.M15,m5=analyses.M5;
-    const relevantBreak=[...(m30?.structure?.breaks||[]),...(m15?.structure?.breaks||[])].some(x=>String(x.type).toLowerCase().includes(expected));
-    const sweep=(m5?.structure?.sweeps||[]).some(x=>side==='BUY'?String(x.type).includes('sell-side'):String(x.type).includes('buy-side'));
-    const m5Trigger=(m5?.structure?.breaks||[]).some(x=>String(x.type).toLowerCase().includes(expected));
-    if(relevantBreak){score+=10;conditions.push('BOS/CHoCH cohérent sur M30 ou M15');}
-    if(sweep){score+=8;conditions.push('Sweep de liquidité M5');}
-    if(m5Trigger){score+=10;conditions.push('Clôture M5 confirmant le déclencheur');}
-
-    const structureBias=m30?.structure?.bias;
-    if(structureBias && ['haussier','baissier'].includes(structureBias)&&structureBias!==expected){
-      score-=10;conflicts.push(`M30 structure ${structureBias}`);
-    }
+  const m15=analyses?.M15;
+  const candles=frames?.M15?.candles;
+  const result={buy:null,sell:null,engine:'aurevia-m15-deterministic-v1',decisionTimeframe:'M15'};
+  if(!m15?.last || !m15?.indicators || !Array.isArray(candles) || candles.length<30 || staleFrames.includes('M15')) return result;
+  const price=m15.last.close, ind=m15.indicators, st=m15.structure||{};
+  const atr=ind.atr14;
+  if(!finite(price)||!finite(atr)||atr<=0) return result;
+  const ema20=ind.ema20,ema50=ind.ema50,ema200=ind.ema200,rsi=ind.rsi14,macd=ind.macd?.histogram;
+  const swings=st.swings||[], highs=swings.filter(x=>x.type==='high'&&finite(x.price)), lows=swings.filter(x=>x.type==='low'&&finite(x.price));
+  const recentHigh=highs.at(-1)?.price, recentLow=lows.at(-1)?.price;
+  const activeFvg=(st.fvg||[]).filter(x=>!x.mitigated), activeOb=(st.orderBlocks||[]).filter(x=>!x.mitigated);
+  const bb=ind.bollinger;
+  for(const side of ['BUY','SELL']){
+    const buy=side==='BUY'; let score=0; const components=[];
+    const add=(label,ok,weight)=>{components.push({label,passed:Boolean(ok),weight});if(ok)score+=weight;};
+    add('Structure M15',st.bias===(buy?'haussier':'baissier'),20);
+    add('Prix vs EMA20',finite(ema20)&&(buy?price>ema20:price<ema20),10);
+    add('Prix vs EMA50',finite(ema50)&&(buy?price>ema50:price<ema50),10);
+    add('Prix vs EMA200',finite(ema200)&&(buy?price>ema200:price<ema200),10);
+    add('RSI M15',finite(rsi)&&(buy?rsi>=50&&rsi<=72:rsi<=50&&rsi>=28),10);
+    add('MACD M15',finite(macd)&&(buy?macd>0:macd<0),10);
+    const br=(st.breaks||[]).some(x=>String(x.type).toLowerCase().includes(buy?'haussier':'baissier'));
+    add('BOS / CHoCH confirmé M15',br,10);
+    const sweep=(st.sweeps||[]).some(x=>buy?String(x.type).includes('sell-side'):String(x.type).includes('buy-side'));
+    add('Sweep de liquidité M15',sweep,5);
+    const pattern=(m15.patterns||[]).some(x=>{const n=String(x.name||'').toLowerCase();return buy?/bull|hauss|morning|hammer|engulf|breakout/.test(n):/bear|baiss|evening|shooting|engulf|breakdown/.test(n);});
+    add('Figure M15 compatible',pattern,5);
+    const zone=buy?activeOb.find(x=>x.type?.includes('bullish'))||activeFvg.find(x=>x.type?.includes('bullish')):activeOb.find(x=>x.type?.includes('bearish'))||activeFvg.find(x=>x.type?.includes('bearish'));
+    add('Zone technique M15',Boolean(zone),5);
     score=Math.max(0,Math.min(100,Math.round(score)));
-    // Un seul côté BUY ou SELL peut suffire : on exige au moins une confluence
-    // opérationnelle M30/M15 et un score minimal. Il n'est pas nécessaire que
-    // les deux directions soient identifiées, ni que M30 et M15 soient toutes
-    // deux alignées. H4/H1 pondèrent le contexte sans créer seuls un scénario.
-    const hasOperationalEvidence=operationalVotes>=1 && score>=22;
-
-    const swings=m15?.structure?.swings?.length?m15.structure.swings:(m30?.structure?.swings||[]);
-    const highs=swings.filter(x=>x.type==='high').map(x=>x.price).filter(finite);
-    const lows=swings.filter(x=>x.type==='low').map(x=>x.price).filter(finite);
-    const pad=atr*.25,risk=atr*1.5;
-    let entry=current,stop,targets;
-    if(side==='BUY'){
-      const support=lows.filter(x=>x<=current).at(-1);
-      entry=support&&current-support<=atr*2?(support+current)/2:current+atr*.25;
-      stop=Math.min(entry-risk,finite(support)?support-atr*.25:entry-risk);
-      const r=Math.max(entry-stop,atr*.8);targets=[entry+r,entry+r*2,entry+r*3];
-    }else{
-      const resistance=highs.filter(x=>x>=current).at(-1);
-      entry=resistance&&resistance-current<=atr*2?(resistance+current)/2:current-atr*.25;
-      stop=Math.max(entry+risk,finite(resistance)?resistance+atr*.25:entry+risk);
-      const r=Math.max(stop-entry,atr*.8);targets=[entry-r,entry-r*2,entry-r*3];
-    }
-    const conflictsText=conflicts.length?` Conflits à surveiller : ${conflicts.join('; ')}.`:'';
-    const pendingOrderType=side==='BUY'?(entry<current?'BUY LIMIT':entry>current?'BUY STOP':null):(entry>current?'SELL LIMIT':entry<current?'SELL STOP':null);
-    const orderPrice=round(entry);
-    result[side.toLowerCase()]={status:hasOperationalEvidence?'IDENTIFIED':'WATCH',side,score,entryStatus:m5Trigger&&sweep?'CONFIRMED':'PENDING',
-      confidenceLabel:hasOperationalEvidence?'Confluence technique détectée':'Plan indicatif · confirmations insuffisantes',
-      probability:null,probabilityStatus:'NON_CALIBRÉE',
-      pendingOrderType,triggerPrice:pendingOrderType?.includes('STOP')?orderPrice:null,limitPrice:pendingOrderType?.includes('LIMIT')?orderPrice:null,
-      orderRationale:pendingOrderType?.includes('LIMIT')?'Ordre limite proposé sur la zone de repli (support/résistance) avant confirmation M5.':pendingOrderType?.includes('STOP')?'Ordre stop proposé au franchissement du niveau de déclenchement ; attendre la clôture M5 de confirmation.':'Type d’ordre non déterminable : zone confondue avec le prix actuel, attendre un meilleur emplacement.',
-      entry:orderPrice,entryZoneLow:round(entry-pad),entryZoneHigh:round(entry+pad),stopLoss:round(stop),
-      takeProfits:targets.map(x=>round(x)),
-      reason:`Plan conditionnel ${side} calculé à partir du dernier cours et de l’ATR. ${operationalVotes} confirmation(s) opérationnelle(s) M30/M15. Score de confluence ${score}/100, non statistique. ${hasOperationalEvidence?'Confluence technique suffisante pour surveiller ce scénario.':'Confluence encore faible : niveaux indicatifs, ne pas traiter sans confirmations supplémentaires.'} ${reasons.join('; ')}.${conflictsText}`,
-      activationConditions:[...conditions,'Attendre le retest de la zone et vérifier que la structure M30/M15 reste valide.'],
-      entryTrigger:m5Trigger&&sweep?'Sweep et clôture M5 dans le sens du scénario détectés.':'Attendre un sweep de liquidité puis un BOS/CHoCH confirmé en clôture M5.',
-      invalidation:`Invalidation si clôture au-delà du stop indicatif ${round(stop)} ou invalidation de la structure M30.`,
-      riskReward:[1,2,3],dataBasis:'OHLC Twelve Data · prix indicatif Last Price · ATR M5/M15',
-      warning:'Scénario candidat uniquement : aucun ordre n’est exécuté. Vérifier le prix, le spread et le risque.'};
+    const directionOk=st.bias===(buy?'haussier':'baissier') || br || (finite(ema20)&&finite(ema50)&&(buy?ema20>ema50:ema20<ema50));
+    const identified=directionOk&&score>=45;
+    let entry=price, stop, targets, zoneLow,zoneHigh;
+    if(zone&&finite(zone.low)&&finite(zone.high)){zoneLow=Math.min(zone.low,zone.high);zoneHigh=Math.max(zone.low,zone.high);entry=(zoneLow+zoneHigh)/2;}
+    else if(buy){entry=price-atr*.15;zoneLow=entry-atr*.2;zoneHigh=entry+atr*.2;}
+    else{entry=price+atr*.15;zoneLow=entry-atr*.2;zoneHigh=entry+atr*.2;}
+    const risk=Math.max(atr*1.25,Math.abs(entry-(buy?recentLow:recentHigh)||0)+atr*.2);
+    stop=buy?Math.min(entry-risk,finite(recentLow)?recentLow-atr*.15:entry-risk):Math.max(entry+risk,finite(recentHigh)?recentHigh+atr*.15:entry+risk);
+    const r=Math.abs(entry-stop);targets=buy?[entry+r,entry+r*2,entry+r*3]:[entry-r,entry-r*2,entry-r*3];
+    const order=buy?(entry<price?'BUY LIMIT':entry>price?'BUY STOP':null):(entry>price?'SELL LIMIT':entry<price?'SELL STOP':null);
+    const validOrder=Boolean(order)&&finite(stop)&&targets.every(finite);
+    const status=identified&&validOrder?'IDENTIFIED':'WATCH';
+    result[side.toLowerCase()]={status,side,score,scoreComponents:components,confidenceLabel:status==='IDENTIFIED'?'Configuration M15 détectée':'Configuration M15 à confirmer',entryStatus:'WAITING_TRIGGER',probability:null,probabilityStatus:'NON_CALIBRÉE',pendingOrderType:validOrder?order:null,triggerPrice:validOrder&&order.includes('STOP')?round(entry):null,limitPrice:validOrder&&order.includes('LIMIT')?round(entry):null,orderRationale:validOrder?(order.includes('LIMIT')?'Zone de repli M15 : ordre limite indicatif.':'Franchissement d’un niveau M15 : ordre stop indicatif.'):'Le prix actuel ne permet pas de distinguer un ordre limite ou stop.',entry:validOrder?round(entry):null,entryZoneLow:round(zoneLow),entryZoneHigh:round(zoneHigh),stopLoss:round(stop),takeProfits:targets.map(x=>round(x)),reason:`Analyse exclusivement M15. Score de confluence technique ${score}/100 (pas une probabilité). ${components.filter(x=>x.passed).map(x=>x.label).join(', ')||'Aucun facteur validé'}.`,activationConditions:components.filter(x=>!x.passed).map(x=>`Confirmer : ${x.label}`),entryTrigger:'Attendre une clôture M15 qui confirme le sens du scénario ; M5/M1 peuvent ensuite affiner le timing sans modifier le score M15.',invalidation:`Invalidation si clôture M15 au-delà du Stop Loss ${round(stop)} ou rupture de la structure M15.`,riskReward:[1,2,3],dataBasis:'OHLC M15 · indicateurs M15 · ATR M15',warning:'Proposition indicative uniquement. Aucune exécution automatique.'};
   }
   return result;
 }

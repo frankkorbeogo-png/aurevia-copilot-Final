@@ -26,7 +26,7 @@ test('la reconnexion Telegram réactive les commandes après une déliaison',asy
 });
 test('les plans indicatifs restent distincts des scénarios identifiés et des probabilités',async()=>{
  const source=await readFile(new URL('../opportunity-engine.js',import.meta.url),'utf8');
- assert.match(source,/status:hasOperationalEvidence\?'IDENTIFIED':'WATCH'/);
+ assert.match(source,/status=identified&&validOrder\?'IDENTIFIED':'WATCH'/);
  assert.match(source,/probability:null/);
  assert.match(source,/probabilityStatus:'NON_CALIBRÉE'/);
 });
