@@ -1,3 +1,4 @@
+import { calculateContractPnl, normalizeContractSpec, validateContractSpec } from './contract-engine.js';
 const STORAGE_KEY = 'aurevia-position-groups-v2';
 const JOURNAL_KEY = 'aurevia-linked-journal-v2';
 const id = () => globalThis.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});
@@ -15,13 +16,15 @@ export function splitVolume(total, count, step=0.01) {
 }
 
 export function createTradeGroup(input) {
-  const {mode='unique', instrument, direction, lot, lotStep=0.01, entry, stopLoss, takeProfits=[], autoJournal=true, contractSize=null, quoteToAccount=1, feesPerLot=0, orderType='MARKET', triggerPrice=null, limitPrice=null, expiresAt=null} = input;
+  const {mode='unique', instrument, direction, lot, lotStep=0.01, entry, stopLoss, takeProfits=[], autoJournal=true, contractSize=null, quoteToAccount=1, feesPerLot=0, contractSpec=null, brokerSnapshot=null, orderType='MARKET', triggerPrice=null, limitPrice=null, expiresAt=null} = input;
   if (!instrument?.trim() || !['BUY','SELL'].includes(direction) || !Number.isFinite(lot) || lot<=0 || !Number.isFinite(entry) || entry<=0 || !Number.isFinite(stopLoss) || stopLoss<=0) throw new Error('Paramètres de position incomplets ou invalides.');
   if(!['unique','separate'].includes(mode)) throw new Error('Mode de gestion invalide.');
   if(!Number.isFinite(lotStep)||lotStep<=0) throw new Error('Le pas de volume broker doit être strictement positif.');
   if(Math.abs(lot/lotStep-Math.round(lot/lotStep))>1e-7) throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');
   if(!Number.isFinite(quoteToAccount)||quoteToAccount<=0||!Number.isFinite(feesPerLot)||feesPerLot<0) throw new Error('Conversion ou frais broker invalides.');
   if(contractSize!==null&&(!Number.isFinite(contractSize)||contractSize<=0)) throw new Error('La taille du contrat doit être positive.');
+  let snapshot = contractSpec ? normalizeContractSpec(contractSpec) : null;
+  if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);if(Math.abs(lot/checked.spec.lotStep-Math.round(lot/checked.spec.lotStep))>1e-7)throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');if(lot<checked.spec.minLot||(checked.spec.maxLot!==null&&lot>checked.spec.maxLot))throw new Error('Le lot est en dehors des limites du broker.');}
   const allowedOrders=['MARKET','BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'];
   if(!allowedOrders.includes(orderType))throw new Error('Type d’ordre non reconnu.');
   if(orderType!=='MARKET'&&((orderType.startsWith('BUY')&&direction!=='BUY')||(orderType.startsWith('SELL')&&direction!=='SELL')))throw new Error('Le type d’ordre ne correspond pas à la direction BUY/SELL.');
@@ -38,30 +41,29 @@ export function createTradeGroup(input) {
   if(tps.some(tp=>direction==='BUY'?tp.price<=entry:tp.price>=entry))throw new Error('Les take-profits doivent être du côté favorable de l’entrée.');
   if (!tps.length) throw new Error('Sélectionnez au moins un take-profit.');
   const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStep) : tps.map(()=>lot);
+  if(snapshot&&volumes.some(volume=>volume<snapshot.minLot||(snapshot.maxLot!==null&&volume>snapshot.maxLot)))throw new Error('Chaque volume enfant doit respecter les limites minimum et maximum du broker.');
   const groupId=id();
   const initialStatus=orderType==='MARKET'?'OPEN':'PENDING';
   const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:initialStatus,triggerSeen:false,activatedAt:orderType==='MARKET'?new Date().toISOString():null,activationPrice:orderType==='MARKET'?entry:null,realizedPnl:0,fees:0,closes:[],createdAt:new Date().toISOString()}));
   const effectiveLimitPrice = orderType.endsWith('LIMIT') && !orderType.includes('STOP LIMIT') ? (limitPrice ?? entry) : limitPrice;
   if(expiresAt){const expiry=new Date(expiresAt);if(Number.isNaN(expiry.getTime())||expiry.getTime()<=Date.now())throw new Error('La date d’expiration doit être valide et située dans le futur.');if(orderType==='MARKET')throw new Error('Une position au marché ne possède pas de date d’expiration d’ordre en attente.');}
-  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep,children,autoJournal:Boolean(autoJournal),contractSize,quoteToAccount,feesPerLot,status:'OPEN',createdAt:new Date().toISOString()};
+  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep: snapshot?.lotStep ?? lotStep,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt:new Date().toISOString()};
   return group;
 }
 
-export function calculateClosePnl({direction,entry,exit,volume,contractSize,quoteToAccount=1,fees=0}) {
-  if(!['BUY','SELL'].includes(direction) || ![entry,exit,volume,contractSize,quoteToAccount,fees].every(Number.isFinite) || entry<=0 || exit<=0 || volume<=0 || contractSize<=0 || quoteToAccount<=0 || fees<0) throw new Error('Données de clôture ou spécifications contractuelles invalides.');
-  const move=(direction==='BUY'?exit-entry:entry-exit);
-  const gross=move*volume*contractSize*quoteToAccount;
-  return {gross:round(gross,2),fees:round(fees,2),net:round(gross-fees,2)};
+export function calculateClosePnl({direction,entry,exit,volume,contractSize,quoteToAccount=1,fees=0,contractSpec=null}) {
+  const result=calculateContractPnl({direction,entry,exit,volume,contractSpec,contractSize,quoteToAccount,fees});
+  return result.currency?{gross:result.gross,fees:result.fees,net:result.net,currency:result.currency}:{gross:result.gross,fees:result.fees,net:result.net};
 }
 
-export function recordPartialClose(group, childId, {volume,exit,contractSize=group.contractSize,quoteToAccount=group.quoteToAccount??1,feesPerLot=group.feesPerLot??0,fees=null}) {
+export function recordPartialClose(group, childId, {volume,exit,contractSize=group.contractSize,quoteToAccount=group.quoteToAccount??1,feesPerLot=group.feesPerLot??0,contractSpec=group.contractSpec||null,fees=null}) {
   const child=group.children.find(x=>x.id===childId);
   if(!child || child.status!=='OPEN') throw new Error(child?.status==='PENDING'?'Le trade est encore en attente de son prix d’entrée.':'Position introuvable ou déjà clôturée.');
   if(!Number.isFinite(volume)||volume<=0||volume>child.remainingLot+1e-9) throw new Error('Le volume clôturé doit être positif et ne peut pas dépasser le volume restant.');
   if(group.lotStep&&Math.abs(volume/group.lotStep-Math.round(volume/group.lotStep))>1e-7)throw new Error('Le volume clôturé ne respecte pas le pas broker.');
-  if(!Number.isFinite(contractSize)||contractSize<=0)throw new Error('Renseignez la taille du contrat du broker avant de calculer le résultat réel.');
-  const feeAmount=fees===null?volume*feesPerLot:fees;
-  const pnl=calculateClosePnl({direction:child.direction,entry:child.entry,exit,volume,contractSize,quoteToAccount,fees:feeAmount});
+  if(!contractSpec&&(!Number.isFinite(contractSize)||contractSize<=0))throw new Error('Renseignez les spécifications contractuelles du broker avant de calculer le résultat réel.');
+  const feeAmount=fees===null?volume*(contractSpec?.feesPerLot??feesPerLot):fees;
+  const pnl=calculateClosePnl({direction:child.direction,entry:child.entry,exit,volume,contractSize,quoteToAccount,fees:feeAmount,contractSpec});
   child.closes.push({id:id(),volume,exit, ...pnl,closedAt:new Date().toISOString()});
   child.remainingLot=round(Math.max(0,child.remainingLot-volume),8);
   child.realizedPnl=round(child.realizedPnl+pnl.net,2); child.fees=round(child.fees+pnl.fees,2);

@@ -92,3 +92,11 @@ test('les ordres en attente démarrent PENDING et les ordres MARKET restent OPEN
  assert.equal(pending.children[0].status,'PENDING');
  assert.equal(market.children[0].status,'OPEN');
 });
+
+test('snapshot contractuel conservé sur le groupe et utilisé pour les clôtures partielles',()=>{
+ const contractSpec={brokerName:'Broker A',accountType:'Raw',accountCurrency:'USD',calculationType:'contract',contractSize:10,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:5,feesPerLot:2};
+ const group=createTradeGroup({mode:'unique',instrument:'EUR/USD',direction:'BUY',lot:0.1,entry:1.1,stopLoss:1.09,takeProfits:[{price:1.12}],contractSpec});
+ assert.equal(group.contractSpec.contractSize,10);assert.equal(group.brokerSnapshot.brokerName,'Broker A');
+ const closed=recordPartialClose(group,group.children[0].id,{volume:0.1,exit:1.11});
+ assert.equal(closed.pnl.gross,0.01);assert.equal(closed.pnl.fees,0.2);assert.equal(closed.pnl.net,-0.19);
+});

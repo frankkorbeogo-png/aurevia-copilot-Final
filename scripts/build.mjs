@@ -2,7 +2,7 @@ import { cp, mkdir, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 const root=process.cwd();
 const dist=resolve(root,'dist');
-const files=['index.html','style.css','app.js','analysis.js','indicators.js','structure.js','patterns.js','risk.js','journal.js','trade-management.js','auth.js','news.js','galaxy.js','confluence.js','fibonacci.js','volume-profile.js','opportunity-engine.js','manifest.webmanifest','sw.js'];
+const files=['index.html','style.css','app.js','analysis.js','indicators.js','structure.js','patterns.js','risk.js','journal.js','trade-management.js','contract-engine.js','auth.js','news.js','galaxy.js','confluence.js','fibonacci.js','volume-profile.js','opportunity-engine.js','market-hours.js','manifest.webmanifest','sw.js'];
 await rm(dist,{recursive:true,force:true});
 await mkdir(dist,{recursive:true});
 for(const file of files)await cp(resolve(root,file),resolve(dist,file));

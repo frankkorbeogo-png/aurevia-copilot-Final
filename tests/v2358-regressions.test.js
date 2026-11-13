@@ -15,7 +15,8 @@ test('le calendrier principal est un widget TradingView autonome, distinct du co
  const source=await readFile(new URL('../news.js',import.meta.url),'utf8');
  assert.match(source,/embed-widget-events\.js/);
  assert.doesNotMatch(source,/api\/macro-context/);
- assert.doesNotMatch(source,/fetch\('\/api\/economic-calendar'/);
+ assert.doesNotMatch(source,/fetch\(/);
+ assert.match(source,/tradingview\.com\/economic-calendar/);
 });
 test('la reconnexion Telegram réactive les commandes après une déliaison',async()=>{
  const source=await readFile(new URL('../app.js',import.meta.url),'utf8');

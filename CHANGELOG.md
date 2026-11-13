@@ -1,4 +1,26 @@
+## v2.3.83 — liaison Telegram strictement individuelle
+- Renforcement du lien un-à-un : un compte Telegram ne peut être associé qu’à un seul compte AUREVIA et un compte AUREVIA ne peut conserver qu’une seule liaison Telegram.
+- Refus explicite du transfert ou du remplacement d’une liaison existante ; l’utilisateur doit d’abord déconnecter l’ancienne liaison depuis son compte AUREVIA.
+- Messages Telegram explicites en cas de conflit et gestion des conflits d’unicité en cas de connexions simultanées.
+- Les contraintes UNIQUE existantes sur `telegram_connections.chat_id` et `telegram_connections.user_id` restent la protection finale en base.
+- Ajout de tests couvrant les deux sens de la règle.
+
+## v2.3.81 — rappel de connexion Telegram à l’accueil
+- Ajout d’une bannière d’accueil invitant à associer le compte Telegram privé.
+- Accès direct à la page de liaison depuis le bouton.
+- Vérification serveur de l’état de liaison : bannière masquée si Telegram est connecté, réaffichée après déliaison.
+- Gestion d’un état de vérification indisponible sans déclarer la connexion active.
+- Version du cache PWA incrémentée pour diffuser la mise à jour.
+
 # Journal des modifications
+
+## v2.3.80 — moteur universel de calcul contractuel
+- Retrait de la page et du profil broker permanents : les paramètres sont saisis au moment de chaque prise de position.
+- Ajout d’un moteur commun pour les méthodes taille du contrat, valeur du point et valeur du tick, avec validation des paramètres propres au broker et à l’instrument.
+- Snapshot des spécifications enregistré sur chaque groupe et chaque position ; le worker TP/SL utilise la même formule que les clôtures manuelles.
+- Après confirmation M15, Telegram demande le lot puis les spécifications via `/spec` avant de créer la position.
+- Migration Supabase `20261113142328_universal_contract_snapshot_v2380` appliquée ; RPC de création limitée à `service_role`.
+- Validation finale : 247 tests automatisés réussis et build Netlify local réussi. Aucun déploiement Netlify effectué.
 
 ## v2.3.56 — Proposition IA possible sur un seul setup
 - Le moteur technique peut désormais présenter un unique scénario BUY ou SELL si une confluence opérationnelle suffisante est détectée sur M30 ou M15.
@@ -411,3 +433,9 @@
 - Le flux OHLC réessaie une fois les erreurs transitoires et peut restituer un cache récent explicitement marqué périmé.
 - L’analyse tolère l’absence de H4/H1/M5 sans inventer de données ; M30/M15 restent obligatoires, et M5 reste obligatoire pour confirmer une entrée.
 - Version du cache PWA incrémentée pour forcer le chargement des nouveaux fichiers.
+
+## V2.3.79 — Validation du lot depuis Telegram
+- Ajout d'un code de confirmation temporaire après validation technique M15.
+- Saisie manuelle du lot et du mode de gestion par commande Telegram privée.
+- Création atomique des positions et du journal après validation des paramètres broker propres à l'instrument.
+- Aucun ordre broker/MT5 n'est exécuté.

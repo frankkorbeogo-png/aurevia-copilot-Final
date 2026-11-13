@@ -77,10 +77,13 @@ test('les horaires des sessions sont affichés en heure du Burkina Faso avec DST
   assert.match(app, /America\/New_York/);
 });
 
-test('les cinq unités OHLC sont chargées en parallèle pour éviter de périmer M1 avant la décision', async () => {
+test('M15 est prioritaire et les unités de contexte sont chargées après lui', async () => {
   const analysis = await readFile(new URL('../analysis.js', import.meta.url), 'utf8');
-  assert.match(analysis, /Promise\.allSettled\(Object\.entries\(FRAMES\)/);
+  assert.match(analysis, /frames\.M15=await fetchFrame/);
+  assert.match(analysis, /if\(frames\.M15\)/);
+  assert.match(analysis, /Promise\.allSettled/);
   assert.match(analysis, /requiredMissing/);
+  assert.doesNotMatch(analysis, /M5:'5min'/);
 });
 
 
@@ -114,3 +117,7 @@ test('connexion et inscription Google sont deux parcours distincts et l’inscri
 
 test('le centre d’annonces expose filtres, badge et actions de lecture',async()=>{const app=await readFile(new URL('../app.js',import.meta.url),'utf8');const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');assert.match(html,/data-page="annonces"/);assert.match(html,/id="announcementUnreadBadge"/);assert.match(html,/data-announcement-filter="unread"/);assert.match(app,/markAllAnnouncementsAsRead/);assert.match(auth,/from\('announcement_reads'\)/);assert.match(auth,/ignoreDuplicates:true/);});
 test('la migration annonce conserve les annonces publiées expirées et isole les lectures par utilisateur',async()=>{const sql=await readFile(new URL('../supabase/migrations/20261112150000_announcement_reads.sql',import.meta.url),'utf8');assert.match(sql,/is_published = true/);assert.match(sql,/announcement_reads/);assert.match(sql,/auth\.uid\(\) = user_id/);assert.match(sql,/aurevia_session_is_active\(\)/);});
+
+test('les spécifications broker sont saisies dans chaque prise de position sans page dédiée',async()=>{const app=await readFile(new URL('../app.js',import.meta.url),'utf8');const engine=await readFile(new URL('../contract-engine.js',import.meta.url),'utf8');assert.doesNotMatch(html,/id="brokerSettingsPanel"/);assert.match(html,/id="posBrokerName"/);assert.match(html,/id="posAccountCurrency"/);assert.match(html,/id="posContract"/);assert.match(html,/id="posCalculationType"/);assert.match(app,/readPositionContractSpec/);assert.match(app,/validateContractSpec/);assert.match(engine,/calculationType/);assert.match(engine,/pointValue/);assert.match(engine,/tickValue/);});
+
+test('le build publie le moteur universel de calcul contractuel',async()=>{const build=await readFile(new URL('../scripts/build.mjs',import.meta.url),'utf8');const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');assert.match(build,/contract-engine\.js/);assert.match(sw,/contract-engine\.js/);});

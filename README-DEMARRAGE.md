@@ -1,4 +1,4 @@
-# AUREVIA COPILOT V2.2.9
+# AUREVIA COPILOT V2.3.83
 
 Application web responsive d'analyse multi-marchés, de préparation des ordres, de gestion du risque, de suivi manuel des positions et de journalisation.
 
@@ -7,6 +7,34 @@ Application web responsive d'analyse multi-marchés, de préparation des ordres,
 Les ordres LIMIT/STOP sont conservés en `EN ATTENTE` jusqu’à l’atteinte de leur prix d’entrée. BUY déclenche sur ASK et SELL sur BID. Après activation, les sorties sont évaluées sur BID pour fermer un BUY et ASK pour fermer un SELL. Le suivi reste interne à AUREVIA et ne transmet aucun ordre à un broker.
 
 **Mise en service supplémentaire obligatoire :** appliquer `supabase/migrations/20261112180000_trade_entry_price_activation.sql`, puis déployer le service permanent décrit dans `workers/README.md`. Sans ce flux prix simple du marché frais, `trade-watch` suspend volontairement les déclenchements plutôt que d’utiliser un cours moyen.
+
+
+## Version 2.3.83 — liaison Telegram individuelle
+
+La liaison est strictement un-à-un : un identifiant Telegram ne peut appartenir qu’à un compte AUREVIA, et un compte AUREVIA ne peut avoir qu’un seul compte Telegram associé. Une nouvelle liaison ne remplace jamais silencieusement une ancienne. Il faut d’abord déconnecter Telegram depuis les paramètres du compte AUREVIA actuellement lié, puis générer un nouveau code de liaison. Les contraintes `UNIQUE(chat_id)` et `UNIQUE(user_id)` en base protègent également contre les tentatives simultanées.
+
+## Version 2.3.82 — assistant Telegram guidé
+
+Après confirmation d’entrée, Telegram propose les modes « Position unique » et « Trades séparés » sous forme de boutons. Le bot guide ensuite l’utilisateur pour le lot, le broker, le type de compte, la devise, le levier et la méthode de calcul (contrat, point ou tick). Les spécifications propres au symbole sont demandées étape par étape. Un récapitulatif permet de confirmer, modifier le lot, modifier les paramètres ou annuler. Aucune commande JSON n’est nécessaire. La position n’est créée qu’après validation explicite.
+
+## Version 2.3.81 — notification de connexion Telegram à l’accueil
+
+L’accueil affiche une invitation à connecter Telegram lorsque le compte n’est pas encore associé. Le bouton ouvre directement la page de liaison. La notification est masquée après confirmation serveur de la liaison et réapparaît si le compte est délié. Si le statut ne peut pas être vérifié, l’accueil invite à contrôler la connexion plutôt que de supposer qu’elle est active.
+
+## Version 2.3.80 — paramètres contractuels à la prise de position
+
+La configuration broker permanente a été retirée : il n’existe plus de page dédiée au broker. Au moment de chaque prise de position, l’utilisateur renseigne le broker, le type de compte, la devise, le levier s’il est utile, les limites de lot, les frais et les paramètres propres à la méthode de calcul.
+
+Le moteur commun accepte trois méthodes :
+- **Taille du contrat** : variation du prix × volume × taille du contrat × conversion vers la devise du compte.
+- **Valeur du point** : nombre de points parcourus × valeur monétaire du point par lot × volume.
+- **Valeur du tick** : nombre de ticks parcourus × valeur monétaire du tick par lot × volume.
+
+La valeur de point/tick doit être saisie dans la devise du compte. AUREVIA ne devine jamais la taille d’un contrat, un taux de conversion ou une marge. Chaque position conserve son propre snapshot. Le même moteur est utilisé pour les prises de position manuelles et pour celles créées après confirmation d’analyse via Telegram.
+
+**Migration V2.3.80 déjà appliquée sur Supabase :** `20261113142328_universal_contract_snapshot_v2380`. Elle ajoute les snapshots JSONB aux groupes et positions et une RPC Telegram limitée au rôle `service_role`.
+
+**Telegram après confirmation M15 :** utiliser les boutons proposés par le bot puis répondre à ses questions. Les commandes techniques `/lot` et `/spec` ne sont plus nécessaires.
 
 ## Lancer en développement
 
@@ -68,7 +96,7 @@ Les rôles sont gérés côté serveur. Le propriétaire `frankkorbeogo@gmail.co
 
 **Migration requise pour le suivi des entrées V2.3.42 :** `supabase/migrations/20261112180000_trade_entry_price_activation.sql`. Elle ajoute les statuts en attente, les champs d’activation, la RPC atomique d’activation et la table de suivi du prix de marché. La migration complémentaire `20261112190000_market_last_price_mode.sql` ajoute le champ `price` et rend prix simple du marché facultatifs.
 
-**Migration requise avant déploiement V2.2.9 :** `supabase/migrations/20261111180000_single_session_and_admin_console_v229.sql`. Elle crée le registre privé de session unique, les fonctions de heartbeat/contrôle, les RPC d’administration et renforce les politiques RLS des tables personnelles. Cette migration est fournie dans l’archive mais n’a pas été appliquée au projet de production. Ne pas déployer le code V2.2.9 avant d’avoir relu et appliqué cette migration dans un environnement contrôlé, puis vérifié les politiques et fonctions. Elle ne doit pas être exécutée automatiquement par Netlify. Les migrations `20261110193242_secure_admin_console_and_indexes` et `20261110193341_admin_audit_listing.sql` existent déjà dans l’historique antérieur du projet ; ne pas les réappliquer. Les utilisateurs ne peuvent modifier que les champs de profil autorisés ; la colonne `profiles.role` reste protégée.
+**Migration de session unique V2.2.9 :** `supabase/migrations/20261111180000_single_session_and_admin_console_v229.sql`. Elle crée le registre privé de session unique, les fonctions de heartbeat/contrôle, les RPC d’administration et renforce les politiques RLS des tables personnelles. Elle figure dans l’historique des migrations du projet ; ne pas la réappliquer. Elle ne doit pas être exécutée automatiquement par Netlify. Les migrations `20261110193242_secure_admin_console_and_indexes` et `20261110193341_admin_audit_listing.sql` existent déjà dans l’historique antérieur du projet ; ne pas les réappliquer. Les utilisateurs ne peuvent modifier que les champs de profil autorisés ; la colonne `profiles.role` reste protégée.
 
 La session unique utilise `auth.sessions.created_at` plutôt que le champ `iat` du JWT : le rafraîchissement d’un ancien token ne lui permet pas de reprendre la session d’un appareil plus récent. Le heartbeat client est émis toutes les 30 secondes ; le statut « en ligne » est calculé sur 90 secondes et la session active sur 2 minutes. La révocation distante bloque le heartbeat et les accès RLS personnels à la prochaine requête. Elle ne révoque pas les jetons Supabase auprès de tous les services externes qui ne consultent pas cette protection ; les routes privées AUREVIA et les politiques RLS couvertes par la migration sont contrôlées.
 

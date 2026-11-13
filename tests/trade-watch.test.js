@@ -152,3 +152,10 @@ test('la migration autorise PENDING et réserve l’activation au worker service
  assert.match(sql,/revoke all .*authenticated/i);
  assert.match(sql,/aurevia_market_quotes/);
 });
+
+test('le worker serveur calcule aussi les instruments à valeur de point ou de tick',async()=>{
+ const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
+ const point=calculateInternalClosePnl({volume_remaining:2,entry_price:100,contract_spec:{brokerName:'B',accountCurrency:'EUR',calculationType:'point',pointSize:1,pointValue:2.5,minLot:0.1,lotStep:0.1,feesPerLot:0}},'BUY',105);
+ const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
+ assert.equal(point.gross,25);assert.equal(point.net,25);assert.equal(tick.gross,7.5);assert.equal(tick.net,7.5);
+});

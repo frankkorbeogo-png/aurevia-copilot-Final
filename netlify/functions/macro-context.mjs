@@ -2,6 +2,7 @@ import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 // DTWEXBGS est l'indice large du dollar (pas le DXY). Il reste séparé du DXY.
 const SERIES={BROAD_USD_INDEX:'DTWEXBGS',NOMINAL_YIELD_10Y:'DGS10',REAL_YIELD_10Y:'DFII10',FED_FUNDS:'FEDFUNDS',CPI:'CPIAUCSL',UNEMPLOYMENT:'UNRATE'};
+const INSTRUMENT_CURRENCIES={XAUUSD:['USD'],XAGUSD:['USD'],EURUSD:['EUR','USD'],GBPUSD:['GBP','USD'],USDJPY:['USD','JPY'],AUDUSD:['AUD','USD'],USDCAD:['USD','CAD'],USDCHF:['USD','CHF'],NZDUSD:['NZD','USD'],EURGBP:['EUR','GBP'],EURJPY:['EUR','JPY'],GBPJPY:['GBP','JPY'],BTCUSD:['USD'],ETHUSD:['USD']};
 async function latestSeries(apiKey,id){
  const u=new URL('https://api.stlouisfed.org/fred/series/observations');
  u.searchParams.set('series_id',id);u.searchParams.set('api_key',apiKey);u.searchParams.set('file_type','json');u.searchParams.set('sort_order','desc');u.searchParams.set('limit','2');
@@ -26,19 +27,31 @@ async function fetchDxy(){
  const freshness=ageMinutes===null?'unknown':ageMinutes<=20?'recent':'stale';
  return {configured:true,symbol:'DXY',price,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,notice:freshness==='stale'?'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.':freshness==='unknown'?'Horodatage de cotation non fourni : fraîcheur non vérifiable.':'Dernière cotation horodatée fournie par Twelve Data; ce flux REST n’est pas un flux tick temps réel.'};
 }
-async function fetchCalendar(){
- const u=new URL('https://showmytrades.com/api/public/calendar/v1');
- u.searchParams.set('currency','USD');u.searchParams.set('impact','high,medium');u.searchParams.set('days','7');u.searchParams.set('format','json');
- const r=await fetch(u,{signal:AbortSignal.timeout(12000),headers:{accept:'application/json'}});
- if(!r.ok)return {configured:false,source:'ShowMyTrades',events:[],notice:`Calendrier économique indisponible (HTTP ${r.status}).`};
- const data=await r.json();if(!data||!Array.isArray(data.events))return {configured:false,source:'ShowMyTrades',events:[],notice:'Réponse du calendrier invalide.'};
- const events=data.events.map(e=>({id:e.id||null,timestamp:Number.isFinite(Number(e.ts))?Number(e.ts):null,date:e.time||null,country:'United States',currency:e.currency||'USD',event:e.title||'Événement économique',importance:e.impact||null,actual:e.actual??'',forecast:e.forecast??'',previous:e.previous??'',status:e.status||'scheduled',confidence:e.confidence||null,movedFrom:e.moved_from||null,period:e.period||null,source:'ShowMyTrades'})).filter(e=>e.date&&e.event&&e.currency==='USD');
- return {configured:true,source:'ShowMyTrades',timezone:'UTC',events,asOf:data.generated_at||data.server_time_iso||new Date().toISOString(),serverTime:data.server_time||null,attribution:data.attribution||{text:'Economic calendar by ShowMyTrades',url:'https://showmytrades.com/tools/economic-calendar'},notice:'Calendrier USD public, mis en cache par le fournisseur environ 15 minutes. Les dates peuvent être modifiées et l’exhaustivité n’est pas garantie. Une valeur Actual vide signifie que le résultat n’est pas encore publié.'};
+async function fetchCalendar(currencies){
+ const unique=[...new Set((currencies||['USD']).filter(x=>/^[A-Z]{3}$/.test(x)))];
+ const settled=await Promise.all(unique.map(async currency=>{
+  const u=new URL('https://showmytrades.com/api/public/calendar/v1');
+  u.searchParams.set('currency',currency);u.searchParams.set('impact','high,medium');u.searchParams.set('days','7');u.searchParams.set('format','json');
+  const r=await fetch(u,{signal:AbortSignal.timeout(12000),headers:{accept:'application/json'}});
+  if(!r.ok)throw new Error(`${currency}: HTTP ${r.status}`);
+  const data=await r.json();if(!data||!Array.isArray(data.events))throw new Error(`${currency}: format invalide`);
+  return {currency,data};
+ }));
+ const events=settled.flatMap(({currency,data})=>(data.events||[]).map(e=>{
+  const timestamp=Number.isFinite(Number(e.ts))?Number(e.ts):null;
+  const eventMs=timestamp!==null?timestamp*1000:Date.parse(e.time||'');
+  const published=String(e.actual??'').trim()!=='';
+  const phase=published?'published':Number.isFinite(eventMs)&&eventMs<Date.now()?'awaiting_result':'upcoming';
+  return {id:e.id||null,timestamp,date:e.time||null,country:e.country||null,currency:e.currency||currency, event:e.title||'Événement économique',importance:e.impact||null,actual:e.actual??'',forecast:e.forecast??'',previous:e.previous??'',status:e.status||'scheduled',phase,confidence:e.confidence||null,movedFrom:e.moved_from||null,period:e.period||null};
+ }).filter(e=>e.date&&e.event&&e.currency===currency));
+ const seen=new Set();const deduped=events.filter(e=>{const key=e.id||`${e.currency}|${e.date}|${e.event}`;if(seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
+ return {configured:true,source:'ShowMyTrades',currencies:unique,timezone:'UTC',events:deduped,asOf:new Date().toISOString(),notice:'Flux fondamental interne réservé à l’analyse IA ; il ne constitue pas le calendrier affiché dans l’interface. Exhaustivité et horaires dépendants du fournisseur. Les événements publiés doivent être confrontés à la réaction réelle des prix.'};
 }
+
 export async function handler(event){if(event.httpMethod!=='GET')return json(405,{error:'Méthode non autorisée.'});try{const context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Session invalide.'});}
- const [dxy,calendar]=await Promise.all([fetchDxy().catch(()=>({configured:false,source:'Twelve Data',notice:'DXY indisponible.'})),fetchCalendar().catch(()=>({configured:false,source:'ShowMyTrades',events:[],notice:'Calendrier indisponible.'}))]);
+ const instrument=new URL(event.rawUrl||event.path||'https://aurevia.local/api/macro-context').searchParams.get('instrument')||'XAUUSD';const currencies=INSTRUMENT_CURRENCIES[instrument]||['USD'];const usdRelevant=currencies.includes('USD');const [dxy,calendar]=await Promise.all([usdRelevant?fetchDxy().catch(()=>({configured:false,source:'Twelve Data',notice:'DXY indisponible.'})):Promise.resolve({configured:false,applicable:false,source:'Twelve Data',notice:'DXY non utilisé pour cette paire sans USD.'}),fetchCalendar(currencies).catch(error=>({configured:false,source:'internal economic data provider',currencies,events:[],notice:`Calendrier fondamental indisponible : ${String(error?.message||error).slice(0,180)}`}))]);
  const key=process.env.FRED_API_KEY;let series={},fredConfigured=Boolean(key),fredNotice='';
- if(key){
+ if(key&&usdRelevant){
   const entries=await Promise.all(Object.entries(SERIES).map(async([name,id])=>{
    try{return [name,{seriesId:id,...await latestSeries(key,id),available:true}];}
    catch(error){return [name,{seriesId:id,available:false,error:error.message||'Série indisponible.'}];}
@@ -46,7 +59,7 @@ export async function handler(event){if(event.httpMethod!=='GET')return json(405
   series=Object.fromEntries(entries);fredConfigured=Object.values(series).some(x=>x.available);
   const failed=Object.values(series).filter(x=>!x.available).length;
   if(failed)fredNotice=`${failed} série(s) FRED indisponible(s); les autres données restent utilisables.`;
- } else fredNotice='FRED_API_KEY absent.';
+ } else fredNotice=key?'Séries macroéconomiques américaines non sollicitées : aucune devise USD dans cet instrument.':'FRED_API_KEY absent.';
  const dates=Object.values(series).filter(x=>x.available).map(x=>x.latest.date).sort();
  const stale=Object.values(series).filter(x=>x.available&&x.freshness==='stale').length;
- return json(200,{configured:fredConfigured||dxy.configured||calendar.configured,source:'AUREVIA macro aggregator',asOf:new Date().toISOString(),dxy,broadUsdIndex:series.BROAD_USD_INDEX||null,series,calendar,fred:{configured:fredConfigured,source:'FRED',asOf:dates.at(-1)||null,availableSeries:Object.values(series).filter(x=>x.available).length,totalSeries:Object.keys(SERIES).length,staleSeries:stale,notice:fredNotice||'Séries historiques à fréquences et délais différents.'},notice:'Les sources sont séparées : le DXY n’est jamais remplacé par le dollar pondéré FRED. Chaque série FRED expose sa date, son ancienneté et son état de fraîcheur. Une donnée absente ou périmée doit diminuer la confiance; aucune donnée manquante ne sera inventée.'});}
+ return json(200,{configured:fredConfigured||dxy.configured||calendar.configured,instrument,currencies,source:'AUREVIA macro aggregator',asOf:new Date().toISOString(),dxy,broadUsdIndex:series.BROAD_USD_INDEX||null,series,calendar,fred:{configured:fredConfigured,source:'FRED',asOf:dates.at(-1)||null,availableSeries:Object.values(series).filter(x=>x.available).length,totalSeries:Object.keys(SERIES).length,staleSeries:stale,notice:fredNotice||'Séries historiques à fréquences et délais différents.'},notice:'Sources fondamentales internes, jamais affichées comme calendrier dans l’interface. Le DXY n’est jamais remplacé par le dollar large FRED. Les événements à venir servent d’avertissement ; après publication, les chiffres réels, prévisions et précédents sont confrontés à la réaction effective des prix. Une donnée absente ou périmée ne bloque jamais l’analyse technique et ne doit pas être inventée.'});}

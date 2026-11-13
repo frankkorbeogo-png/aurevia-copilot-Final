@@ -14,5 +14,5 @@ test('le calendrier demande toutes les devises sans envoyer currency=all',async(
 test('le démarrage authentifié dispose d’un repli si l’événement initial est manqué',async()=>{
   const s=await read('app.js');
   assert.match(s,/initAuth\(\)\.then\(\(\)=>\{if\(window\.__aureviaAuthenticated\)bootAuthenticatedApp\(\);\}\)/);
-  assert.match(s,/initEconomicCalendar\(\$\('calendarWidget'\),getAnalysisAccessToken\)/);
+  assert.match(s,/initEconomicCalendar\(\$\('calendarWidget'\)\)/);
 });

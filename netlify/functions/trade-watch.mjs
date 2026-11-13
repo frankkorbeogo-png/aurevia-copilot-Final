@@ -1,3 +1,4 @@
+import { calculateContractPnl } from '../../contract-engine.js';
 // Scheduled AUREVIA-only position monitor. It never connects to a broker or places orders.
 const BASE=()=>process.env.SUPABASE_URL, KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
@@ -26,10 +27,11 @@ export function evaluatePositionThreshold(position,price){
  return sl?'SL':tp?'TP':null;
 }
 export function calculateInternalClosePnl(position,direction,price){
- const volume=Number(position.volume_remaining),entry=Number(position.activation_price??position.entry_price),contract=Number(position.contract_size),fx=Number(position.quote_to_account),feesPerLot=Number(position.fees_per_lot??0);
- if(!Number.isFinite(volume)||volume<=0||!Number.isFinite(entry)||entry<=0||!Number.isFinite(contract)||contract<=0||!Number.isFinite(fx)||fx<=0||!Number.isFinite(feesPerLot)||feesPerLot<0)throw new Error('Métadonnées de calcul P/L incomplètes : clôture automatique suspendue pour éviter un résultat fictif.');
- const gross=(direction==='BUY'?(price-entry):(entry-price))*volume*contract*fx,fees=volume*feesPerLot;
- return {gross,fees,net:gross-fees,volume};
+ const volume=Number(position.volume_remaining),entry=Number(position.activation_price??position.entry_price);
+ if(!Number.isFinite(volume)||volume<=0||!Number.isFinite(entry)||entry<=0)throw new Error('Volume ou prix d’entrée invalide : clôture automatique suspendue.');
+ const contractSpec=position.contract_spec||{calculationType:'contract',contractSize:Number(position.contract_size),quoteToAccount:Number(position.quote_to_account),feesPerLot:Number(position.fees_per_lot??0),minLot:0.00000001,lotStep:0.00000001};
+ let pnl;try{pnl=calculateContractPnl({direction,entry,exit:Number(price),volume,contractSpec});}catch(error){throw new Error(`Métadonnées de calcul P/L incomplètes : ${error.message}`);}
+ const {currency,...values}=pnl;return {...values,...(currency?{currency}:{}),volume};
 }
 export function formatTradeAlertMessage(event,position,group){
  const label=event.event_type==='TP'?'TAKE PROFIT ATTEINT':'STOP LOSS ATTEINT',volume=Number(event.closed_volume);
@@ -52,7 +54,7 @@ async function deliverPending(){
 export async function handler(event){
  if(!BASE()||!KEY())return json(503,{error:'Surveillance non configurée côté serveur.'});
  try{
-  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,trigger_seen,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
+  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,trigger_seen,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
   const groups=await rest('trading_position_groups?select=id,user_id,instrument,direction,order_type,mode,status&status=eq.OPEN');const byId=new Map(groups.map(g=>[g.id,g]));
   let checked=0,activated=0,triggerStages=0,triggered=0,errors=[];const priceCache=new Map();
   for(const p of positions||[]){const g=byId.get(p.group_id);if(!g)continue;try{

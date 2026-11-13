@@ -16,7 +16,7 @@ export async function handler(event){
   const id=String(body.id||'');
   if(action==='stop'){
    if(!id)return json(400,{error:'Identifiant du scénario manquant.'});
-   const rows=await rest(`aurevia_analysis_scenarios?id=eq.${encodeURIComponent(id)}&user_id=eq.${user}&status=eq.monitoring`,{method:'PATCH',body:{status:'stopped',stopped_at:new Date().toISOString(),stop_reason:'Arrêt manuel par l’utilisateur'},prefer:'return=representation'});
+   const rows=await rest(`aurevia_analysis_scenarios?id=eq.${encodeURIComponent(id)}&user_id=eq.${user}&status=in.(monitoring,zone_reached,entry_confirmed)`,{method:'PATCH',body:{status:'stopped',lot_confirmation_code:null,lot_confirmation_expires_at:null,stopped_at:new Date().toISOString(),stop_reason:'Arrêt manuel par l’utilisateur'},prefer:'return=representation'});
    if(!rows?.length)return json(409,{error:'Ce scénario n’est plus en surveillance.'});
    return json(200,{scenario:rows[0],message:'Surveillance arrêtée. Aucune position ouverte n’a été modifiée.'});
   }

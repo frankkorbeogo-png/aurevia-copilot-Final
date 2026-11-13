@@ -1,4 +1,6 @@
-export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitValuePerLot,lotStep=0.01,rewardDistance=null,marginPerLot=null}){
+import { calculateLotsFromRisk } from './contract-engine.js';
+export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitValuePerLot,lotStep=0.01,rewardDistance=null,marginPerLot=null,contractSpec=null}){
+  if(contractSpec)return calculateLotsFromRisk({balance,riskAmount,stopDistance,contractSpec,rewardDistance});
   const nums=[riskAmount,stopDistance,unitValuePerLot,lotStep];
   if(!nums.every(Number.isFinite)||riskAmount<=0||stopDistance<=0||unitValuePerLot<=0||lotStep<=0)
     return {error:'Vérifiez le montant à risquer, la distance du stop, la valeur par lot et le pas de volume.'};
