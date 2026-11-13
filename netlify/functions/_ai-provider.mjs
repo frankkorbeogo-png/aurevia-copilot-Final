@@ -1,8 +1,9 @@
 // Routage IA serveur AUREVIA : ordre strict Gemini > Cloudflare > SambaNova > Groq.
 // Les délais sont compatibles avec la limite synchrone Netlify (60 s).
 const env = (name) => String(process.env[name] || '').trim();
-const PROVIDER_TIMEOUT_MS = 8000;
-const TOTAL_BUDGET_MS = 35000;
+const PROVIDER_TIMEOUT_MS = 11000;
+const TOTAL_BUDGET_MS = 44000;
+const PROVIDER_TIMEOUTS = { gemini: 11000, cloudflare: 10000, sambanova: 8500, groq: 8500 };
 
 export function configuredAIProviders() {
   const providers = [];
@@ -91,7 +92,8 @@ export async function runAureviaAI({ messages, temperature = 0.25, max_tokens = 
       break;
     }
 
-    const timeoutMs = Math.max(700, Math.min(PROVIDER_TIMEOUT_MS, remaining - 500));
+    const providerLimit = PROVIDER_TIMEOUTS[provider.id] || PROVIDER_TIMEOUT_MS;
+    const timeoutMs = Math.max(700, Math.min(providerLimit, remaining - 500));
     const attemptStarted = Date.now();
     try {
       const response = await fetch(provider.url, {

@@ -31,8 +31,8 @@ test('le routeur tente les quatre fournisseurs dans l’ordre et poursuit après
 
 test('le routeur limite chaque tentative et son budget total', async () => {
   const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
-  assert.match(source, /PROVIDER_TIMEOUT_MS = 8000/);
-  assert.match(source, /TOTAL_BUDGET_MS = 35000/);
+  assert.match(source, /PROVIDER_TIMEOUT_MS = 11000/);
+  assert.match(source, /TOTAL_BUDGET_MS = 44000/);
   assert.match(source, /gemini-3\.8-flash/);
   assert.match(source, /max_completion_tokens/);
   assert.match(source, /BUDGET_EXHAUSTED/);
