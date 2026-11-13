@@ -81,3 +81,8 @@ schedule = "* * * * *"
   from = "/api/macro-context"
   to = "/.netlify/functions/macro-context"
   status = 200
+
+[[redirects]]
+  from = "/api/economic-calendar"
+  to = "/.netlify/functions/economic-calendar"
+  status = 200

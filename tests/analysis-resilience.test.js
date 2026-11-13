@@ -14,3 +14,17 @@ test('une réponse 429 déclenche une temporisation locale avant une nouvelle te
   assert.match(source,/if\(r\.status===429\)/);
   assert.match(source,/Temporisation du fournisseur/);
 });
+test('les erreurs sur H4/H1/M5 ne bloquent pas une lecture technique M30/M15',()=>{
+  assert.match(source,/Promise\.allSettled/);
+  assert.match(source,/requiredMissing/);
+  assert.match(source,/allRequiredAvailable/);
+  assert.match(source,/M5 indisponible/);
+  assert.match(source,/allFramesFresh/);
+});
+test('les erreurs réseau sont affichées comme indisponibilité et non comme simple signal WAIT',()=>{
+  assert.match(source,/Erreur technique pendant l’analyse/);
+  assert.match(source,/aucune entrée ne sera proposée sans données valides/i);
+});
+test('une unité optionnelle périmée est exclue des indicateurs et du déclencheur',()=>{
+  assert.match(source,/if\(stale\.includes\(tf\)&&!\['M30','M15'\]\.includes\(tf\)\)continue/);
+});

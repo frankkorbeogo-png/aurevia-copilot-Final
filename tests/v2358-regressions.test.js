@@ -14,8 +14,8 @@ test('le calendrier visible utilise le widget TradingView historique',async()=>{
 });
 test('le flux calendrier structuré reste distinct du widget visuel',async()=>{
  const source=await readFile(new URL('../news.js',import.meta.url),'utf8');
- assert.match(source,/functions\/economic-calendar/);
- assert.match(source,/api\/macro-context/);
+ assert.match(source,/api\/economic-calendar/);
+ assert.doesNotMatch(source,/api\/macro-context/);
 });
 test('la reconnexion Telegram réactive les commandes après une déliaison',async()=>{
  const source=await readFile(new URL('../app.js',import.meta.url),'utf8');

@@ -473,3 +473,18 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 
 /* TradingView historical economic-calendar embed */
 .calendar-frame .tradingview-widget-container{width:100%;min-height:560px;overflow:hidden;border-radius:12px;background:#0b1020}.calendar-frame .tradingview-widget-copyright{padding:6px 10px;text-align:right;font-size:11px;opacity:.7}.calendar-frame .tradingview-widget-copyright a{color:inherit}
+
+/* Calendrier économique structuré : responsive, lisible et indépendant de TradingView */
+.calendar-frame{height:auto;min-height:220px;max-height:680px;overflow:auto;background:#000;padding:12px}
+.aurevia-calendar-root{display:grid;gap:14px;min-width:0;color:#e9e1ef}
+.calendar-source-line{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;color:#bcaac8;padding:2px 2px 8px}
+.calendar-source-label{font-weight:700;color:#e8d8f2}.calendar-refresh-time{color:#9d8ca8}
+.calendar-filters{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px}
+.calendar-filter{min-width:130px;max-width:100%;background:#17101d;color:#f2eaf7;border:1px solid #4a3156;border-radius:8px;padding:8px;font-size:11px}
+.calendar-count,.calendar-attribution,.calendar-loading{font-size:10px;color:#aa9bb4;margin:7px 2px}
+.calendar-table-wrap{width:100%;overflow-x:auto;border:1px solid #302438;border-radius:8px}
+.calendar-table{min-width:760px;font-size:10px;white-space:normal}.calendar-table th{position:sticky;top:0;background:#100c14;z-index:1}.calendar-table td,.calendar-table th{padding:9px 8px}.calendar-event-name{min-width:190px;color:#eee2f4;text-align:left;font-weight:600}.calendar-row.impact-row-high td:nth-child(3){color:#ff8f91}.calendar-row.impact-row-medium td:nth-child(3){color:#f2c56e}.calendar-row.impact-row-low td:nth-child(3){color:#9bd5b2}.calendar-no-events{text-align:center;color:#a99bb1;padding:22px}.calendar-error{padding:14px;border:1px solid #714047;border-radius:9px;background:#1a0e13}.calendar-error b{font-size:12px;color:#ffb5b5}.calendar-error p{font-size:11px;color:#cbb9c0}.aurevia-calendar-tv{border:1px solid #33243b;border-radius:9px;background:#080808;padding:10px}.aurevia-calendar-tv summary{cursor:pointer;font-size:11px;color:#c7a8d8}.aurevia-calendar-tv-mount{margin-top:10px;min-height:420px;background:#000}.aurevia-calendar-tv-mount .tradingview-widget-container{min-height:420px}
+@media(max-width:640px){.calendar-frame{margin:0 10px;padding:9px;max-height:620px}.calendar-filters{display:grid;grid-template-columns:1fr}.calendar-filter{width:100%;min-width:0}.calendar-source-line{font-size:9px}.calendar-table{min-width:700px}}
+
+#page-marches .calendar-frame,#page-actualites .calendar-frame{height:auto;min-height:220px;max-height:680px;overflow:auto;background:#000;padding:12px}
+#page-marches .calendar-frame .tradingview-widget-container,#page-actualites .calendar-frame .tradingview-widget-container{min-height:420px;background:#000}

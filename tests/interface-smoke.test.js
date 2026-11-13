@@ -79,7 +79,8 @@ test('les horaires des sessions sont affichés en heure du Burkina Faso avec DST
 
 test('les cinq unités OHLC sont chargées en parallèle pour éviter de périmer M1 avant la décision', async () => {
   const analysis = await readFile(new URL('../analysis.js', import.meta.url), 'utf8');
-  assert.match(analysis, /Promise\.all\(Object\.entries\(FRAMES\)/);
+  assert.match(analysis, /Promise\.allSettled\(Object\.entries\(FRAMES\)/);
+  assert.match(analysis, /requiredMissing/);
 });
 
 

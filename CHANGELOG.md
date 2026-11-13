@@ -402,3 +402,12 @@
 ## V2.3.60 — Calendrier TradingView noir
 - Calendrier économique TradingView forcé en thème sombre avec fond transparent sur un conteneur noir pur (#000000).
 - Conservation du calendrier structuré indépendant utilisé par le moteur IA.
+
+
+## V2.3.61 — Calendrier structuré et résilience des flux
+- Rétablissement du calendrier économique structuré dans les deux emplacements de l’application, avec filtres devise/impact/période et erreurs explicites.
+- TradingView reste disponible en complément repliable sur fond noir ; il ne remplace pas le calendrier structuré.
+- Le calendrier d’affichage reste indépendant des sources macro du moteur d’analyse.
+- Le flux OHLC réessaie une fois les erreurs transitoires et peut restituer un cache récent explicitement marqué périmé.
+- L’analyse tolère l’absence de H4/H1/M5 sans inventer de données ; M30/M15 restent obligatoires, et M5 reste obligatoire pour confirmer une entrée.
+- Version du cache PWA incrémentée pour forcer le chargement des nouveaux fichiers.

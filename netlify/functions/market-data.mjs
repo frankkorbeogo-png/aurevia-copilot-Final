@@ -2,6 +2,8 @@ import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 const ALLOWED=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
 const INTERVALS=new Set(['1min','5min','15min','30min','1h','4h','1day']);
 const cache=new Map();
+const CACHE_FRESH_MS=15000;
+const CACHE_STALE_MAX_MS=5*60*1000;
 const rate=new Map();
 function rateAllowed(key,limit=36){const now=Date.now(),item=rate.get(key);if(!item||now-item.start>60000){rate.set(key,{start:now,count:1});return true;}if(item.count>=limit)return false;item.count++;return true;}
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'same-origin'},body:JSON.stringify(body)});
@@ -13,12 +15,27 @@ export async function handler(event){
  if(!ALLOWED.has(symbol)||!INTERVALS.has(interval))return json(400,{error:'Instrument ou intervalle non autorisé.'});
  const clientIp=context.user.id;if(!rateAllowed(`market:${clientIp}`))return json(429,{error:'Limite de requêtes marché atteinte. Réessayez dans une minute.'});
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux de marché non configuré côté serveur.'});
- const cacheKey=`${symbol}:${interval}:${outputsize}`,cached=cache.get(cacheKey);if(cached&&Date.now()-cached.at<15000)return json(200,{...cached.value,cached:true});
- try{
-  const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval',interval);url.searchParams.set('outputsize',String(outputsize));url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
-  const response=await fetch(url,{signal:AbortSignal.timeout(12000)});const data=await response.json();if(!response.ok||data.status==='error'||!Array.isArray(data.values))return json(502,{error:data.message||'Réponse fournisseur indisponible.'});
-  const candles=data.values.map(v=>({time:v.datetime,open:Number(v.open),high:Number(v.high),low:Number(v.low),close:Number(v.close),volume:v.volume==null?null:Number(v.volume)})).filter(c=>[c.open,c.high,c.low,c.close].every(Number.isFinite)&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close)).reverse();
-  if(candles.length<30)return json(502,{error:'Historique OHLC insuffisant.',count:candles.length});
-  const value={symbol,interval,candles,timezone:data.meta?.exchange_timezone||data.meta?.timezone||null,fetchedAt:new Date().toISOString(),source:'Twelve Data'};cache.set(cacheKey,{at:Date.now(),value});return json(200,value);
- }catch(error){return json(502,{error:'Impossible de récupérer les données de marché.',detail:error.name==='TimeoutError'?'Délai fournisseur dépassé.':undefined});}
+ const cacheKey=`${symbol}:${interval}:${outputsize}`,cached=cache.get(cacheKey),cacheAge=cached?Date.now()-cached.at:Infinity;
+ if(cached&&cacheAge<CACHE_FRESH_MS)return json(200,{...cached.value,cached:true,stale:false});
+ const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval',interval);url.searchParams.set('outputsize',String(outputsize));url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
+ let lastError=null;
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   const response=await fetch(url,{signal:AbortSignal.timeout(9000)});const data=await response.json().catch(()=>({}));
+   if(response.ok&&data.status!=='error'&&Array.isArray(data.values)){
+    const candles=data.values.map(v=>({time:v.datetime,open:Number(v.open),high:Number(v.high),low:Number(v.low),close:Number(v.close),volume:v.volume==null?null:Number(v.volume)})).filter(c=>[c.open,c.high,c.low,c.close].every(Number.isFinite)&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close)).reverse();
+    if(candles.length<30)throw Object.assign(new Error('Historique OHLC insuffisant.'),{retryable:false,count:candles.length});
+    const value={symbol,interval,candles,timezone:data.meta?.exchange_timezone||data.meta?.timezone||null,fetchedAt:new Date().toISOString(),source:'Twelve Data',stale:false};cache.set(cacheKey,{at:Date.now(),value});return json(200,value);
+   }
+   const providerMessage=data.message||`Réponse fournisseur HTTP ${response.status}.`;
+   const retryable=response.status===429||response.status>=500||/rate limit|temporar|try again|timeout/i.test(providerMessage);
+   lastError=Object.assign(new Error(providerMessage),{retryable,status:response.status});
+   if(!retryable)break;
+  }catch(error){lastError=error;if(error.retryable===false)break;}
+  if(attempt===0)await new Promise(resolve=>setTimeout(resolve,350));
+ }
+ // En cas de panne transitoire uniquement, servir le dernier historique valide
+ // avec un drapeau explicite. Le moteur vérifie toujours la fraîcheur des bougies.
+ if(cached&&cacheAge<=CACHE_STALE_MAX_MS){return json(200,{...cached.value,cached:true,stale:true,staleAgeSeconds:Math.floor(cacheAge/1000),providerWarning:lastError?.message||'Fournisseur temporairement indisponible.'});}
+ return json(502,{error:'Flux de marché temporairement indisponible après une nouvelle tentative.',detail:lastError?.message||'Aucune réponse exploitable du fournisseur.',retryable:true});
 }

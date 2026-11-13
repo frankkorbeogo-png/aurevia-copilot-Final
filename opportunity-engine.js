@@ -8,7 +8,7 @@ const biasFor = side => side === 'BUY' ? 'haussier' : 'baissier';
 export function generateOpportunityScenarios({analyses, frames, staleFrames=[]}) {
   const result = { buy: null, sell: null, engine: 'technical-candidate-v3-single-setup' };
   if (!analyses || !frames || staleFrames.length) return result;
-  const current = analyses.M5?.last?.close;
+  const current = analyses.M5?.last?.close ?? analyses.M15?.last?.close;
   const atr = analyses.M5?.indicators?.atr14 || analyses.M15?.indicators?.atr14;
   if (!finite(current) || !finite(atr) || atr <= 0) return result;
 
