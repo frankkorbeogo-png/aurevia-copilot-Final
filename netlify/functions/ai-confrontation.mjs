@@ -17,6 +17,6 @@ export async function handler(event){
   return json(200,{provider:'AUREVIA',instrument,timeframe:'M15',verdict:['ACCORD','DESACCORD','PARTIEL','REVISION','INSUFFISANT'].includes(out.verdict)?out.verdict:'PARTIEL',agreements:arr('agreements'),disagreements:arr('disagreements'),overlooked:arr('overlooked'),traderContribution:clean(out.traderContribution,1800),groqPosition:clean(out.groqPosition,1800),finalConclusion:clean(out.finalConclusion,2400),watchConditions:arr('watchConditions'),summary:clean(out.summary,4000),numericLevelsChanged:false,notice:'Les niveaux M15 initiaux restent inchangés ; une nouvelle analyse est requise pour les recalculer.'});
  } catch(error) {
   console.error('[AUREVIA ai-confrontation] échec multi-fournisseur',JSON.stringify({code:error.code,attempts:error.attempts||[]}));
-  return json(error.statusCode||502,{error:error.message||'Moteur IA temporairement indisponible.',code:error.code||'AI_ERROR'});
+  return json(error.statusCode||502,{error:error.message||'Moteur IA temporairement indisponible.',code:error.code||'AI_ERROR',providerDiagnostics:{attempts:error.attempts||[],elapsedMs:error.elapsedMs||null}});
  }
 }

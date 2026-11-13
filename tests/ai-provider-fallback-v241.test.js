@@ -31,7 +31,16 @@ test('le routeur tente les quatre fournisseurs dans l’ordre et poursuit après
 
 test('le routeur limite chaque tentative et son budget total', async () => {
   const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
-  assert.match(source, /PROVIDER_TIMEOUT_MS = 2200/);
-  assert.match(source, /TOTAL_BUDGET_MS = 9500/);
+  assert.match(source, /PROVIDER_TIMEOUT_MS = 7500/);
+  assert.match(source, /TOTAL_BUDGET_MS = 34000/);
   assert.match(source, /BUDGET_EXHAUSTED/);
+});
+
+test('les diagnostics détaillent chaque fournisseur sans exposer de secret', async () => {
+  const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
+  assert.match(source, /AUREVIA AI provider attempt/);
+  assert.match(source, /elapsedMs/);
+  assert.match(source, /timeoutMs/);
+  assert.match(source, /safeIssue/);
+  assert.match(source, /Bearer.*redacted/);
 });

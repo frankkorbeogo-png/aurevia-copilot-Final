@@ -32,7 +32,7 @@ export async function handler(event){
    return json(200,{decision,summary:String(out.summary||'').slice(0,2500),marketReading:String(out.marketReading||'').slice(0,5000),risks:Array.isArray(out.risks)?out.risks.slice(0,10):[],missingData:Array.isArray(out.missingData)?out.missingData.slice(0,10):[],scenarios:{buy,sell},provider:'AUREVIA',decisionTimeframe:'M15',probabilityDisclaimer:'Estimation subjective non calibrée statistiquement. À ne pas interpréter comme une fréquence de réussite démontrée.'});
  } catch(e) {
    console.error('[AUREVIA ai-analysis] échec multi-fournisseur',JSON.stringify({code:e.code,attempts:e.attempts||[]}));
-   return json(e.statusCode||502,{error:e.message||'Moteur IA temporairement indisponible.',code:e.code||'AI_ERROR',retryable:true});
+   return json(e.statusCode||502,{error:e.message||'Moteur IA temporairement indisponible.',code:e.code||'AI_ERROR',retryable:true,providerDiagnostics:{attempts:e.attempts||[],elapsedMs:e.elapsedMs||null}});
  }
 
 }

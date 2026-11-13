@@ -467,3 +467,7 @@
 ## V2.3.95 — Authentification
 - Liaison immédiate des boutons Google avant la restauration de session.
 - Affichage des erreurs et nouvelle tentative au clic en cas d’échec du chargement Supabase.
+
+
+## V2.4.2
+- Diagnostics détaillés et expurgés par fournisseur IA ; timeout 7,5 s/fournisseur, budget global 34 s ; fallback séquentiel conservé.
