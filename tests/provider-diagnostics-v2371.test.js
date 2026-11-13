@@ -18,6 +18,6 @@ test('le routeur respecte l’ordre Gemini, Cloudflare, SambaNova puis Groq',()=
 });
 test('les erreurs et diagnostics fournisseur ne révèlent jamais les clés API',()=>{
  assert.match(router,/status: response\.status/);
- assert.match(router,/slice\(0, 240\)/);
+ assert.match(router,/slice\(0, 180\)/);
  assert.doesNotMatch(ai,/process\.env\.(GEMINI|CLOUDFLARE|SAMBANOVA|GROQ)_API_KEY/);
 });

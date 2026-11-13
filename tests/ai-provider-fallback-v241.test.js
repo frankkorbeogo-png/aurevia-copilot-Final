@@ -31,8 +31,10 @@ test('le routeur tente les quatre fournisseurs dans l’ordre et poursuit après
 
 test('le routeur limite chaque tentative et son budget total', async () => {
   const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
-  assert.match(source, /PROVIDER_TIMEOUT_MS = 7500/);
-  assert.match(source, /TOTAL_BUDGET_MS = 34000/);
+  assert.match(source, /PROVIDER_TIMEOUT_MS = 8000/);
+  assert.match(source, /TOTAL_BUDGET_MS = 35000/);
+  assert.match(source, /gemini-3\.8-flash/);
+  assert.match(source, /max_completion_tokens/);
   assert.match(source, /BUDGET_EXHAUSTED/);
 });
 
@@ -43,4 +45,36 @@ test('les diagnostics détaillent chaque fournisseur sans exposer de secret', as
   assert.match(source, /timeoutMs/);
   assert.match(source, /safeIssue/);
   assert.match(source, /Bearer.*redacted/);
+});
+
+
+test('le routeur adapte le paramètre de sortie Groq sans changer les autres fournisseurs', async (t) => {
+  const keys = ['GEMINI_API_KEY','CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID','SAMBANOVA_API_KEY','GROQ_API_KEY'];
+  const previous = Object.fromEntries(keys.map(k => [k, process.env[k]]));
+  for (const k of keys) process.env[k] = `test-${k}`;
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    if (bodies.length < 4) return new Response(JSON.stringify({error:{message:'unavailable'}}), {status:503});
+    return new Response(JSON.stringify({choices:[{message:{content:'{"decision":"WAIT"}'}}]}), {status:200});
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const k of keys) previous[k] === undefined ? delete process.env[k] : process.env[k] = previous[k];
+  });
+  await runAureviaAI({messages:[{role:'user',content:'test'}],max_tokens:1234});
+  assert.equal(bodies[0].model, 'gemini-3.8-flash');
+  assert.equal(bodies[0].max_tokens, 1234);
+  assert.equal('max_completion_tokens' in bodies[0], false);
+  assert.equal(bodies[3].max_completion_tokens, 1234);
+  assert.equal('max_tokens' in bodies[3], false);
+});
+
+test('le routeur distingue les erreurs de facturation, modèle absent et charge trop grande', async () => {
+  const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
+  assert.match(source, /BILLING_REQUIRED/);
+  assert.match(source, /MODEL_OR_ENDPOINT_NOT_FOUND/);
+  assert.match(source, /PAYLOAD_TOO_LARGE/);
+  assert.match(source, /RATE_LIMIT_OR_QUOTA/);
 });
