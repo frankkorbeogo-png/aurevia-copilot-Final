@@ -25,36 +25,17 @@ function renderError(container,message,retry){const wrap=el('div','calendar-erro
  * Calendrier structuré indépendant du contexte macro utilisé par le moteur IA.
  * TradingView reste un complément visuel et n'est jamais la source de l'analyse.
  */
-function renderTradingView(container){
- const widget=document.createElement('div');widget.className='tradingview-widget-container';widget.style.width='100%';widget.style.height='420px';widget.style.backgroundColor='#000000';
- const inner=document.createElement('div');inner.className='tradingview-widget-container__widget';inner.style.width='100%';inner.style.height='100%';widget.append(inner);
- const attribution=document.createElement('div');attribution.className='tradingview-widget-copyright';const link=document.createElement('a');link.href='https://www.tradingview.com/economic-calendar/';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Calendrier économique TradingView';attribution.append(link);widget.append(attribution);
- const script=document.createElement('script');script.type='text/javascript';script.src='https://s3.tradingview.com/external-embedding/embed-widget-events.js';script.async=true;script.text=JSON.stringify({colorTheme:'dark',isTransparent:true,locale:'fr',countryFilter:'us',importanceFilter:'-1,0,1',width:'100%',height:'100%'});widget.append(script);container.replaceChildren(widget);
-}
-export function initEconomicCalendar(container,getToken){
+export function initEconomicCalendar(container){
  if(!container)return;
  let disposed=false;
- const root=document.createElement('div');root.className='aurevia-calendar-root';
- const structured=document.createElement('div');structured.className='aurevia-calendar-structured';
- const tvSection=document.createElement('section');tvSection.className='aurevia-calendar-tv';
- const tvHeading=el('div','calendar-tv-heading','Calendrier économique TradingView');
- const tvDescription=el('p','calendar-tv-description','Vue interactive complémentaire · fond noir · indépendante des données utilisées par le moteur d’analyse.');
- const tvMount=document.createElement('div');tvMount.className='aurevia-calendar-tv-mount';
- tvSection.append(tvHeading,tvDescription,tvMount);
- root.append(structured,tvSection);container.replaceChildren(root);
- // Le widget est monté immédiatement : il ne dépend plus d’un clic sur un accordéon.
- const load=async()=>{
-  structured.replaceChildren(el('p','calendar-loading','Chargement des événements économiques…'));
-  try{
-   const token=await getToken?.();if(!token)throw new Error('Connectez-vous pour consulter le calendrier économique.');
-   const response=await fetch('/api/economic-calendar',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
-   const payload=await response.json().catch(()=>({}));
-   if(!response.ok)throw new Error(payload.error||`Calendrier indisponible (HTTP ${response.status}).`);
-   if(!Array.isArray(payload.events))throw new Error('La source a retourné un calendrier invalide.');
-   if(!disposed)renderCalendar(structured,payload);
-  }catch(error){if(!disposed)renderError(structured,error.message,load);}
- };
- load();
- renderTradingView(tvMount);
- return ()=>{disposed=true;};
+ const section=document.createElement('section');section.className='aurevia-calendar-tv';
+ const heading=el('div','calendar-tv-heading','Calendrier économique TradingView');
+ const description=el('p','calendar-tv-description','Calendrier mondial des événements économiques · horaires affichés selon les paramètres de TradingView.');
+ const mount=document.createElement('div');mount.className='aurevia-calendar-tv-mount';
+ section.append(heading,description,mount);container.replaceChildren(section);
+ const widget=document.createElement('div');widget.className='tradingview-widget-container';widget.style.width='100%';widget.style.height='min(760px, 78vh)';widget.style.minHeight='520px';widget.style.backgroundColor='#000000';
+ const inner=document.createElement('div');inner.className='tradingview-widget-container__widget';inner.style.width='100%';inner.style.height='100%';widget.append(inner);
+ const attribution=document.createElement('div');attribution.className='tradingview-widget-copyright';const link=document.createElement('a');link.href='https://www.tradingview.com/economic-calendar/';link.target='_blank';link.rel='noopener noreferrer';link.textContent='Ouvrir le calendrier économique TradingView';attribution.append(link);widget.append(attribution);
+ const script=document.createElement('script');script.type='text/javascript';script.src='https://s3.tradingview.com/external-embedding/embed-widget-events.js';script.async=true;script.text=JSON.stringify({colorTheme:'dark',isTransparent:false,locale:'fr',importanceFilter:'-1,0,1',width:'100%',height:'100%'});widget.append(script);mount.replaceChildren(widget);
+ return ()=>{disposed=true;if(disposed)container.replaceChildren();};
 }

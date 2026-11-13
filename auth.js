@@ -9,6 +9,27 @@ let currentUser=null,currentProfile=null,adminVerified=false,sessionReady=false,
 window.__aureviaAuthenticated=false;document.body.classList.add('auth-required');
 window.__aureviaAdminVerified=null;
 function showStatus(message,isError=false){const el=$('authStatus');if(el){el.textContent=message;el.dataset.state=isError?'error':'ok';}}
+const REMEMBERED_ACCOUNTS_KEY='aurevia_remembered_accounts_v1';
+let googleAuthStarter=null;
+export function normalizeRememberedAccounts(raw){
+ let list=[];try{list=Array.isArray(raw)?raw:JSON.parse(raw||'[]');}catch{return [];}
+ if(!Array.isArray(list))return [];
+ const seen=new Set(),out=[];
+ for(const item of list){const email=String(item?.email||'').trim().toLowerCase();if(!email||seen.has(email))continue;seen.add(email);out.push({email,name:String(item?.name||email).slice(0,120),avatar:String(item?.avatar||'').startsWith('https://')?String(item.avatar).slice(0,500):''});if(out.length===2)break;}
+ return out;
+}
+function getRememberedAccounts(){try{return normalizeRememberedAccounts(localStorage.getItem(REMEMBERED_ACCOUNTS_KEY));}catch{return [];}}
+function saveRememberedAccounts(list){try{localStorage.setItem(REMEMBERED_ACCOUNTS_KEY,JSON.stringify(normalizeRememberedAccounts(list)));}catch{}renderRememberedAccounts();}
+function rememberAccount(user){const email=String(user?.email||'').trim().toLowerCase();if(!email)return false;const list=getRememberedAccounts(),existing=list.findIndex(x=>x.email===email);const record={email,name:user.user_metadata?.full_name||user.user_metadata?.name||email,avatar:user.user_metadata?.avatar_url||user.user_metadata?.picture||''};if(existing>=0){list[existing]={...list[existing],...record};saveRememberedAccounts(list);return true;}if(list.length>=2)return false;list.push(record);saveRememberedAccounts(list);return true;}
+function renderRememberedAccounts(){
+ const host=$('rememberedAccountsHost');if(!host)return;const list=getRememberedAccounts();host.replaceChildren();
+ const heading=document.createElement('div');heading.className='remembered-heading';heading.textContent=list.length?'Comptes mémorisés sur cet appareil':'Aucun compte mémorisé sur cet appareil';host.append(heading);
+ list.forEach(account=>{const card=document.createElement('div');card.className='remembered-account';const identity=document.createElement('div');identity.className='remembered-identity';if(account.avatar){const img=document.createElement('img');img.src=account.avatar;img.alt='';img.referrerPolicy='no-referrer';identity.append(img);}const info=document.createElement('div');const name=document.createElement('b');name.textContent=account.name;const email=document.createElement('small');email.textContent=account.email;info.append(name,email);identity.append(info);const actions=document.createElement('div');actions.className='remembered-actions';const login=document.createElement('button');login.type='button';login.className='primary-btn remembered-login';login.textContent='Se reconnecter';login.addEventListener('click',()=>startRememberedLogin(account.email,login));const remove=document.createElement('button');remove.type='button';remove.className='small-btn remembered-remove';remove.textContent='Retirer';remove.title='Retirer uniquement de la mémoire de cet appareil';remove.addEventListener('click',async()=>{const ok=await confirmInApp({title:'Retirer ce compte mémorisé ?',message:`${account.email} sera retiré de cet appareil. Le compte AUREVIA et ses données ne seront pas supprimés.`,confirmLabel:'Retirer'});if(ok)saveRememberedAccounts(getRememberedAccounts().filter(x=>x.email!==account.email));});actions.append(login,remove);card.append(identity,actions);host.append(card);});
+ const slots=document.createElement('p');slots.className='remembered-slots';slots.textContent=`${list.length}/2 comptes mémorisés`;
+ host.append(slots);
+ const add=document.createElement('button');add.type='button';add.className='secondary-btn remembered-add';add.textContent=list.length<2?'Ajouter / utiliser un autre compte':'Limite atteinte · retirez un compte pour en ajouter un autre';add.disabled=list.length>=2;add.addEventListener('click',()=>{const btn=$('googleLoginGateBtn');if(btn)startGoogleAuth(btn,'login');});host.append(add);
+}
+async function startRememberedLogin(email,btn){if(!googleAuthStarter){showStatus('Le service de connexion n’est pas encore prêt. Réessayez.',true);return;}await googleAuthStarter(btn,'login',email);}
 export function confirmInApp({title='Confirmer',message,phrase=null,confirmLabel='Confirmer',danger=false}={}){
  return new Promise(resolve=>{
   const dialog=document.createElement('dialog');dialog.className='modal';dialog.setAttribute('aria-labelledby','aurevia-confirm-title');
@@ -101,10 +122,11 @@ function consumeAuthIntent(user){
  let intent=null;try{intent=JSON.parse(sessionStorage.getItem('aurevia_auth_intent')||'null');}catch{}
  if(!intent)return null;
  consumedAuthIntent=intent;sessionStorage.removeItem('aurevia_auth_intent');
+ const email=String(user?.email||'').trim().toLowerCase();
+ if(intent.expectedEmail&&email!==String(intent.expectedEmail).trim().toLowerCase())return 'ACCOUNT_MISMATCH';
  const createdAt=Date.parse(user?.created_at||'');
- if(!Number.isFinite(createdAt))return null;
- if(intent.mode==='signup'&&createdAt<intent.startedAt-5000)return 'EXISTING_ACCOUNT';
- if(intent.mode==='login'&&createdAt>=intent.startedAt-5000)return 'ACCOUNT_NOT_REGISTERED';
+ if(Number.isFinite(createdAt)&&intent.mode==='signup'&&createdAt<intent.startedAt-5000)return 'EXISTING_ACCOUNT';
+ if(Number.isFinite(createdAt)&&intent.mode==='login'&&createdAt>=intent.startedAt-5000)return 'ACCOUNT_NOT_REGISTERED';
  return null;
 }
 async function rejectAccountCreatedDuringLogin(session,intentError){
@@ -121,6 +143,10 @@ async function activateSession(session,action){
  sessionActivationBusy=true;pendingSession=session;currentUser=session.user||currentUser;
  try{
   const authIntentError=consumeAuthIntent(session.user);
+  if(authIntentError==='ACCOUNT_MISMATCH'){
+   pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;renderRememberedAccounts();render();
+   const message='Le compte Google sélectionné ne correspond pas au compte mémorisé. Choisissez le bon compte puis réessayez.';const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);return;
+  }
   if(authIntentError==='EXISTING_ACCOUNT'){
    pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;render();
    const message='Cette adresse Google possède déjà un compte AUREVIA. Utilisez « Se connecter avec Google ». ';
@@ -128,6 +154,10 @@ async function activateSession(session,action){
   }
   if(authIntentError==='ACCOUNT_NOT_REGISTERED'){
    try{await rejectAccountCreatedDuringLogin(session,authIntentError);pendingSession=null;return;}catch(rejectError){await forceLocalSignOut('Connexion refusée : cette adresse ne possède pas encore de compte AUREVIA. Utilisez « Créer un compte ». Si le refus n’a pas pu être appliqué, contactez le support.');return;}
+  }
+  if(!rememberAccount(session.user)){
+   pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;renderRememberedAccounts();render();
+   const message='Deux comptes sont déjà mémorisés sur cet appareil. Retirez-en un avant de connecter un troisième compte.';const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);return;
   }
   await sessionRequest(action,session.access_token);sessionReady=true;pendingSession=null;render();
   const retry=$('retrySessionBtn');if(retry)retry.hidden=true;
@@ -146,20 +176,32 @@ export async function initAuth(){
  try{await ensureClient();}catch(error){showStatus('Service de compte indisponible : '+error.message,true);return;}
  const {data,error}=await supabase.auth.getSession();
  if(error){showStatus('Impossible de lire la session Google.',true);return;}
+ renderRememberedAccounts();
  currentUser=data.session?.user||null;
- if(data.session){const sessionId=readJwtSessionId(data.session.access_token);let known=false;try{known=Boolean(sessionId&&localStorage.getItem('aurevia_active_session_id')===sessionId);}catch{}await activateSession(data.session,known?'heartbeat':'claim');window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event:'INITIAL_SESSION'}}));}else render();
+ if(data.session){const sessionId=readJwtSessionId(data.session.access_token);let known=false;try{known=Boolean(sessionId&&localStorage.getItem('aurevia_active_session_id')===sessionId);}catch{}await activateSession(data.session,known?'heartbeat':'claim');window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event:'INITIAL_SESSION'}}));}else{render();renderRememberedAccounts();}
  supabase.auth.onAuthStateChange((event,session)=>{
-  if(event==='SIGNED_OUT'){stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);render();window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}}));return;}
+  if(event==='SIGNED_OUT'){stopHeartbeat();sessionReady=false;currentUser=null;currentProfile=null;setAdminVisibility(false);render();renderRememberedAccounts();window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}}));return;}
   if(event==='SIGNED_IN'){currentUser=session?.user||null;sessionReady=false;adminVerified=false;window.__aureviaAdminVerified=null;document.querySelector('[data-page=\"admin\"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');activateSession(session,'claim').then(()=>window.dispatchEvent(new CustomEvent('aurevia:authchange',{detail:{event}})));return;}
   if(event==='TOKEN_REFRESHED'&&session){currentUser=session.user||currentUser;activateSession(session,'heartbeat');}
  });
- const startGoogleAuth=async(btn,mode)=>{btn.disabled=true;try{sessionStorage.setItem('aurevia_auth_intent',JSON.stringify({mode,startedAt:Date.now()}));}catch{}const status=$('authGateStatus')||$('authStatus');if(status)status.textContent=mode==='signup'?'Vérification de votre inscription avec Google…':'Redirection sécurisée vers Google…';const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin,queryParams:{prompt:'select_account'}}});if(error){try{sessionStorage.removeItem('aurevia_auth_intent');}catch{}if(status)status.textContent=(mode==='signup'?'Inscription':'Connexion')+' Google impossible : '+error.message;btn.disabled=false;}};
+ const startGoogleAuth=async(btn,mode,expectedEmail=null)=>{
+  const remembered=getRememberedAccounts();const expected=String(expectedEmail||'').trim().toLowerCase();
+  if(!expected&&remembered.length>=2){const message='La limite de deux comptes mémorisés est atteinte. Retirez un compte avant d’en ajouter un autre.';const status=$('authGateStatus')||$('authStatus');if(status)status.textContent=message;showStatus(message,true);return;}
+  if(expected&&!remembered.some(x=>x.email===expected)){showStatus('Ce compte ne figure plus dans la mémoire de cet appareil.',true);renderRememberedAccounts();return;}
+  btn.disabled=true;try{sessionStorage.setItem('aurevia_auth_intent',JSON.stringify({mode,startedAt:Date.now(),expectedEmail:expected||null}));}catch{}
+  const status=$('authGateStatus')||$('authStatus');if(status)status.textContent=expected?`Reconnexion au compte ${expected} avec Google…`:mode==='signup'?'Vérification de votre inscription avec Google…':'Redirection sécurisée vers Google…';
+  const options={redirectTo:location.origin,queryParams:{prompt:'select_account'}};if(expected)options.queryParams.login_hint=expected;
+  googleAuthStarter=startGoogleAuth;
+  const {error}=await supabase.auth.signInWithOAuth({provider:'google',options});
+  if(error){try{sessionStorage.removeItem('aurevia_auth_intent');}catch{}if(status)status.textContent=(mode==='signup'?'Inscription':'Connexion')+' Google impossible : '+error.message;btn.disabled=false;}
+ };
+ googleAuthStarter=startGoogleAuth;
  const bindGoogleAuth=(id,mode)=>$(id)?.addEventListener('click',e=>startGoogleAuth(e.currentTarget,mode));
  bindGoogleAuth('googleLoginBtn','login');bindGoogleAuth('googleSignupBtn','signup');
  bindGoogleAuth('googleLoginGateBtn','login');bindGoogleAuth('googleSignupGateBtn','signup');
  $('retrySessionBtn')?.addEventListener('click',async event=>{const btn=event.currentTarget;if(!pendingSession?.access_token){showStatus('Aucune session Google à vérifier. Relancez la connexion.',true);return;}btn.disabled=true;btn.textContent='Vérification…';try{await activateSession(pendingSession,'claim');}finally{btn.disabled=false;btn.textContent='Réessayer la vérification';}});
- $('signOutBtn')?.addEventListener('click',async()=>{try{await sessionRequest('end');}catch{}const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}try{localStorage.removeItem('aurevia_active_session_id');}catch{}currentUser=null;currentProfile=null;sessionReady=false;setAdminVisibility(false);render();showStatus('Déconnexion effectuée.');});
- $('deleteOwnAccountBtn')?.addEventListener('click',async(event)=>{const btn=event.currentTarget;if(!currentUser||!sessionReady){showStatus('Connectez-vous pour supprimer votre compte.',true);return;}const email=currentUser.email||'ce compte';const confirmed=await confirmInApp({title:'Supprimer le compte AUREVIA ?',message:`Compte : ${email}. Cette action est définitive et supprimera les données associées à AUREVIA. Votre compte Google ne sera pas supprimé. Pour confirmer, saisissez SUPPRIMER.`,phrase:'SUPPRIMER',confirmLabel:'Supprimer définitivement',danger:true});if(!confirmed)return;btn.disabled=true;btn.textContent='Suppression en cours…';try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous puis réessayez.');const response=await fetch('/api/account-delete',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({confirmation:'SUPPRIMER'}),cache:'no-store'});const result=await response.json().catch(()=>({}));if(!response.ok||result.deleted!==true)throw new Error(result.error||'Le serveur n’a pas confirmé la suppression.');stopHeartbeat();sessionReady=false;pendingSession=null;currentUser=null;currentProfile=null;setAdminVisibility(false);await supabase.auth.signOut({scope:'local'}).catch(()=>{});try{localStorage.removeItem('aurevia_active_session_id');}catch{}render();const status=$('authGateStatus');if(status)status.textContent='Votre compte AUREVIA a été supprimé. Votre compte Google reste intact.';showStatus('Compte AUREVIA supprimé.');}catch(error){showStatus(error.message,true);btn.disabled=false;btn.textContent='Supprimer définitivement mon compte';}});
+ $('signOutBtn')?.addEventListener('click',async()=>{try{await sessionRequest('end');}catch{}const {error}=await supabase.auth.signOut({scope:'local'});if(error){showStatus(error.message,true);return;}try{localStorage.removeItem('aurevia_active_session_id');}catch{}currentUser=null;currentProfile=null;sessionReady=false;setAdminVisibility(false);render();renderRememberedAccounts();showStatus('Déconnexion effectuée. Vos comptes mémorisés restent disponibles sur cet appareil.');});
+ $('deleteOwnAccountBtn')?.addEventListener('click',async(event)=>{const btn=event.currentTarget;if(!currentUser||!sessionReady){showStatus('Connectez-vous pour supprimer votre compte.',true);return;}const email=currentUser.email||'ce compte';const confirmed=await confirmInApp({title:'Supprimer le compte AUREVIA ?',message:`Compte : ${email}. Cette action est définitive et supprimera les données associées à AUREVIA. Votre compte Google ne sera pas supprimé. Pour confirmer, saisissez SUPPRIMER.`,phrase:'SUPPRIMER',confirmLabel:'Supprimer définitivement',danger:true});if(!confirmed)return;btn.disabled=true;btn.textContent='Suppression en cours…';try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous puis réessayez.');const response=await fetch('/api/account-delete',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({confirmation:'SUPPRIMER'}),cache:'no-store'});const result=await response.json().catch(()=>({}));if(!response.ok||result.deleted!==true)throw new Error(result.error||'Le serveur n’a pas confirmé la suppression.');stopHeartbeat();sessionReady=false;pendingSession=null;currentUser=null;currentProfile=null;setAdminVisibility(false);await supabase.auth.signOut({scope:'local'}).catch(()=>{});try{localStorage.removeItem('aurevia_active_session_id');}catch{}saveRememberedAccounts(getRememberedAccounts().filter(x=>x.email!==String(email).toLowerCase()));render();const status=$('authGateStatus');if(status)status.textContent='Votre compte AUREVIA a été supprimé. Votre compte Google reste intact.';showStatus('Compte AUREVIA supprimé.');}catch(error){showStatus(error.message,true);btn.disabled=false;btn.textContent='Supprimer définitivement mon compte';}});
 }
 
 export async function createTelegramPairingCode(){

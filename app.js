@@ -16,16 +16,22 @@ const symbols = {
   BTCUSD:{label:'BTC/USD',tv:'BITSTAMP:BTCUSD'},ETHUSD:{label:'ETH/USD',tv:'BITSTAMP:ETHUSD'},SOLUSD:{label:'SOL/USD',tv:'COINBASE:SOLUSD'},XRPUSD:{label:'XRP/USD',tv:'BITSTAMP:XRPUSD'}
 };
 let selectedSymbol='XAUUSD', selectedTf='15';
-const quoteSymbols={XAUUSD:'XAU/USD',XAGUSD:'XAG/USD',EURUSD:'EUR/USD',GBPUSD:'GBP/USD',USDJPY:'USD/JPY',BTCUSD:'BTC/USD',ETHUSD:'ETH/USD'};
 let deferredInstallPrompt=null;
-async function refreshMarketQuotes(){
-  await Promise.all(Object.entries(quoteSymbols).map(async ([code,pair])=>{
-    const price=$(`price-${code}`),change=$(`change-${code}`);if(!price)return;
-    try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise.');const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(pair)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});const data=await response.json();if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
-      const value=Number(data.price),digits=code.endsWith('JPY')?3:(code.includes('USD')&&['EURUSD','GBPUSD','USDJPY'].includes(code)?5:(code==='BTCUSD'||code==='ETHUSD'?2:2));
-      price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});if(change)change.textContent='Twelve Data · '+new Date(data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    }catch(error){if(change)change.textContent='Twelve Data · '+(error.message||'indisponible');}
-  }));
+async function refreshSelectedQuote(){
+  const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
+  if(label)label.textContent=symbols[selectedSymbol]?.label||selectedSymbol;
+  if(price)price.textContent='—';
+  if(status)status.textContent='Chargement du cours vérifié…';
+  try{
+    const token=await getAnalysisAccessToken();
+    if(!token)throw new Error('Connectez-vous pour consulter le cours.');
+    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].label)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
+    const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(['EURUSD','GBPUSD','AUDUSD','NZDUSD','USDCAD','USDCHF','EURGBP'].includes(selectedSymbol)?5:(['BTCUSD','ETHUSD'].includes(selectedSymbol)?2:2));
+    if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
+    if(status)status.textContent=`Twelve Data · ${new Date(data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
+  }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
 }
 function initAppInstallation(){
  const button=$('installAppBtn'),status=$('installAppStatus');if(!button||!status)return;
@@ -100,9 +106,20 @@ function mountDxyChart(){
   box.replaceChildren(frame);box.dataset.loaded='1';
 }
 function setSelectedSymbol(symbol){
-  if(!symbols[symbol])return;selectedSymbol=symbol;$('instrumentSelect').value=symbol;
-  document.querySelectorAll('.ticker').forEach(t=>t.classList.toggle('active',t.dataset.symbol===symbol));
-  mountTradingView();loadAnalysis();
+  if(!symbols[symbol])return;
+  selectedSymbol=symbol;
+  if($('instrumentSelect'))$('instrumentSelect').value=symbol;
+  if($('analysisInstrumentSelect'))$('analysisInstrumentSelect').value=symbol;
+  document.querySelectorAll('.ticker').forEach(t=>{const active=t.dataset.symbol===symbol;t.classList.toggle('active',active);t.setAttribute('aria-pressed',String(active));});
+  refreshSelectedQuote();
+  mountTradingView();
+  $('signalState').textContent='PRÊT';
+  $('signalExplain').textContent=`${symbols[symbol].label} sélectionné. Lancez l’analyse pour demander à Groq d’étudier cette paire sur M15.`;
+  $('analyzeStatus').textContent='Paire sélectionnée · analyse en attente de votre demande.';
+  $('probabilityValue').textContent='—';
+  $('probabilityBar').style.width='0%';
+  $('aiTradePlan').hidden=true;
+  $('aiScenarios').hidden=true;
 }
 function setTimeframe(tf){selectedTf=tf;document.querySelectorAll('#timeframes button').forEach(b=>b.classList.toggle('selected',b.dataset.tf===tf));mountTradingView();}
 async function loadAnalysis(){
@@ -387,6 +404,7 @@ function bindEvents(){
     else if(allowed&&location.hash==='#admin')loadAdminConsole();
   });
   $('instrumentSelect').addEventListener('change',e=>setSelectedSymbol(e.target.value));
+  $('analysisInstrumentSelect')?.addEventListener('change',e=>setSelectedSymbol(e.target.value));
   document.querySelectorAll('.ticker').forEach(t=>t.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(t.dataset.symbol);}));
   document.querySelectorAll('#timeframes button').forEach(b=>b.addEventListener('click',()=>setTimeframe(b.dataset.tf)));
   $('refreshBtn').addEventListener('click',()=>{mountTradingView();loadAnalysis();});
@@ -531,6 +549,6 @@ function bindEvents(){
   $('reduceMotion').checked=localStorage.getItem('aurevia_reduce_motion')==='1';document.documentElement.classList.toggle('reduce-motion',$('reduceMotion').checked);initAppInstallation();
 }
 let authenticatedBooted=false;
-function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;restoreMyAnalysis();refreshScenarioWatchList();initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarWidget'),getAnalysisAccessToken);initEconomicCalendar($('calendarStandalone'),getAnalysisAccessToken);mountTradingView();mountDxyChart();mountTickerTape();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';}
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;restoreMyAnalysis();refreshScenarioWatchList();initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarWidget'),getAnalysisAccessToken);initEconomicCalendar($('calendarStandalone'),getAnalysisAccessToken);mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';}
 function init(){bindEvents();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated)bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();

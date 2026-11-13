@@ -21,7 +21,25 @@ function parseProviderTime(value,zone){
 function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=(Date.now()-stamp)/60000;return age>=-intervalMinutes*1.5&&age<=intervalMinutes*2.5;}
 async function fetchMacroContext(){try{const token=await getAnalysisAccessToken();if(!token)return {configured:false,notice:'Connexion requise pour les données macro.'};const r=await fetch('/api/macro-context',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return {configured:false,notice:'Flux macro indisponible.'};return await r.json();}catch{return {configured:false,notice:'Flux macro indisponible.'};}}
 async function requestGroqAnalysis(symbol,m15,context){const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise pour solliciter Groq.');const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(30000)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Groq indisponible (HTTP ${r.status}).`);return d;}
-async function fetchFrame(symbol,interval){const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise pour les données de marché.');const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=250`;const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(14000)});const data=await r.json().catch(()=>({}));if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);throw new Error(data.error||'Quota de requêtes atteint. Réessayez dans 15 secondes.');}if(!r.ok)throw new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');return data;}
+async function fetchFrame(symbol,interval){
+ const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise pour les données de marché.');
+ const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=250`;
+ // Le M15 est indispensable à la décision : on le retente séparément sur les erreurs transitoires,
+ // sans transformer une panne en signal ni réutiliser des bougies périmées.
+ const attempts=interval==='15min'?3:2;let lastError=null;
+ for(let attempt=0;attempt<attempts;attempt++){
+  try{
+   const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(16000)});
+   const data=await r.json().catch(()=>({}));
+   if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);throw new Error(data.error||'Quota de requêtes atteint. Réessayez dans 15 secondes.');}
+   if(r.ok){if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');return data;}
+   lastError=new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
+   if(![408,425,500,502,503,504].includes(r.status))throw lastError;
+  }catch(error){lastError=error;if(error.message?.includes('Quota de requêtes'))throw error;}
+  if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
+ }
+ throw lastError||new Error('Flux de marché indisponible après plusieurs tentatives.');
+}
 export async function loadInstrumentAnalysis(symbol){
  const pending=inFlight.get(symbol);if(pending)return pending;
  const retryAt=retryAfter.get(symbol)||0;if(Date.now()<retryAt){latest={...latest,message:'Temporisation du fournisseur',signalReason:`WAIT : trop de requêtes récentes. Nouvelle tentative possible dans ${Math.ceil((retryAt-Date.now())/1000)} s.`};return null;}
