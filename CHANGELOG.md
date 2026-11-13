@@ -1,3 +1,17 @@
+# V2.3.98 — Suppression définitive des comptes AUREVIA
+
+- Suppression des données utilisateur côté serveur avant suppression de l’identité Supabase Auth : journal, positions, clôtures, scénarios surveillés, alertes, préférences, annonces ciblées, liaison Telegram et profil.
+- La suppression administrative et la suppression personnelle partagent le même nettoyage serveur idempotent.
+- Révocation de la session et suppression de l’identité Auth ; une ancienne session ne peut pas être restaurée.
+- Les données locales du compte sont effacées sur l’appareil qui exécute la suppression. Un identifiant propriétaire local efface aussi les anciennes données lorsqu’un nouvel identifiant AUREVIA se connecte sur un appareil déjà utilisé.
+- La même adresse Google peut se réinscrire explicitement ; aucune liste de bannissement permanente n’est créée.
+
+# V2.3.97 — Confirmations et retours intégrés AUREVIA
+
+- Dialogues de confirmation intégrés pour les actions sensibles, côté utilisateur et administrateur.
+- Notifications de succès et d’erreur intégrées au thème AUREVIA, sans centre de notifications.
+- Suppression des alertes et confirmations natives du navigateur dans les actions principales.
+
 ## V2.3.91 — Conversion automatique des devises
 
 - Conversion automatique de la devise de cotation vers la devise du compte via Twelve Data Exchange Rate.

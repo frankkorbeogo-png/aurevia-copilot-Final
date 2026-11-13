@@ -602,3 +602,14 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .scenario-direct-entry button{grid-column:1/-1}
 .scenario-direct-entry small,.scenario-direct-entry p{grid-column:1/-1;color:var(--muted,#9aa3b8)}
 @media(max-width:600px){.scenario-watch-toolbar{align-items:flex-start;flex-direction:column}.scenario-direct-entry{grid-template-columns:1fr}}
+
+/* V2.3.98 — suppression définitive des comptes d'action intégrés AUREVIA */
+.aurevia-feedback-stack{position:fixed;z-index:10050;top:calc(env(safe-area-inset-top,0px) + 16px);right:16px;display:grid;gap:10px;width:min(420px,calc(100vw - 32px));pointer-events:none}
+.aurevia-feedback{display:flex;align-items:flex-start;gap:11px;padding:14px 14px 13px;border:1px solid rgba(172,133,255,.34);border-radius:15px;background:linear-gradient(135deg,rgba(35,23,57,.98),rgba(17,13,29,.98));box-shadow:0 16px 48px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.06);color:#f5efff;pointer-events:auto;animation:aurevia-feedback-in .22s ease-out}
+.aurevia-feedback-success{border-color:rgba(85,211,158,.5)}.aurevia-feedback-error{border-color:rgba(255,112,132,.58)}.aurevia-feedback-info{border-color:rgba(137,164,255,.48)}
+.aurevia-feedback-icon{display:grid;place-items:center;flex:0 0 27px;width:27px;height:27px;border-radius:50%;font-weight:900;background:rgba(160,117,255,.2);color:#d9c4ff}.aurevia-feedback-success .aurevia-feedback-icon{background:rgba(56,190,132,.17);color:#70e0ad}.aurevia-feedback-error .aurevia-feedback-icon{background:rgba(255,92,116,.16);color:#ff9aa9}
+.aurevia-feedback-copy{flex:1;min-width:0}.aurevia-feedback-copy strong{display:block;font-size:13px;letter-spacing:.01em}.aurevia-feedback-copy p{margin:4px 0 0;color:#d0c5df;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.aurevia-feedback-close{flex:0 0 25px;width:25px;height:25px;padding:0;border:0;border-radius:7px;background:rgba(255,255,255,.07);color:#d8cde5;font-size:20px;line-height:1;cursor:pointer}.aurevia-feedback.is-leaving{opacity:0;transform:translateY(-5px);transition:opacity .18s,transform .18s}
+@keyframes aurevia-feedback-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:600px){.aurevia-feedback-stack{top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;width:calc(100vw - 20px)}.aurevia-feedback{padding:12px;border-radius:13px}}
+@media(prefers-reduced-motion:reduce){.aurevia-feedback{animation:none}.aurevia-feedback.is-leaving{transition:none}}

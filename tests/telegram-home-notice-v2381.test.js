@@ -12,5 +12,5 @@ test('la notification disparaît après vérification d’une liaison Telegram a
  assert.match(app,/refreshTelegramHomeNotice\(\)/);
 });
 test('le cache PWA change de version avec la nouvelle notification', async()=>{
- const sw=await read('sw.js');assert.match(sw,/aurevia-shell-v2\.3\.93/);
+ const sw=await read('sw.js');assert.match(sw,/aurevia-shell-v2\.3\.98/);
 });

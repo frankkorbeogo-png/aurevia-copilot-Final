@@ -1,4 +1,5 @@
 import {verifyBearerUser,assertActiveSession,rpc,json} from './_session-auth.mjs';
+import {deleteUserApplicationData} from './_account-deletion.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const env=n=>(process.env[n]||'').trim();
 async function request(url,options={}){
@@ -115,9 +116,11 @@ export async function handler(event){
    // Revoke the AUREVIA session before deleting the Auth identity. This immediately
    // invalidates the app session; protected APIs also revalidate the Google user.
    await rpc(base,key,'aurevia_admin_revoke_session',{p_actor_id:caller.id,p_target_user_id:target});
+   // Purge the user's AUREVIA data first; on failure, do not delete the Auth identity.
+   const cleanup=await deleteUserApplicationData(base,key,target);
    await request(`${base}/auth/v1/admin/users/${encodeURIComponent(target)}`,{method:'DELETE',headers:adminHeaders(key)});
-   await audit(base,key,caller.id,'delete_user',target,{source:'admin_console',session_revoked:true});
-   return json(200,{ok:true,deleted:true,session_revoked:true});
+   await audit(base,key,caller.id,'delete_user',target,{source:'admin_console',session_revoked:true,application_data_deleted:true});
+   return json(200,{ok:true,deleted:true,application_data_deleted:true,cleaned_tables:cleanup.tables_cleaned,session_revoked:true,reauthentication_required:true});
   }
   if(action==='announcement_create'){
    const title=String(body.title||'').trim().slice(0,120),content=String(body.body||'').trim().slice(0,4000),category=String(body.category||'general').trim().slice(0,40);

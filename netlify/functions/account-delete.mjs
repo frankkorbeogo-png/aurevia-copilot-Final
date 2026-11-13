@@ -1,4 +1,5 @@
 import {verifyBearerUser,json} from './_session-auth.mjs';
+import {deleteUserApplicationData} from './_account-deletion.mjs';
 const headers=(key)=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'POST,OPTIONS','access-control-allow-headers':'authorization,content-type'}};
@@ -8,9 +9,12 @@ export async function handler(event){
  try{
   const context=await verifyBearerUser(event);
   // A final server-side identity check prevents deleting a different account.
+  // Purge every AUREVIA-owned record before removing the Auth identity.
+  // If cleanup fails, keep the Auth account so the operation can be retried.
+  const cleanup=await deleteUserApplicationData(context.base,context.service,context.user.id);
   const response=await fetch(`${context.base}/auth/v1/admin/users/${encodeURIComponent(context.user.id)}`,{method:'DELETE',headers:headers(context.service),signal:AbortSignal.timeout(10000)});
   const data=await response.json().catch(()=>null);
   if(!response.ok)throw Object.assign(new Error(data?.msg||data?.message||'La suppression du compte a échoué.'),{statusCode:response.status});
-  return json(200,{ok:true,deleted:true,reauthentication_required:true});
+  return json(200,{ok:true,deleted:true,application_data_deleted:true,cleaned_tables:cleanup.tables_cleaned,reauthentication_required:true});
  }catch(error){return json(error.statusCode||500,{error:error.statusCode>=500?'Service de suppression temporairement indisponible.':error.message,code:error.code||null});}
 }
