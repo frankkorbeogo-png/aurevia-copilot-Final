@@ -30,7 +30,7 @@ Le moteur commun accepte trois méthodes :
 - **Valeur du point** : nombre de points parcourus × valeur monétaire du point par lot × volume.
 - **Valeur du tick** : nombre de ticks parcourus × valeur monétaire du tick par lot × volume.
 
-La valeur de point/tick doit être saisie dans la devise du compte. AUREVIA ne devine jamais la taille d’un contrat, un taux de conversion ou une marge. Chaque position conserve son propre snapshot. Le même moteur est utilisé pour les prises de position manuelles et pour celles créées après confirmation d’analyse via Telegram.
+La valeur de point/tick doit être saisie dans la devise du compte. AUREVIA ne devine jamais la taille d’un contrat ni une marge. Pour la méthode « taille du contrat », la devise de cotation est déduite de l’instrument et le taux de conversion est récupéré automatiquement auprès de Twelve Data à chaque clôture. Si le taux est indisponible, la clôture financière est suspendue : aucun taux fictif de 1 n’est appliqué. Chaque clôture conserve son propre snapshot FX (devises, taux, date et source). Pour les méthodes point/tick, la valeur saisie doit déjà être exprimée dans la devise du compte. Le même moteur est utilisé pour les prises de position manuelles et pour celles créées après confirmation d’analyse via Telegram.
 
 **Migration V2.3.80 déjà appliquée sur Supabase :** `20261113142328_universal_contract_snapshot_v2380`. Elle ajoute les snapshots JSONB aux groupes et positions et une RPC Telegram limitée au rôle `service_role`.
 
@@ -109,7 +109,7 @@ Après le déploiement, vérifier l'URL de redirection OAuth Supabase. Les avert
 - L'analyse OHLC Twelve Data est autorisée sur 14 instruments : XAU/USD, XAG/USD, les paires forex listées dans `analysis.js`, BTC/USD et ETH/USD. Les autres symboles de la liste graphique restent consultables sur le widget mais ne reçoivent pas cette analyse OHLC.
 - Le Volume Profile est une approximation calculée à partir des volumes OHLCV par intervalle, pas un profil tick par tick. Il reste indisponible si le fournisseur ne donne pas de volume exploitable.
 - Le score de confirmation technique est une règle explicable sur sept critères pondérés, dont 50 % consacrés au timeframe M15. Ce n'est pas une probabilité statistique de réussite. La probabilité reste non publiée tant qu'un historique de calibration représentatif n'existe pas.
-- Le P/L réalisé utilise le prix d'exécution, le volume clôturé, la taille du contrat, la conversion de devise et les frais. Sans spécifications contractuelles valides, le résultat réel ne peut pas être calculé.
+- Le P/L réalisé utilise le prix d'exécution, le volume clôturé, la taille du contrat, la conversion automatique de devise et les frais. Sans spécifications contractuelles valides, le résultat réel ne peut pas être calculé.
 - L'analyse IA exige une session Supabase valide et le backend applique une limite de requêtes par utilisateur ; le flux OHLC applique une limite par IP (garde-fou par instance serverless). Les secrets serveur ne sont pas inclus dans l'archive ; les appels réels Groq, Twelve Data et Telegram doivent être vérifiés après configuration des variables Netlify.
 
 

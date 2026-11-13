@@ -374,14 +374,17 @@ th,td,.table-wrap table,table{font-size:14px}
 
 
 /* Mandatory Google authentication gate: blocks the complete application on every device. */
-.auth-required-gate{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:22px;background:radial-gradient(ellipse at 50% 35%,rgba(43,72,145,.35),rgba(4,7,18,.96) 68%);backdrop-filter:blur(18px)}
+.auth-required-gate{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;overflow-y:auto;overscroll-behavior:contain;padding:18px 16px;padding-top:max(18px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));background:radial-gradient(ellipse at 50% 35%,rgba(43,72,145,.35),rgba(4,7,18,.96) 68%);backdrop-filter:blur(18px)}
 .auth-required-gate[hidden]{display:none!important}
-.auth-gate-card{width:min(100%,480px);padding:34px 26px;border:1px solid rgba(133,165,255,.24);border-radius:24px;background:linear-gradient(155deg,rgba(16,25,52,.96),rgba(7,11,26,.98));box-shadow:0 28px 100px rgba(0,0,0,.55);text-align:center}
+.auth-gate-card{width:min(100%,480px);max-height:calc(100dvh - 36px);min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:clamp(20px,4vh,34px) 26px;border:1px solid rgba(133,165,255,.24);border-radius:24px;background:linear-gradient(155deg,rgba(16,25,52,.98),rgba(7,11,26,.99));box-shadow:0 28px 100px rgba(0,0,0,.55);text-align:center;scrollbar-width:thin;scrollbar-color:rgba(151,126,210,.55) transparent}
 .auth-gate-logo{width:76px;height:76px;object-fit:contain;margin:0 auto 18px;filter:drop-shadow(0 0 22px rgba(91,139,255,.35))}
 .auth-gate-card h1{font-size:clamp(25px,5vw,36px);line-height:1.15;margin:12px 0}
 .auth-gate-card h1 span{display:block;color:#9cbcff}
 .auth-gate-card>p:not(.footnote){color:#b9c4df;line-height:1.65;margin:0 auto 22px;max-width:390px}
 .auth-gate-card .primary-btn{width:100%;justify-content:center;min-height:52px}
+.auth-gate-card .auth-choice-actions{position:sticky;bottom:-1px;z-index:3;margin:12px -8px 8px;padding:12px 8px 8px;background:linear-gradient(180deg,rgba(10,15,34,.78),rgba(10,15,34,.99) 28%);border-radius:0 0 12px 12px}
+.auth-gate-card .remembered-accounts-host{min-width:0}
+@media(max-width:560px){.auth-required-gate{place-items:center;padding-left:12px;padding-right:12px}.auth-gate-card{max-height:calc(100dvh - 24px);padding:20px 16px;border-radius:20px}.auth-gate-card>p:not(.footnote){font-size:13px;line-height:1.5;margin-bottom:14px}.auth-gate-logo{width:62px;height:62px;margin-bottom:12px}.auth-gate-card .auth-choice-actions{gap:8px}.auth-gate-card .auth-choice-actions button{min-height:48px}}
 .auth-gate-card .footnote{min-height:22px;margin:14px 0;color:#aab8d8}
 .auth-gate-card small{color:#7786a8;letter-spacing:.08em;text-transform:uppercase}
 body.auth-required>header,body.auth-required>aside,body.auth-required>main{visibility:hidden!important;pointer-events:none!important}
@@ -534,3 +537,68 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .telegram-home-action{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding:10px 13px;border:1px solid #b66cda;border-radius:10px;background:linear-gradient(100deg,#642487,#9639c2);color:#fff;font-size:11px;font-weight:700}
 .telegram-home-action:hover{filter:brightness(1.12)}
 @media(max-width:600px){.telegram-home-notice{align-items:flex-start;flex-wrap:wrap;gap:10px;padding:13px}.telegram-home-icon{width:36px;height:36px;flex-basis:36px}.telegram-home-copy{flex:1 1 calc(100% - 50px)}.telegram-home-copy p{font-size:11px}.telegram-home-action{width:100%;justify-content:space-between;margin-top:2px}}
+
+/* V2.3.84 — conteneur calendrier TradingView : hauteur cohérente avec le widget */
+#page-marches .calendar-frame,#page-actualites .calendar-frame{height:auto;min-height:560px;max-height:780px;overflow:auto}
+#page-marches .calendar-frame .tradingview-widget-container,
+#page-actualites .calendar-frame .tradingview-widget-container{height:600px!important;min-height:520px;background:#000}
+#page-marches .calendar-frame .tradingview-widget-container__widget,
+#page-actualites .calendar-frame .tradingview-widget-container__widget{height:100%;min-height:520px}
+@media(max-width:600px){
+ #page-marches .calendar-frame,#page-actualites .calendar-frame{min-height:540px;max-height:700px}
+ #page-marches .calendar-frame .tradingview-widget-container,
+ #page-actualites .calendar-frame .tradingview-widget-container{height:560px!important;min-height:520px}
+}
+
+
+/* V2.3.88 — navigation hiérarchisée et lisible */
+@media(min-width:901px){
+  .sidebar{width:218px;padding:18px 12px;overflow-y:auto;justify-content:flex-start;gap:14px}
+  .sidebar nav{display:flex;flex-direction:column;gap:13px}
+  .nav-group{display:grid;gap:4px}
+  .nav-group-title{padding:0 12px 3px;color:#8e789b;font-size:9px;font-weight:800;letter-spacing:.16em}
+  .nav-link{justify-content:flex-start;padding:10px 11px;font-size:11px;min-height:39px}
+  .nav-link span{font-size:17px;flex:0 0 21px}
+  .nav-link.active{box-shadow:inset 3px 0 #c46bf0}
+  .main-content{margin-left:218px}
+}
+@media(min-width:901px) and (max-width:1200px){
+  .sidebar{width:196px}
+  .main-content{margin-left:196px}
+  .nav-link{font-size:10px;padding:9px 8px;gap:8px}
+}
+@media(max-width:900px){
+  .sidebar{position:sticky;top:70px;left:auto;bottom:auto;width:100%;height:auto;transform:none;transition:none;
+    padding:8px 10px;background:#100b16f5;border-right:0;border-bottom:1px solid #4b2d5c;
+    z-index:19;display:block;overflow:hidden;box-shadow:0 8px 20px #0003}
+  .sidebar nav{display:flex;gap:7px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding:0 0 3px}
+  .sidebar nav::-webkit-scrollbar{display:none}
+  .nav-group{display:contents}
+  .nav-group-title{display:none}
+  .nav-link{flex:0 0 auto;justify-content:center;gap:7px;padding:9px 11px;font-size:11px;white-space:nowrap;
+    border:1px solid #382642;border-radius:10px;min-height:36px}
+  .nav-link span{width:auto;flex:0 0 auto;font-size:15px}
+  .nav-link.active{box-shadow:inset 0 -2px #c46bf0}
+  .sidebar-foot{display:none}
+  .main-content{margin:0;padding:18px 16px 88px}
+}
+@media(max-width:600px){
+  .sidebar{top:62px;padding:7px 8px}
+  .sidebar nav{gap:6px}
+  .nav-link{font-size:10px;padding:8px 10px;min-height:34px}
+  .main-content{padding:14px 12px 88px}
+}
+
+/* V2.3.94 — enregistrement direct après confirmation M15 */
+.scenario-watch-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0 14px;color:var(--muted,#9aa3b8);font-size:.86rem}
+.scenario-watch-card{border:1px solid rgba(151,120,255,.24);border-radius:14px;padding:14px;margin:12px 0;background:rgba(30,22,58,.32)}
+.scenario-watch-card>header{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.scenario-watch-levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;font-size:.85rem}
+.scenario-watch-levels span{padding:8px;border-radius:8px;background:rgba(255,255,255,.035)}
+.scenario-watch-levels b{display:block;margin-top:3px}
+.scenario-direct-entry{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;align-items:end;margin-top:14px;padding-top:12px;border-top:1px solid rgba(151,120,255,.18)}
+.scenario-direct-entry label{display:grid;gap:6px;font-size:.85rem}
+.scenario-direct-entry input,.scenario-direct-entry select{width:100%;min-width:0}
+.scenario-direct-entry button{grid-column:1/-1}
+.scenario-direct-entry small,.scenario-direct-entry p{grid-column:1/-1;color:var(--muted,#9aa3b8)}
+@media(max-width:600px){.scenario-watch-toolbar{align-items:flex-start;flex-direction:column}.scenario-direct-entry{grid-template-columns:1fr}}

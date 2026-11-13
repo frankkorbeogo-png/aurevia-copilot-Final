@@ -20,7 +20,7 @@ export async function handler(event){
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux de marché non configuré côté serveur.'});
  const cacheKey=`${symbol}:${interval}:${outputsize}`,cached=cache.get(cacheKey),cacheAge=cached?Date.now()-cached.at:Infinity;
  if(cached&&cacheAge<CACHE_FRESH_MS)return json(200,{...cached.value,cached:true,stale:false});
- const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval',interval);url.searchParams.set('outputsize',String(outputsize));url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
+ const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval',interval);url.searchParams.set('outputsize',String(outputsize));url.searchParams.set('timezone','UTC');url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
  let lastError=null;
  for(let attempt=0;attempt<2;attempt++){
   try{
@@ -28,7 +28,7 @@ export async function handler(event){
    if(response.ok&&data.status!=='error'&&Array.isArray(data.values)){
     const candles=data.values.map(v=>({time:v.datetime,open:Number(v.open),high:Number(v.high),low:Number(v.low),close:Number(v.close),volume:v.volume==null?null:Number(v.volume)})).filter(c=>[c.open,c.high,c.low,c.close].every(Number.isFinite)&&c.high>=Math.max(c.open,c.close)&&c.low<=Math.min(c.open,c.close)).reverse();
     if(candles.length<30)throw Object.assign(new Error('Historique OHLC insuffisant.'),{retryable:false,count:candles.length});
-    const value={symbol,interval,candles,timezone:data.meta?.exchange_timezone||data.meta?.timezone||null,fetchedAt:new Date().toISOString(),source:'Twelve Data',stale:false};cache.set(cacheKey,{at:Date.now(),value});return json(200,value);
+    const value={symbol,interval,candles,timezone:'UTC',exchangeTimezone:data.meta?.exchange_timezone||null,fetchedAt:new Date().toISOString(),source:'Twelve Data',stale:false};cache.set(cacheKey,{at:Date.now(),value});return json(200,value);
    }
    const providerMessage=data.message||data.code||`Réponse fournisseur HTTP ${response.status}.`;
    const messageText=String(providerMessage);

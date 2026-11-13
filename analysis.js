@@ -15,11 +15,17 @@ const FRAME_MINUTES={H4:240,H1:60,M30:30,M15:15,M5:5};
 let latest={message:'En attente',tableMessage:'Sélectionnez un instrument pour commencer.',signalReason:'Aucune conclusion avant validation des données.'};
 const inFlight=new Map();
 const retryAfter=new Map();
-const ANALYSIS_COOLDOWN_MS=15000;
+const ANALYSIS_COOLDOWN_MS=60000;
 export function getAnalysisState(){return latest;}
-function parseProviderTime(value,zone){
- const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);if(!match)return NaN;
- const [y,mo,d,h,mi,se]=match.slice(1).map(Number);const utc=Date.UTC(y,mo-1,d,h,mi,se);if(!zone)return utc;
+export function parseProviderTime(value,zone){
+ const raw=String(value||'').trim();if(!raw)return NaN;
+ // Les horodatages ISO avec Z ou offset sont déjà absolus.
+ if(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)){const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:NaN;}
+ const match=raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/);if(!match)return NaN;
+ const [y,mo,d,h,mi,se]=match.slice(1).map(Number);const utc=Date.UTC(y,mo-1,d,h,mi,se);
+ // Sans fuseau explicite, refuser de supposer que l'heure fournisseur est UTC.
+ if(!zone)return NaN;
+ if(zone==='UTC'||zone==='Etc/UTC'||zone==='GMT')return utc;
  try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc));const got=Object.fromEntries(parts.map(p=>[p.type,Number(p.value)]));const represented=Date.UTC(got.year,got.month-1,got.day,got.hour,got.minute,got.second);return utc-(represented-utc);}catch{return NaN;}
 }
 function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=(Date.now()-stamp)/60000;return age>=-intervalMinutes*1.5&&age<=intervalMinutes*2.5;}
@@ -35,11 +41,11 @@ async function fetchFrame(symbol,interval){
   try{
    const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(16000)});
    const data=await r.json().catch(()=>({}));
-   if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);throw new Error(data.error||'Quota de requêtes atteint. Réessayez dans 15 secondes.');}
+   if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);const limited=new Error(data.error||'Limite de requêtes atteinte. Réessayez dans une minute.');limited.code='MARKET_RATE_LIMIT';throw limited;}
    if(r.ok){if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');return data;}
    lastError=new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
    if(![408,425,500,502,503,504].includes(r.status))throw lastError;
-  }catch(error){lastError=error;if(error.message?.includes('Quota de requêtes'))throw error;}
+  }catch(error){lastError=error;if(error.code==='MARKET_RATE_LIMIT')throw error;}
   if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
  }
  throw lastError||new Error('Flux de marché indisponible après plusieurs tentatives.');

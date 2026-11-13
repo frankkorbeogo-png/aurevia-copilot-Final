@@ -12,7 +12,9 @@ test('les comptes mémorisés sont normalisés, dédupliqués et limités à deu
 test('chaque compte mémorisé peut être sélectionné et retiré sans supprimer le compte AUREVIA',async()=>{
  const s=await read('auth.js'),h=await read('index.html');
  assert.match(h,/rememberedAccountsHost/);
- assert.match(s,/startRememberedLogin\(account\.email,login\)/);
+ assert.match(s,/restoreRememberedSession\(account\.email,login\)/);
+ assert.match(s,/aurevia_account_sessions_v1/);
+ assert.match(s,/supabase\.auth\.setSession/);
  assert.match(s,/login_hint=expected/);
  assert.match(s,/Retirer uniquement de la mémoire de cet appareil/);
  assert.match(s,/Le compte AUREVIA et ses données ne seront pas supprimés/);

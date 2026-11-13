@@ -12,23 +12,21 @@ async function audit(base,key,actor,action,target=null,details={}){
  await rpc(base,key,'aurevia_admin_audit',{p_actor_id:actor,p_action:action,p_target_user_id:target,p_details:details});
 }
 
-async function broadcastProductAnnouncement(base,key,announcement){
+async function broadcastProductAnnouncement(base,key,announcement,recipientIds=null){
  const token=env('TELEGRAM_BOT_TOKEN');
  if(!token)return {status:'not_configured',sent:0,failed:0,skipped:0};
  const id=announcement?.id;if(!id)return {status:'not_sent',sent:0,failed:0,skipped:0};
  // Atomic claim: only the first publish transition may start a broadcast.
  const claim=await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}&telegram_broadcast_started_at=is.null&select=id`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=representation'}),body:JSON.stringify({telegram_broadcast_started_at:new Date().toISOString()})});
  if(!Array.isArray(claim)||!claim.length)return {status:'already_processed',sent:0,failed:0,skipped:0};
- const recipients=await request(`${base}/rest/v1/telegram_connections?select=user_id,chat_id&notify_product_announcements=eq.true&chat_id=not.is.null&limit=5000`,{headers:adminHeaders(key)});
- // Never send product announcements to administrator accounts, even if an admin
- // accidentally enables the preference on their own Telegram settings.
+ const recipientFilter=Array.isArray(recipientIds)&&recipientIds.length?`&user_id=in.(${recipientIds.map(encodeURIComponent).join(',')})`:'';
+ const recipients=await request(`${base}/rest/v1/telegram_connections?select=user_id,chat_id&notify_product_announcements=eq.true&chat_id=not.is.null${recipientFilter}&limit=5000`,{headers:adminHeaders(key)});
+ // Administrators are valid recipients too when they opted in to product announcements.
  const eligible=[];
- const checkedAdmins=new Map();
  for(const row of (Array.isArray(recipients)?recipients:[])){
   const userId=String(row.user_id||'').trim(),chatId=String(row.chat_id||'').trim();
   if(!userId||!chatId)continue;
-  if(!checkedAdmins.has(userId))checkedAdmins.set(userId,await rpc(base,key,'aurevia_is_admin',{p_user_id:userId})===true);
-  if(!checkedAdmins.get(userId))eligible.push(chatId);
+  eligible.push(chatId);
  }
  const unique=[...new Set(eligible)];
  const skipped= Math.max(0,(Array.isArray(recipients)?recipients.length:0)-eligible.length);
@@ -127,10 +125,26 @@ export async function handler(event){
    const startsAt=body.starts_at?new Date(body.starts_at):new Date();
    const endsAt=body.ends_at?new Date(body.ends_at):null;
    if(!Number.isFinite(startsAt.getTime())||(endsAt&&!Number.isFinite(endsAt.getTime()))||(endsAt&&endsAt<=startsAt))return json(400,{error:'Dates de publication invalides : l’expiration doit être postérieure au début.'});
-   const created=await request(`${base}/rest/v1/announcements`,{method:'POST',headers:adminHeaders(key,{'Prefer':'return=representation'}),body:JSON.stringify({title,body:content,category,source_url:body.source_url||null,starts_at:startsAt.toISOString(),ends_at:endsAt?.toISOString()||null,is_published:Boolean(body.is_published)})});
-   await audit(base,key,caller.id,'announcement_create',created?.[0]?.id||null,{published:Boolean(body.is_published),ends_at:endsAt?.toISOString()||null});
-   const item=created?.[0]||null;const telegram=body.is_published&&startsAt<=new Date()?await broadcastProductAnnouncement(base,key,item):{status:'not_due',sent:0,failed:0,skipped:0};
-   return json(200,{ok:true,announcement:item,telegram});
+   const audience=body.audience==='selected'?'selected':'all';
+   const recipientIds=[...new Set((Array.isArray(body.recipient_ids)?body.recipient_ids:[]).map(v=>String(v||'')).filter(v=>UUID.test(v)))];
+   if(audience==='selected'&&(!recipientIds.length||recipientIds.length>100))return json(400,{error:'Une annonce ciblée doit comporter entre 1 et 100 destinataires.'});
+   if(audience==='all'&&recipientIds.length)return json(400,{error:'Destinataires inattendus pour une annonce générale.'});
+   if(audience==='selected'){
+    const existing=await request(`${base}/rest/v1/profiles?select=id&id=in.(${recipientIds.map(encodeURIComponent).join(',')})`,{headers:adminHeaders(key)});
+    const validIds=new Set((Array.isArray(existing)?existing:[]).map(row=>row.id));
+    if(recipientIds.some(id=>!validIds.has(id)))return json(400,{error:'Un ou plusieurs destinataires ne correspondent pas à un compte utilisateur valide.'});
+   }
+   // Create as draft, attach the audience, then publish: recipients never see a partially configured targeted announcement.
+   const created=await request(`${base}/rest/v1/announcements`,{method:'POST',headers:adminHeaders(key,{'Prefer':'return=representation'}),body:JSON.stringify({title,body:content,category,source_url:body.source_url||null,starts_at:startsAt.toISOString(),ends_at:endsAt?.toISOString()||null,is_published:false})});
+   const item=created?.[0]||null;
+   if(audience==='selected'&&item?.id){
+    const rows=recipientIds.map(user_id=>({announcement_id:item.id,user_id}));
+    await request(`${base}/rest/v1/announcement_recipients`,{method:'POST',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify(rows)});
+   }
+   if(body.is_published)await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(item?.id||'')}`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify({is_published:true,updated_at:new Date().toISOString()})});
+   await audit(base,key,caller.id,'announcement_create',item?.id||null,{published:Boolean(body.is_published),audience,recipient_count:recipientIds.length,ends_at:endsAt?.toISOString()||null});
+   const telegram=body.is_published&&startsAt<=new Date()?await broadcastProductAnnouncement(base,key,item,audience==='selected'?recipientIds:null):{status:'not_due',sent:0,failed:0,skipped:0};
+   return json(200,{ok:true,announcement:{...item,is_published:Boolean(body.is_published)},audience,recipient_count:recipientIds.length,telegram});
   }
   if(action==='announcement_publish'||action==='announcement_expire'){
    const id=String(body.announcement_id||'');if(!UUID.test(id))return json(400,{error:'Identifiant d’annonce invalide.'});
@@ -140,7 +154,7 @@ export async function handler(event){
     const prior=before?.[0];
     const update={is_published:true,updated_at:new Date().toISOString()};
     await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify(update)});
-    if(prior&&!prior.is_published&&new Date(prior.starts_at||0)<=new Date())telegram=await broadcastProductAnnouncement(base,key,prior);
+    if(prior&&!prior.is_published&&new Date(prior.starts_at||0)<=new Date()){const assigned=await request(`${base}/rest/v1/announcement_recipients?select=user_id&announcement_id=eq.${encodeURIComponent(id)}`,{headers:adminHeaders(key)});const targeted=Array.isArray(assigned)&&assigned.length>0;telegram=await broadcastProductAnnouncement(base,key,prior,targeted?assigned.map(row=>row.user_id):null);}
    }else{
     const update=action==='announcement_expire'?{ends_at:new Date().toISOString(),updated_at:new Date().toISOString()}:{is_published:Boolean(body.is_published),updated_at:new Date().toISOString()};
     await request(`${base}/rest/v1/announcements?id=eq.${encodeURIComponent(id)}`,{method:'PATCH',headers:adminHeaders(key,{'Prefer':'return=minimal'}),body:JSON.stringify(update)});

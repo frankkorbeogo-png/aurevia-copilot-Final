@@ -56,7 +56,7 @@ export function calculateClosePnl({direction,entry,exit,volume,contractSize,quot
   return result.currency?{gross:result.gross,fees:result.fees,net:result.net,currency:result.currency}:{gross:result.gross,fees:result.fees,net:result.net};
 }
 
-export function recordPartialClose(group, childId, {volume,exit,contractSize=group.contractSize,quoteToAccount=group.quoteToAccount??1,feesPerLot=group.feesPerLot??0,contractSpec=group.contractSpec||null,fees=null}) {
+export function recordPartialClose(group, childId, {volume,exit,contractSize=group.contractSize,quoteToAccount=group.quoteToAccount??1,feesPerLot=group.feesPerLot??0,contractSpec=group.contractSpec||null,fees=null,fxSnapshot=null}) {
   const child=group.children.find(x=>x.id===childId);
   if(!child || child.status!=='OPEN') throw new Error(child?.status==='PENDING'?'Le trade est encore en attente de son prix d’entrée.':'Position introuvable ou déjà clôturée.');
   if(!Number.isFinite(volume)||volume<=0||volume>child.remainingLot+1e-9) throw new Error('Le volume clôturé doit être positif et ne peut pas dépasser le volume restant.');
@@ -64,7 +64,7 @@ export function recordPartialClose(group, childId, {volume,exit,contractSize=gro
   if(!contractSpec&&(!Number.isFinite(contractSize)||contractSize<=0))throw new Error('Renseignez les spécifications contractuelles du broker avant de calculer le résultat réel.');
   const feeAmount=fees===null?volume*(contractSpec?.feesPerLot??feesPerLot):fees;
   const pnl=calculateClosePnl({direction:child.direction,entry:child.entry,exit,volume,contractSize,quoteToAccount,fees:feeAmount,contractSpec});
-  child.closes.push({id:id(),volume,exit, ...pnl,closedAt:new Date().toISOString()});
+  child.closes.push({id:id(),volume,exit,...pnl,...(fxSnapshot?{fxSnapshot}:{}),closedAt:new Date().toISOString()});
   child.remainingLot=round(Math.max(0,child.remainingLot-volume),8);
   child.realizedPnl=round(child.realizedPnl+pnl.net,2); child.fees=round(child.fees+pnl.fees,2);
   if(child.remainingLot<=1e-8){child.remainingLot=0;child.status='CLOSED';child.closedAt=new Date().toISOString();}

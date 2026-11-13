@@ -1,3 +1,12 @@
+## V2.3.91 — Conversion automatique des devises
+
+- Conversion automatique de la devise de cotation vers la devise du compte via Twelve Data Exchange Rate.
+- Gestion du taux direct ou inverse, et parité 1 uniquement lorsque les deux devises sont identiques.
+- Application du taux au calcul des clôtures manuelles et TP/SL surveillées côté serveur.
+- Conservation du taux, de la source et de l’horodatage sur chaque clôture.
+- Même configuration des positions créées depuis Telegram, sans demander de taux manuel.
+- En cas de taux indisponible ou de devise inconnue, aucun P/L converti n’est fabriqué.
+
 ## v2.3.83 — liaison Telegram strictement individuelle
 - Renforcement du lien un-à-un : un compte Telegram ne peut être associé qu’à un seul compte AUREVIA et un compte AUREVIA ne peut conserver qu’une seule liaison Telegram.
 - Refus explicite du transfert ou du remplacement d’une liaison existante ; l’utilisateur doit d’abord déconnecter l’ancienne liaison depuis son compte AUREVIA.

@@ -10,7 +10,7 @@ test('les analyses identiques sont mutualisées pour éviter les appels OHLC en 
 });
 test('une réponse 429 déclenche une temporisation locale avant une nouvelle tentative',()=>{
   assert.match(source,/const retryAfter=new Map\(\)/);
-  assert.match(source,/ANALYSIS_COOLDOWN_MS=15000/);
+  assert.match(source,/ANALYSIS_COOLDOWN_MS=60000/);
   assert.match(source,/if\(r\.status===429\)/);
   assert.match(source,/Temporisation du fournisseur/);
 });

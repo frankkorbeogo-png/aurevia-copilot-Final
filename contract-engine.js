@@ -13,6 +13,8 @@ export function normalizeContractSpec(raw = {}) {
     brokerName: String(source.brokerName || source.broker_name || '').trim().slice(0, 100),
     accountType: String(source.accountType || source.account_type || '').trim().slice(0, 80),
     accountCurrency: String(source.accountCurrency || source.account_currency || '').trim().toUpperCase().slice(0, 8),
+    quoteCurrency: String(source.quoteCurrency || source.quote_currency || '').trim().toUpperCase().slice(0, 8) || null,
+    fxSnapshot: source.fxSnapshot && typeof source.fxSnapshot === 'object' ? {...source.fxSnapshot} : null,
     leverage: nullable(source.leverage),
     calculationType,
     contractSize: nullable(source.contractSize ?? source.contract_size),
@@ -32,8 +34,8 @@ export function normalizeContractSpec(raw = {}) {
 
 export function validateContractSpec(raw, { requireBroker = true } = {}) {
   const spec = normalizeContractSpec(raw);
-  if (requireBroker && !spec.brokerName) return { ok: false, error: 'Renseignez le nom du broker utilisé.' };
   if (requireBroker && !spec.accountCurrency) return { ok: false, error: 'Renseignez la devise du compte.' };
+  if (spec.quoteCurrency && !/^[A-Z]{3}$/.test(spec.quoteCurrency)) return { ok: false, error: 'Devise de cotation invalide.' };
   if (spec.accountCurrency && !/^[A-Z]{3,8}$/.test(spec.accountCurrency)) return { ok: false, error: 'Devise du compte invalide.' };
   if (spec.leverage !== null && (!finite(spec.leverage) || spec.leverage < 1 || spec.leverage > 100000)) return { ok: false, error: 'Le levier doit être compris entre 1 et 100000.' };
   if (!['contract', 'point', 'tick'].includes(spec.calculationType)) return { ok: false, error: 'Méthode de calcul inconnue.' };

@@ -3,9 +3,10 @@ import { getMarketStatus } from './market-hours.js';
 import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
 import { initEconomicCalendar } from './news.js';
-import { initAuth, confirmInApp, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase } from './auth.js';
+import { initAuth, confirmInApp, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase } from './auth.js';
 import { createTradeGroup, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, editOpenTradeGroup } from './trade-management.js';
 import { validateContractSpec } from './contract-engine.js';
+import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
 
 const $ = id => document.getElementById(id);
 const symbols = {
@@ -18,6 +19,7 @@ const symbols = {
   BTCUSD:{label:'BTC/USD',tv:'BITSTAMP:BTCUSD'},ETHUSD:{label:'ETH/USD',tv:'BITSTAMP:ETHUSD'},SOLUSD:{label:'SOL/USD',tv:'COINBASE:SOLUSD'},XRPUSD:{label:'XRP/USD',tv:'BITSTAMP:XRPUSD'}
 };
 let selectedSymbol='XAUUSD', selectedTf='15';
+let accountCurrency=null;
 let tradingViewMountToken=0, tradingViewRetryTimer=null, tradingViewResizeObserver=null;
 let deferredInstallPrompt=null;
 async function refreshSelectedQuote(){
@@ -201,6 +203,40 @@ function renderAITradePlan(state){
 }
 
 
+async function refreshScenarioWatchList(){
+ const host=$('scenarioWatchList');if(!host||!window.__aureviaAuthenticated)return;
+ host.textContent='Chargement des scénarios surveillés…';
+ try{
+  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise.');
+  const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'list'}),cache:'no-store'});
+  const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Chargement des scénarios impossible.');
+  const rows=data.scenarios||[];
+  if(!rows.length){host.innerHTML='<div class="empty-cell">Aucun scénario enregistré. Après confrontation de ta zone d’entrée, valide la synthèse pour lancer la surveillance.</div>';return;}
+  const statusLabel={monitoring:'Surveillance M15',zone_reached:'Zone atteinte · confirmation M15 attendue',entry_confirmed:'Entrée confirmée · enregistrement disponible',stopped:'Surveillance arrêtée',invalidated:'Scénario invalidé'};
+  host.innerHTML=rows.map(s=>{
+   const confirmed=s.status==='entry_confirmed'&&!s.trade_group_id&&s.lot_confirmation_expires_at&&Date.parse(s.lot_confirmation_expires_at)>Date.now();
+   const already=Boolean(s.trade_group_id);
+   const expires=confirmed?` · expiration ${new Date(s.lot_confirmation_expires_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`:'';
+   return `<article class="scenario-watch-card"><header><strong>${escapeText(s.instrument)} · ${escapeText(s.direction)}</strong><span>${escapeText(statusLabel[s.status]||s.status)}</span></header>
+    <div class="scenario-watch-levels"><span>Zone <b>${escapeText(s.entry_low)} – ${escapeText(s.entry_high)}</b></span><span>Entrée indicative <b>${escapeText(s.entry)}</b></span><span>SL <b>${escapeText(s.stop_loss)}</b></span><span>TP <b>${(s.take_profits||[]).map(escapeText).join(' · ')}</b></span><span>Dernier prix <b>${escapeText(s.last_price??'—')}</b></span></div>
+    ${already?'<p class="muted">Position déjà créée. Le suivi et le journal sont actifs.</p>':confirmed?`<div class="scenario-direct-entry"><label>Lot à enregistrer<input type="number" min="0.0001" step="0.0001" data-scenario-lot="${escapeText(s.id)}" placeholder="Ex. 0.05"></label><label>Mode de gestion<select data-scenario-mode="${escapeText(s.id)}"><option value="unique">Position unique · lot total réparti entre TP</option><option value="separate">Trades séparés · lot par TP</option></select></label><button class="primary-btn" type="button" data-scenario-register="${escapeText(s.id)}">Enregistrer directement dans AUREVIA</button><small>Ou utilise la notification privée Telegram déjà envoyée pour confirmer le lot depuis le bot.${expires}</small><p data-scenario-status="${escapeText(s.id)}" aria-live="polite"></p></div>`:s.status==='monitoring'||s.status==='zone_reached'?'<p class="muted">L’enregistrement sera proposé après la confirmation d’entrée M15.</p>':'<p class="muted">Ce scénario n’est plus actif.</p>'}
+   </article>`;
+  }).join('');
+  host.querySelectorAll('[data-scenario-register]').forEach(button=>button.addEventListener('click',async()=>{
+   const id=button.dataset.scenarioRegister,lot=Number(host.querySelector(`[data-scenario-lot="${id}"]`)?.value),mode=host.querySelector(`[data-scenario-mode="${id}"]`)?.value||'unique',status=host.querySelector(`[data-scenario-status="${id}"]`);
+   try{
+    if(!Number.isFinite(lot)||lot<=0)throw new Error('Saisis un lot valide.');
+    button.disabled=true;if(status)status.textContent='Enregistrement sécurisé en cours…';
+    const freshToken=await getAnalysisAccessToken();const r=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${freshToken}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id,mode,volume:lot}),cache:'no-store'});
+    const result=await r.json().catch(()=>({}));if(!r.ok)throw new Error(result.error||'Création de la position impossible.');
+    if(status)status.textContent='Position enregistrée. Actualisation du suivi et du journal…';
+    const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();}
+    await refreshScenarioWatchList();
+   }catch(error){if(status)status.textContent=error.message||'Enregistrement impossible.';button.disabled=false;}
+  }));
+ }catch(error){host.textContent=error.message||'Impossible de charger les scénarios.';}
+}
+
 function renderAIScenarios(state){
   const host=$('aiScenarios'),grid=$('aiScenariosGrid');if(!host||!grid)return;
   const scenarios=state.decisionDetails?.scenarios||state.scenarios||{};
@@ -268,17 +304,21 @@ async function saveScenarioFromUi(source='synthesis'){
  const instrument=$('myAnalysisInstrument')?.value||selectedSymbol,state=instrument===selectedSymbol?getAnalysisState():null;
  const decision=state?.decision;const direction=source==='ai'&&['BUY','SELL'].includes(decision)?decision:($('myAnalysisDirection')?.value||'WAIT');
  const candidate=state?.scenarios?.[direction.toLowerCase()];let summary=$('scenarioFinalSummary')?.value?.trim()||'';
+ let confrontation=null;try{confrontation=JSON.parse(localStorage.getItem('aurevia_last_confrontation')||'null')}catch{}
+ const currentAnalysis=readMyAnalysis();
+ if(!confrontation||confrontation.instrument!==instrument||confrontation.direction!==direction||String(currentAnalysis.zoneLow)!==confrontation.zoneLow||String(currentAnalysis.zoneHigh)!==confrontation.zoneHigh){status.textContent='Confrontez d’abord votre zone d’entrée avec l’IA. Toute modification de la zone ou de la direction nécessite une nouvelle confrontation.';return;}
  if(!['BUY','SELL'].includes(direction)){status.textContent='Choisissez BUY ou SELL avant d’enregistrer un scénario à surveiller.';return;}
  if(!candidate||candidate.status!=='IDENTIFIED'){status.textContent=`Aucun scénario ${direction} identifié par le moteur pour ${instrument}. Impossible d’activer une surveillance sans niveaux techniques validés.`;return;}
- const entry=Number(candidate.entry),low=Number(candidate.entryZoneLow),high=Number(candidate.entryZoneHigh),sl=Number(candidate.stopLoss),tps=(candidate.takeProfits||[]).map(Number).filter(Number.isFinite);
- if(![entry,low,high,sl].every(v=>Number.isFinite(v)&&v>0)||!tps.length){status.textContent='Les niveaux du scénario sont incomplets. Complétez l’analyse avant de l’enregistrer.';return;}
- if(source==='ai'&&candidate){summary=[`AUREVIA COPILOT · PROPOSITION GROQ M15`,`${instrument} · ${direction}`,`Zone d’entrée : ${candidate.entryZoneLow} – ${candidate.entryZoneHigh}`,`Entrée indicative : ${candidate.entry}`,`Stop Loss : ${candidate.stopLoss}`,`Take Profits : ${(candidate.takeProfits||[]).join(' / ')}`,`Probabilité estimée par Groq : ${candidate.probability??'non fournie'} % (non calibrée)`,`Score de confirmation : ${candidate.score??'—'}/100`,'',`Lecture du marché : ${candidate.reason||''}`,`Raisonnement : ${candidate.humanReasoning||''}`,`Conditions : ${(candidate.activationConditions||[]).join(' ; ')}`,`Déclencheur : ${candidate.entryTrigger||''}`,`Invalidation : ${candidate.invalidation||''}`].join('\n');if($('scenarioFinalSummary'))$('scenarioFinalSummary').value=summary;saveScenarioDraft();}if(!summary||summary.length<8){status.textContent='La synthèse est vide ou trop courte. Rédigez le compte rendu avant validation.';return;}
+ const low=Number(confrontation.zoneLow),high=Number(confrontation.zoneHigh),sl=Number(candidate.stopLoss),tps=(candidate.takeProfits||[]).map(Number).filter(Number.isFinite),aiEntry=Number(candidate.entry),entry=aiEntry>=low&&aiEntry<=high?aiEntry:(low+high)/2;
+ if(![entry,low,high,sl].every(v=>Number.isFinite(v)&&v>0)||low>high||!tps.length){status.textContent='Les niveaux du scénario sont incomplets. Complétez l’analyse avant de l’enregistrer.';return;}
+ if((direction==='BUY'&&(sl>=low||tps.some(v=>v<=high)))||(direction==='SELL'&&(sl<=high||tps.some(v=>v>=low)))){status.textContent='La zone confrontée n’est pas cohérente avec le SL ou les TP. Corrigez la zone ou relancez l’analyse.';return;}
+ if(source==='ai'&&candidate){summary=[`AUREVIA COPILOT · PROPOSITION GROQ M15`,`${instrument} · ${direction}`,`Zone d’entrée confrontée : ${low} – ${high}`,`Entrée indicative : ${candidate.entry}`,`Stop Loss : ${candidate.stopLoss}`,`Take Profits : ${(candidate.takeProfits||[]).join(' / ')}`,`Probabilité estimée par Groq : ${candidate.probability??'non fournie'} % (non calibrée)`,`Score de confirmation : ${candidate.score??'—'}/100`,'',`Lecture du marché : ${candidate.reason||''}`,`Raisonnement : ${candidate.humanReasoning||''}`,`Conditions : ${(candidate.activationConditions||[]).join(' ; ')}`,`Déclencheur : ${candidate.entryTrigger||''}`,`Invalidation : ${candidate.invalidation||''}`].join('\n');if($('scenarioFinalSummary'))$('scenarioFinalSummary').value=summary;saveScenarioDraft();}if(!summary||summary.length<8){status.textContent='La synthèse est vide ou trop courte. Rédigez le compte rendu avant validation.';return;}
  button.disabled=true;status.textContent='Validation des niveaux et enregistrement sécurisé…';
  try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise pour enregistrer et surveiller un scénario.');
   const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'save',instrument,direction,entry_low:low,entry_high:high,entry,stop_loss:sl,take_profits:tps.slice(0,3),summary,source,order_type:candidate.pendingOrderType||null,estimated_win_rate:candidate.probability??null,probability_status:candidate.probabilityStatus||'ESTIMATION_IA_NON_CALIBREE',probability_rationale:candidate.probabilityRationale||'',confirmation_score:candidate.score??null,reasoning:candidate.humanReasoning||candidate.reason||''}),cache:'no-store'});
   const result=await response.json().catch(()=>({error:'Réponse serveur illisible.'}));if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
   status.textContent=`Scénario ${direction} enregistré. Surveillance AUREVIA activée. ${result.telegram?.sent?'Notification Telegram envoyée.':result.telegram?.reason==='not_connected'?'Telegram non connecté.':'Notification Telegram non envoyée.'}`;
-  localStorage.removeItem('aurevia_scenario_summary_draft');if($('scenarioDraftBadge'))$('scenarioDraftBadge').textContent='ENREGISTRÉ';
+  localStorage.removeItem('aurevia_scenario_summary_draft');if($('scenarioDraftBadge'))$('scenarioDraftBadge').textContent='ENREGISTRÉ';await refreshScenarioWatchList();
  }catch(error){status.textContent=error.message||'Erreur lors de l’enregistrement.';}finally{button.disabled=false;}
 }
 
@@ -308,6 +348,7 @@ async function compareMyAnalysis(){
   const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise pour demander la confrontation à Groq.');
   const response=await fetch('/api/ai-confrontation',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:data.instrument,userAnalysis:data,aiAnalysis:{decision:state.decision,summary:state.decisionDetails?.reason||state.signalReason,marketReading:state.marketReading,scenarios:state.scenarios,risks:state.risks||[]}}),cache:'no-store'});
   const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'La confrontation Groq a échoué.');
+  localStorage.setItem('aurevia_last_confrontation',JSON.stringify({instrument:data.instrument,direction:data.direction,zoneLow:String(data.zoneLow),zoneHigh:String(data.zoneHigh),verdict:result.verdict,at:new Date().toISOString()}));
   const labels={ACCORD:'Accord global',DESACCORD:'Désaccord argumenté',PARTIEL:'Accord partiel',REVISION:'Groq révise sa position',INSUFFISANT:'Éléments insuffisants'};
   const blocks=[`CONFRONTATION GROQ / TRADER · ${data.instrument} · décision chiffrée M15`,`VERDICT : ${labels[result.verdict]||result.verdict}`];
   if(result.traderContribution)blocks.push(`CE QUE TON ANALYSE APPORTE\n${result.traderContribution}`);
@@ -374,6 +415,18 @@ function renderAdminAnnouncements(items){
 }
 function renderAdminAudit(items){const host=$('adminAuditRows');if(!host)return;host.innerHTML=items?.length?items.map(a=>`<tr><td>${a.created_at?new Date(a.created_at).toLocaleString():'—'}</td><td>${escapeText(a.action)}</td><td>${escapeText(a.actor_id||'—')}</td><td>${escapeText(a.target_user_id||'—')}</td><td>${escapeText(JSON.stringify(a.details||{}))}</td></tr>`).join(''):'<tr><td colspan="5" class="empty-cell">Aucune action enregistrée.</td></tr>';}
 let adminUsersCache=[],adminPage=1,adminHasMore=false,adminSearchValue='',adminSearchTimer=null;
+const adminSelectedAnnouncementRecipients=new Map();
+function renderAnnouncementRecipientPicker(){
+ const audience=$('adminAnnouncementAudience'),wrap=$('adminAnnouncementRecipientsWrap'),picker=$('adminAnnouncementRecipients'),help=$('adminAnnouncementRecipientsHelp');
+ if(!audience||!wrap||!picker)return;
+ const targeted=audience.value==='selected';wrap.hidden=!targeted;
+ if(!targeted){picker.disabled=true;if(help)help.textContent='L’annonce sera visible par tous les utilisateurs.';return;}
+ picker.disabled=false;
+ const current=new Map((adminUsersCache||[]).map(user=>[String(user.id),user]));
+ picker.innerHTML=[...current.entries()].map(([id,user])=>`<option value="${escapeText(id)}">${escapeText(user.display_name||user.email||id)}${user.email&&user.display_name?` · ${escapeText(user.email)}`:''}</option>`).join('');
+ for(const option of picker.options)option.selected=adminSelectedAnnouncementRecipients.has(option.value);
+ if(help)help.textContent=`${adminSelectedAnnouncementRecipients.size} destinataire(s) sélectionné(s) · ${adminUsersCache.length} compte(s) affiché(s). Utilisez la recherche ou la pagination des comptes pour ajouter d’autres utilisateurs. Maximum : 100.`;
+}
 async function loadAdminConsole(page=adminPage,search=adminSearchValue){
  try{
   adminPage=Math.max(1,page);adminSearchValue=String(search||'').trim();
@@ -382,7 +435,7 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
   adminHasMore=Boolean(data.pagination?.has_more);$('adminUsersPage').textContent=`Page ${adminPage} · ${data.pagination?.total??0} compte(s)`;$('adminUsersPrev').disabled=adminPage<=1;$('adminUsersNext').disabled=!adminHasMore;
   $('adminUnlocked')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
   const stats=data.stats||{};$('adminStatProfiles').textContent=stats.profiles??'—';$('adminStatOnline').textContent=stats.users_online??'—';$('adminStatSessions').textContent=stats.active_sessions??'—';$('adminStatSuspended').textContent=stats.suspended??'—';$('adminStatTrades').textContent=stats.trading_journal??'—';$('adminStatPositions').textContent=stats.trading_position_groups??'—';$('adminStatTelegram').textContent=stats.telegram_connections??'—';
-  adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();
+  adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAnnouncementRecipientPicker();renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();
  }catch(error){
   $('adminUnlocked')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
   if(error.status===403||error.status===409){window.__aureviaAdminVerified=false;document.querySelector('[data-page="admin"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');if(location.hash==='#admin')history.replaceState(null,'','#accueil');}
@@ -392,10 +445,9 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
 
 function readPositionContractSpec(){
   return {
-    brokerName:$('posBrokerName').value, accountType:$('posAccountType').value,
-    accountCurrency:$('posAccountCurrency').value, leverage:$('posLeverage').value.trim()?Number($('posLeverage').value):null,
+    accountCurrency:accountCurrency||'', leverage:$('posLeverage').value.trim()?Number($('posLeverage').value):null,
     calculationType:$('posCalculationType').value, contractSize:$('posContract').value.trim()?Number($('posContract').value):null,
-    quoteToAccount:$('posConversion').value.trim()?Number($('posConversion').value):null,
+    quoteToAccount:1,
     pointSize:$('posPointSize').value.trim()?Number($('posPointSize').value):null, pointValue:$('posPointValue').value.trim()?Number($('posPointValue').value):null,
     tickSize:$('posTickSize').value.trim()?Number($('posTickSize').value):null, tickValue:$('posTickValue').value.trim()?Number($('posTickValue').value):null,
     minLot:Number($('posMinLot').value), lotStep:Number($('posLotStep').value), maxLot:$('posMaxLot').value.trim()?Number($('posMaxLot').value):null,
@@ -448,32 +500,40 @@ function mountStandaloneDxy(){const host=$('dxyStandalone');if(!host||host.datas
 function createPositionFromForm(){
   const tps=[1,2,3].map(i=>({label:`TP${i}`,price:Number($(`posTP${i}`).value)})).filter(x=>Number.isFinite(x.price)&&x.price>0);
   try{
-    const contractSpec=readPositionContractSpec();const checked=validateContractSpec(contractSpec);if(!checked.ok)throw new Error(checked.error);const enteredLot=Number($('posLot').value);if(enteredLot<checked.spec.minLot||(checked.spec.maxLot!==null&&enteredLot>checked.spec.maxLot))throw new Error(`Le lot doit être compris entre ${checked.spec.minLot} et ${checked.spec.maxLot??'sans maximum défini'} pour ${$('posInstrument').value}.`);const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:enteredLot,lotStep:checked.spec.lotStep,entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,expiresAt:$('posExpiry').value?new Date($('posExpiry').value).toISOString():null,contractSpec:checked.spec,brokerSnapshot:{brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage}});
+    if(!accountCurrency)throw new Error('Renseignez d’abord la devise de votre compte dans Paramètres → Devise du compte.');const contractSpec=readPositionContractSpec();contractSpec.quoteCurrency=inferQuoteCurrency($('posInstrument').value);const checked=validateContractSpec(contractSpec);if(!checked.ok)throw new Error(checked.error);const enteredLot=Number($('posLot').value);if(enteredLot<checked.spec.minLot||(checked.spec.maxLot!==null&&enteredLot>checked.spec.maxLot))throw new Error(`Le lot doit être compris entre ${checked.spec.minLot} et ${checked.spec.maxLot??'sans maximum défini'} pour ${$('posInstrument').value}.`);const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:enteredLot,lotStep:checked.spec.lotStep,entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,expiresAt:$('posExpiry').value?new Date($('posExpiry').value).toISOString():null,contractSpec:checked.spec,brokerSnapshot:{brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage}});
     saveTradeGroup(group);renderPositions();const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];sendTelegramNotification({type:'trade_open',text:tradeLines.join('\n')}).catch(()=>{});syncTradeGroupToSupabase(group).then(r=>{if(r.synced)alert(`Position enregistrée et synchronisée : ${group.children.length} trade(s).`);else alert(`Position enregistrée sur cet appareil : connectez-vous à Supabase pour la synchroniser. ${group.autoJournal?'Fiche locale liée au journal créée.':'Journal automatique désactivé.'}`);}).catch(error=>alert(`Position conservée localement, mais synchronisation cloud impossible : ${error.message}`));
   }catch(error){alert(error.message);}
 }
-function savePartialCloseFromForm(){
+async function savePartialCloseFromForm(){
   try{
     const childId=$('closeChildId').value;const groups=loadTradeGroups();const group=groups.find(g=>g.children.some(c=>c.id===childId));if(!group)throw new Error('Position introuvable.');
     const fees=$('closeFees').value.trim()===''?null:Number($('closeFees').value);
-    recordPartialClose(group,childId,{volume:Number($('closeVolume').value),exit:Number($('closeExit').value),contractSpec:group.contractSpec,contractSize:group.contractSize,quoteToAccount:group.quoteToAccount,feesPerLot:group.feesPerLot,fees});
+    let closeSpec=group.contractSpec?{...group.contractSpec}:null;let fxSnapshot=null;if(closeSpec?.calculationType==='contract'){const quoteCurrency=closeSpec.quoteCurrency||inferQuoteCurrency(group.instrument);if(!quoteCurrency)throw new Error(`Devise de cotation inconnue pour ${group.instrument}. Impossible de calculer le résultat sans conversion fiable.`);const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée : reconnectez-vous pour récupérer le taux de conversion.');const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(closeSpec.accountCurrency)}`,{headers:{authorization:`Bearer ${token}`}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Taux de conversion indisponible.');fxSnapshot=validateFxSnapshot(data,{from:quoteCurrency,to:closeSpec.accountCurrency});closeSpec={...closeSpec,quoteCurrency,quoteToAccount:fxSnapshot.rate,fxSnapshot};}
+    recordPartialClose(group,childId,{volume:Number($('closeVolume').value),exit:Number($('closeExit').value),contractSpec:closeSpec,contractSize:group.contractSize,quoteToAccount:closeSpec?.quoteToAccount??group.quoteToAccount,feesPerLot:group.feesPerLot,fees,fxSnapshot});
     const child=group.children.find(x=>x.id===childId),closeEvent=child.closes.at(-1);persistTradeGroup(group);sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · CLÔTURE ENREGISTRÉE\n${group.instrument} · ${child.direction} · ${child.tpLabel}\nVolume clôturé : ${closeEvent.volume}\nPrix de sortie saisi : ${closeEvent.exit}\nRésultat net enregistré : ${closeEvent.net.toFixed(2)}\nVolume restant : ${child.remainingLot}\nClôture interne AUREVIA uniquement.`}).catch(()=>{});$('closePositionDialog').close();renderPositions();renderJournal();renderLinkedJournal();syncTradeCloseToSupabase(group,child,closeEvent).catch(error=>alert(`Clôture enregistrée localement, mais synchronisation cloud impossible : ${error.message}`));
   }catch(error){alert(error.message);}
 }
 let announcementCache=[],announcementFilter='all';
 function updateAnnouncementBadge(){const badge=$('announcementUnreadBadge');if(!badge)return;const count=announcementCache.filter(a=>!a.is_read).length;badge.textContent=count>99?'99+':String(count);badge.hidden=count===0;}
 function renderAnnouncements(){const host=$('announcementList');if(!host)return;const items=announcementCache.filter(a=>announcementFilter==='all'||!a.is_read);updateAnnouncementBadge();document.querySelectorAll('[data-announcement-filter]').forEach(b=>b.classList.toggle('active',b.dataset.announcementFilter===announcementFilter));if(!items.length){host.innerHTML=`<div class="empty-cell">${announcementFilter==='unread'?'Aucune annonce non lue.':'Aucune annonce publiée pour le moment.'}</div>`;return;}const now=Date.now();host.innerHTML=items.map(a=>{const expired=a.ends_at&&Date.parse(a.ends_at)<now;const date=a.created_at?new Date(a.created_at).toLocaleString('fr-FR'):'Date inconnue';const url=typeof a.source_url==='string'&&/^https:\/\//i.test(a.source_url)?a.source_url:null;return `<article class="announcement-card ${a.is_read?'is-read':'is-unread'}"><div class="announcement-card-top"><span class="announcement-category">${escapeText(a.category||'Information')}</span><span class="announcement-state">${a.is_read?'Lue':'Non lue'}${expired?' · Archivée':''}</span></div><h3>${escapeText(a.title)}</h3><p>${escapeText(a.body).replace(/\n/g,'<br>')}</p><div class="announcement-meta"><span>${escapeText(date)}</span>${expired?'<span>Annonce expirée · conservée dans l’historique</span>':''}</div><div class="announcement-actions">${url?`<a href="${escapeText(url)}" target="_blank" rel="noopener noreferrer">Consulter la source</a>`:''}${!a.is_read?`<button class="small-btn" type="button" data-announcement-read="${escapeText(a.id)}">Marquer comme lue</button>`:''}</div></article>`;}).join('');host.querySelectorAll('[data-announcement-read]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await markAnnouncementAsRead(btn.dataset.announcementRead);const item=announcementCache.find(a=>a.id===btn.dataset.announcementRead);if(item){item.is_read=true;item.read_at=new Date().toISOString();}renderAnnouncements();}catch(error){$('announcementStatus').textContent='Lecture non synchronisée : '+error.message;btn.disabled=false;}}));}
-async function loadAnnouncements(){if(!window.__aureviaAuthenticated||window.__aureviaAdminVerified===true)return;const status=$('announcementStatus');if(status)status.textContent='Actualisation des annonces…';try{announcementCache=await loadPublishedAnnouncements();renderAnnouncements();if(status)status.textContent=`${announcementCache.length} annonce(s) publiée(s) · ${announcementCache.filter(a=>!a.is_read).length} non lue(s).`;}catch(error){if(status)status.textContent='Impossible de charger les annonces : '+error.message;const host=$('announcementList');if(host)host.innerHTML='<div class="empty-cell">Les annonces ne sont pas disponibles. Réessayez après vérification de votre connexion.</div>';}}
+async function loadAnnouncements(){if(!window.__aureviaAuthenticated)return;const status=$('announcementStatus');if(status)status.textContent='Actualisation des annonces…';try{announcementCache=await loadPublishedAnnouncements();renderAnnouncements();if(status)status.textContent=`${announcementCache.length} annonce(s) publiée(s) · ${announcementCache.filter(a=>!a.is_read).length} non lue(s).`;}catch(error){if(status)status.textContent='Impossible de charger les annonces : '+error.message;const host=$('announcementList');if(host)host.innerHTML='<div class="empty-cell">Les annonces ne sont pas disponibles. Réessayez après vérification de votre connexion.</div>';}}
+async function refreshAccountCurrency(){
+ const notice=$('accountCurrencyNotice'),status=$('accountCurrencyStatus'),select=$('profileAccountCurrency'),risk=$('accountCurrency');
+ try{accountCurrency=await loadAccountCurrency();if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.';return accountCurrency;}
+ catch(error){if(status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
+}
+async function persistAccountCurrency(){const button=$('saveAccountCurrency');try{if(button)button.disabled=true;const value=await saveAccountCurrency($('profileAccountCurrency').value);accountCurrency=value;if($('accountCurrency').value!==undefined)$('accountCurrency').value=value;if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=true;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=`Devise enregistrée : ${value}.`;alert(`Devise du compte enregistrée : ${value}.`);}catch(error){if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=error.message;alert(error.message);}finally{if(button)button.disabled=false;}}
 function bindEvents(){
   let pendingAdminRoute=false;
-  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:adminchange',event=>{
     const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
     const announcementsLink=document.querySelector('[data-page="annonces"]');
-    if(announcementsLink)announcementsLink.hidden=allowed;
+    if(announcementsLink)announcementsLink.hidden=false;
     const announcementsView=$('page-annonces');
-    if(announcementsView)announcementsView.hidden=allowed;
-    if(allowed&&location.hash==='#annonces')showPage('accueil');
+    if(announcementsView)announcementsView.hidden=false;
+    if(allowed)loadAnnouncements();
     if(allowed&&pendingAdminRoute){pendingAdminRoute=false;showPage('admin');}
     else if(!allowed){pendingAdminRoute=false;if(location.hash==='#admin')showPage('accueil');}
     else if(allowed&&location.hash==='#admin')loadAdminConsole();
@@ -487,7 +547,6 @@ function bindEvents(){
   $('menuToggle').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
   const showPage = requestedPage => {
     let page=requestedPage;
-    if(page==='annonces'&&window.__aureviaAdminVerified===true)page='accueil';
     if(page==='admin'&&window.__aureviaAdminVerified!==true){if(window.__aureviaAdminVerified===null)pendingAdminRoute=true;page='accueil';}
     document.querySelectorAll('[data-page-view]').forEach(v=>v.classList.toggle('active',v.dataset.pageView===page));
     document.querySelectorAll('[data-page]').forEach(a=>a.classList.toggle('active',a.dataset.page===page));
@@ -513,6 +572,7 @@ function bindEvents(){
   document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-page="${b.dataset.goto}"]`)?.click()));
   document.querySelectorAll('.home-asset').forEach(b=>b.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(b.dataset.symbol);}));
   $('calculateRisk').addEventListener('click',()=>{
+    if(!accountCurrency){$('riskResult').textContent='Renseignez la devise du compte dans Paramètres avant de calculer.';return;}
     const entry=Number($('entryPrice').value),stop=Number($('stopPrice').value),tp=Number($('takeProfit').value);
     const enteredDistance=Number($('slDistance').value);const distance=enteredDistance>0?enteredDistance:(entry>0&&stop>0?Math.abs(entry-stop):NaN);
     const reward=entry>0&&tp>0?Math.abs(tp-entry):null;
@@ -568,6 +628,19 @@ function bindEvents(){
     }
   });
   $('adminRefreshStatus')?.addEventListener('click',()=>loadAdminConsole(adminPage,adminSearchValue));
+  $('adminAnnouncementAudience')?.addEventListener('change',renderAnnouncementRecipientPicker);
+  $('adminAnnouncementRecipients')?.addEventListener('change',event=>{
+    for(const option of event.target.options){
+      if(option.selected)adminSelectedAnnouncementRecipients.set(option.value,option.textContent);
+      else adminSelectedAnnouncementRecipients.delete(option.value);
+    }
+    if(adminSelectedAnnouncementRecipients.size>100){
+      const selected=[...event.target.selectedOptions].map(option=>option.value),last=selected[selected.length-1];
+      adminSelectedAnnouncementRecipients.delete(last);const option=[...event.target.options].find(item=>item.value===last);if(option)option.selected=false;
+      $('adminAnnouncementStatus').textContent='Limite de 100 destinataires par annonce. Le dernier choix a été retiré.';
+    }
+    renderAnnouncementRecipientPicker();
+  });
   $('adminUsersPrev')?.addEventListener('click',()=>loadAdminConsole(adminPage-1,adminSearchValue));
   $('adminUsersNext')?.addEventListener('click',()=>loadAdminConsole(adminPage+1,adminSearchValue));
   $('adminUserSearch')?.addEventListener('input',()=>{clearTimeout(adminSearchTimer);adminSearchTimer=setTimeout(()=>loadAdminConsole(1,$('adminUserSearch').value),350);});
@@ -580,12 +653,16 @@ function bindEvents(){
   $('adminCreateAnnouncement')?.addEventListener('click',async()=>{
     const status=$('adminAnnouncementStatus');status.textContent='Enregistrement…';
     try{
-      const endsValue=$('adminAnnouncementEndsAt').value;
-      const result=await adminRequest({action:'announcement_create',title:$('adminAnnouncementTitle').value,body:$('adminAnnouncementBody').value,category:$('adminAnnouncementCategory').value,source_url:$('adminAnnouncementUrl').value||null,ends_at:endsValue?new Date(endsValue).toISOString():null,is_published:$('adminAnnouncementPublish').checked});
-      $('adminAnnouncementTitle').value='';$('adminAnnouncementBody').value='';$('adminAnnouncementEndsAt').value='';status.textContent=result.telegram?.status==='sent'||result.telegram?.status==='partial'||result.telegram?.status==='failed'?`Annonce enregistrée · Telegram : ${result.telegram.sent||0} envoyé(s), ${result.telegram.failed||0} échec(s).`:'Annonce enregistrée.';await loadAdminConsole(adminPage,adminSearchValue);
+      const endsValue=$('adminAnnouncementEndsAt').value,audience=$('adminAnnouncementAudience')?.value||'all';
+      const recipientIds=audience==='selected'?[...adminSelectedAnnouncementRecipients.keys()]:[];
+      if(audience==='selected'&&!recipientIds.length)throw new Error('Sélectionnez au moins un destinataire pour une annonce ciblée.');
+      if(recipientIds.length>100)throw new Error('Une annonce ciblée est limitée à 100 destinataires.');
+      const result=await adminRequest({action:'announcement_create',title:$('adminAnnouncementTitle').value,body:$('adminAnnouncementBody').value,category:$('adminAnnouncementCategory').value,source_url:$('adminAnnouncementUrl').value||null,ends_at:endsValue?new Date(endsValue).toISOString():null,is_published:$('adminAnnouncementPublish').checked,audience,recipient_ids:recipientIds});
+      $('adminAnnouncementTitle').value='';$('adminAnnouncementBody').value='';$('adminAnnouncementEndsAt').value='';adminSelectedAnnouncementRecipients.clear();renderAnnouncementRecipientPicker();status.textContent=`Annonce ${audience==='selected'?'ciblée · '+(result.recipient_count||recipientIds.length)+' destinataire(s)':'générale · tous les utilisateurs'} enregistrée.`+(result.telegram?.status==='sent'||result.telegram?.status==='partial'||result.telegram?.status==='failed'?` Telegram : ${result.telegram.sent||0} envoyé(s), ${result.telegram.failed||0} échec(s).`:'');await loadAdminConsole(adminPage,adminSearchValue);
     }catch(error){status.textContent=error.message;}
   });
   window.addEventListener('aurevia:adminchange',e=>{if(e.detail?.isAdmin)loadAdminConsole(1,adminSearchValue);});
+  $('refreshScenarioWatch')?.addEventListener('click',refreshScenarioWatchList);
   $('saveMyAnalysis').addEventListener('click',saveMyAnalysis);
   $('saveFinalScenario')?.addEventListener('click',()=>saveScenarioFromUi('synthesis'));
   $('saveAiScenarioDirect')?.addEventListener('click',()=>saveScenarioFromUi('ai'));
@@ -624,6 +701,6 @@ function bindEvents(){
   $('reduceMotion').checked=localStorage.getItem('aurevia_reduce_motion')==='1';document.documentElement.classList.toggle('reduce-motion',$('reduceMotion').checked);initAppInstallation();
 }
 let authenticatedBooted=false;
-function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarWidget'));initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarWidget'));initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
 function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated)bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();
