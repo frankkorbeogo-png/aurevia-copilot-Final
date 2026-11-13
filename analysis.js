@@ -30,7 +30,27 @@ export function parseProviderTime(value,zone){
 }
 function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=(Date.now()-stamp)/60000;return age>=-intervalMinutes*1.5&&age<=intervalMinutes*2.5;}
 async function fetchMacroContext(instrument){try{const token=await getAnalysisAccessToken();if(!token)return {configured:false,notice:'Connexion requise pour les données macro.'};const r=await fetch(`/api/macro-context?instrument=${encodeURIComponent(instrument)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return {configured:false,notice:'Flux macro indisponible.'};return await r.json();}catch{return {configured:false,notice:'Flux macro indisponible.'};}}
-async function requestGroqAnalysis(symbol,m15,context){const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise pour solliciter le moteur IA.');const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(30000)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Moteur IA indisponible (HTTP ${r.status}).`);return d;}
+async function requestGroqAnalysis(symbol,m15,context){
+ const token=await getAnalysisAccessToken();
+ if(!token)throw new Error('Connexion requise pour solliciter le moteur IA.');
+ const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok){
+  const attempts=d.providerDiagnostics?.attempts||[];
+  const details=attempts.map(a=>{
+   const status=a.status?`HTTP ${a.status}`:'sans réponse HTTP';
+   const duration=Number.isFinite(Number(a.elapsedMs))?` · ${Math.round(Number(a.elapsedMs))} ms`:'';
+   const issue=a.issue?` · ${String(a.issue).slice(0,180)}`:'';
+   return `${a.provider||'Fournisseur'} : ${a.code||'ERREUR'} (${status}${duration})${issue}`;
+  });
+  const diagnostic=details.length?`\nDiagnostic fournisseurs :\n• ${details.join('\n• ')}`:'';
+  const error=new Error(`${d.error||`Moteur IA indisponible (HTTP ${r.status}).`}${diagnostic}`);
+  error.code=d.code||'AI_ERROR';
+  error.providerDiagnostics=d.providerDiagnostics||null;
+  throw error;
+ }
+ return d;
+}
 async function fetchFrame(symbol,interval){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise pour les données de marché.');
  const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=250`;
@@ -95,20 +115,20 @@ async function runInstrumentAnalysis(symbol){
   const higherTimeframes={h4:analyses.H4?.structure?.bias||'indisponible',m30:analyses.M30?.structure?.bias||'indisponible'};
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
   const technicalScenarios=generateOpportunityScenarios({analyses,frames,staleFrames:stale});
-  let groqResult=null,groqError=null;
-  try{groqResult=await requestGroqAnalysis(symbol,{candles:frames.M15.candles,analysis:m15},{h4:higherTimeframes.h4,m30:higherTimeframes.m30,macro:macroContext?.configured?macroContext:'indisponible'});}catch(error){groqError=error.message||'Moteur IA indisponible';}
-  const scenarios=groqResult?.scenarios||{buy:null,sell:null};
+  let aiResult=null,aiError=null;
+  try{aiResult=await requestGroqAnalysis(symbol,{candles:frames.M15.candles,analysis:m15},{h4:higherTimeframes.h4,m30:higherTimeframes.m30,macro:macroContext?.configured?macroContext:'indisponible'});}catch(error){aiError=error.message||'Moteur IA indisponible';}
+  const scenarios=aiResult?.scenarios||{buy:null,sell:null};
   const technicalBest=(!technicalScenarios.sell||technicalScenarios.buy?.score>=technicalScenarios.sell?.score)?technicalScenarios.buy:technicalScenarios.sell;
-  const best=groqResult?.decision==='BUY'?scenarios.buy:groqResult?.decision==='SELL'?scenarios.sell:(scenarios.buy||scenarios.sell);
+  const best=aiResult?.decision==='BUY'?scenarios.buy:aiResult?.decision==='SELL'?scenarios.sell:(scenarios.buy||scenarios.sell);
   const score=best?.score??best?.scoreComponents?.filter(x=>x.passed).reduce((a,x)=>a+(x.weight||0),0)??technicalBest?.score??null;
   const scoreComponents=best?.scoreComponents||technicalBest?.scoreComponents||[];
-  const decision={decision:groqResult?.decision||'WAIT',reason:groqResult?.summary||groqError||'Le moteur IA n’a pas fourni de proposition exploitable.',score,probability:best?.probability??null,scenarios,marketReading:groqResult?.marketReading||'',risks:groqResult?.risks||[],probabilityDisclaimer:groqResult?.probabilityDisclaimer||'Estimation IA non calibrée.'};
+  const decision={decision:aiResult?.decision||'WAIT',reason:aiResult?.summary||aiError||'Le moteur IA n’a pas fourni de proposition exploitable.',score,probability:best?.probability??null,scenarios,marketReading:aiResult?.marketReading||'',risks:aiResult?.risks||[],probabilityDisclaimer:aiResult?.probabilityDisclaimer||'Estimation IA non calibrée.'};
   const optionalMissing=unavailable.filter(x=>x.tf!=='M15');
   const optionalStale=stale.filter(tf=>tf!=='M15');
   const higherConflict=Boolean(best&&[analyses.H4,analyses.H1,analyses.M30].filter(Boolean).some(a=>!['range','indéterminé'].includes(a.structure.bias)&&a.structure.bias!==(best.side==='BUY'?'haussier':'baissier')));
   const patterns=(m15.patterns||[]).map(x=>x.name);
   const warnings=[...optionalMissing.map(x=>`${x.tf} indisponible`),...optionalStale.map(tf=>`${tf} périmé`)];
-  latest={message:stale.length||unavailable.length?'Analyse partielle · vérifier les unités de temps':groqError?'Données M15 reçues · Moteur IA indisponible':'Analyse AUREVIA · décision et chiffres exclusivement M15',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${groqError?' Moteur IA indisponible : '+groqError:''}${warnings.length?' Unités manquantes/périmées : '+warnings.join(', ')+'.':''}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios,probability:best?.probability??null,probabilityDisclaimer:decision.probabilityDisclaimer,marketReading:decision.marketReading,risks:decision.risks,higherTimeframes,higherConflict,frames,macroContext,unavailableFrames:unavailable,staleFrames:stale};
+  latest={message:stale.length||unavailable.length?'Analyse partielle · vérifier les unités de temps':aiError?'Données M15 reçues · Moteur IA indisponible':'Analyse AUREVIA · décision et chiffres exclusivement M15',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${aiError?' Moteur IA indisponible : '+aiError:''}${warnings.length?' Unités manquantes/périmées : '+warnings.join(', ')+'.':''}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios,probability:best?.probability??null,probabilityDisclaimer:decision.probabilityDisclaimer,marketReading:decision.marketReading,risks:decision.risks,higherTimeframes,higherConflict,frames,macroContext,unavailableFrames:unavailable,staleFrames:stale};
   return {price:m15.last.close,status:unavailable.length||stale.length?'partiel':'reçu'};
  }catch(error){latest={message:'Erreur technique pendant l’analyse',tableMessage:'Les données n’ont pas pu être traitées.',signalReason:`WAIT — erreur technique : ${error.message||'erreur inconnue'}. Aucune entrée ne sera proposée sans données valides.`,decision:'WAIT',probability:null,score:null};return null;}
 }
