@@ -1,6 +1,6 @@
 import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
 import {getMarketStatus} from '../../market-hours.js';
-import {runAureviaAI} from './_ai-provider.mjs';
+import {runAureviaCollaboration} from './ai-collaboration.mjs';
 const finite=n=>Number.isFinite(Number(n));
 // Réduit les blocs de contexte facultatifs sans supprimer les données techniques utiles.
 function compactAIContext(value, depth=0) {
@@ -41,14 +41,14 @@ DÉCISION: BUY/SELL si le M15 présente une direction identifiable avec entrée 
 SCÉNARIO: définis une vraie zone d'opportunité de mitigation (OB/FVG/support-résistance ou zone de liquidité appuyée par les données), avec bornes précises. Le prix actuel ne doit pas être présenté comme une entrée exécutée si la zone n'a pas été revisitée. Fournis un prix d'entrée indicatif situé dans la zone, SL derrière l'invalidation structurelle, 1 à 3 TP et RR cohérent. Activation = mitigation puis confirmation M5 et M1 gérées par le surveillant; aucun signal d'entrée immédiat avant cela. Le score confirmationScore (0-100) mesure la confluence technique, pas une probabilité. estimatedWinRate doit être null si non estimable honnêtement; si fourni, il reste subjectif et non calibré statistiquement.
 SI AUCUN SCÉNARIO BUY/SELL N’EST DÉFENDABLE : explique-le dans noScenarioReason et fournis 1 à 4 watchDirectives plausibles, conditionnelles et observables. Chaque directive contient condition, expectedReaction, confirmation et invalidation. Ne donne aucun ordre immédiat ni prix inventé ; si les niveaux sont incertains, formule des conditions qualitatives.\nFORMAT JSON exact: {decision:"BUY|SELL|WAIT",summary,marketReading,noScenarioReason,watchDirectives:[{condition,expectedReaction,confirmation,invalidation}],buy,sell,risks:[],missingData:[]}. buy/sell = objet ou null. Chaque scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType:"BUY LIMIT|BUY STOP|SELL LIMIT|SELL STOP",confirmationScore,estimatedWinRate:null|number,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}. Ne force jamais les deux directions. Donne des prix cohérents avec le dernier cours M15.`;
  try {
-   const result=await runAureviaAI({messages:[{role:'system',content:system},{role:'user',content:JSON.stringify(payload)}],temperature:0.25,max_tokens:1800});
+   const result=await runAureviaCollaboration({messages:[{role:'system',content:system},{role:'user',content:JSON.stringify(payload)}],max_tokens:1800});
    const out=result.data;
    const buy=cleanScenario(out.buy,'BUY',last.c),sell=cleanScenario(out.sell,'SELL',last.c);
    let decision=['BUY','SELL','WAIT'].includes(out.decision)?out.decision:'WAIT';
    if(decision==='BUY'&&!buy)decision='WAIT';if(decision==='SELL'&&!sell)decision='WAIT';
    const watchDirectives=Array.isArray(out.watchDirectives)?out.watchDirectives.slice(0,6).map(x=>({condition:String(x.condition||'').slice(0,280),expectedReaction:String(x.expectedReaction||'').slice(0,280),confirmation:String(x.confirmation||'').slice(0,280),invalidation:String(x.invalidation||'').slice(0,280)})).filter(x=>x.condition||x.confirmation):[];
   const noScenarioReason=String(out.noScenarioReason||'').slice(0,1200);
-  return json(200,{decision,summary:String(out.summary||'').slice(0,2500),marketReading:String(out.marketReading||'').slice(0,5000),noScenarioReason,watchDirectives,risks:Array.isArray(out.risks)?out.risks.slice(0,10):[],missingData:Array.isArray(out.missingData)?out.missingData.slice(0,10):[],scenarios:{buy,sell},provider:'AUREVIA',decisionTimeframe:'M15',probabilityDisclaimer:'Estimation subjective non calibrée statistiquement. À ne pas interpréter comme une fréquence de réussite démontrée.'});
+  return json(200,{decision,collaboration:out.collaboration||null,summary:String(out.summary||'').slice(0,2500),marketReading:String(out.marketReading||'').slice(0,5000),noScenarioReason,watchDirectives,risks:Array.isArray(out.risks)?out.risks.slice(0,10):[],missingData:Array.isArray(out.missingData)?out.missingData.slice(0,10):[],scenarios:{buy,sell},provider:'AUREVIA',decisionTimeframe:'M15',probabilityDisclaimer:'Estimation subjective non calibrée statistiquement. À ne pas interpréter comme une fréquence de réussite démontrée.'});
  } catch(e) {
    console.error('[AUREVIA ai-analysis] échec multi-fournisseur',JSON.stringify({code:e.code,attempts:e.attempts||[]}));
    return json(e.statusCode||502,{error:e.message||'Moteur IA temporairement indisponible.',code:e.code||'AI_ERROR',retryable:true,providerDiagnostics:{attempts:e.attempts||[],elapsedMs:e.elapsedMs||null}});
