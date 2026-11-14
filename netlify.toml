@@ -24,6 +24,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/ai-benchmark"
+  to = "/.netlify/functions/ai-benchmark"
+  status = 200
+
+[[redirects]]
   from = "/api/ai-confrontation"
   to = "/.netlify/functions/ai-confrontation"
   status = 200
