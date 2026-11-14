@@ -19,7 +19,7 @@ export function configuredAIProviders() {
   });
   if (env('OPENROUTER_API_KEY')) providers.push({
     id: 'openrouter', name: 'OpenRouter', key: env('OPENROUTER_API_KEY'),
-    model: env('OPENROUTER_MODEL') || 'openrouter/free',
+    model: env('OPENROUTER_MODEL') || 'nvidia/nemotron-3-ultra-550b-a55b:free',
     url: 'https://openrouter.ai/api/v1/chat/completions'
   });
   return providers;
