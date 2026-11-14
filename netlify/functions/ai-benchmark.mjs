@@ -8,7 +8,7 @@ function allowed(id){const now=Date.now(),x=rate.get(id);if(!x||now-x.start>6000
 function parseJson(s){return JSON.parse(String(s).trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}
 async function call(p,messages){
  const start=Date.now();
- const timeout=p.id==='cloudflare'?9000:p.id==='openrouter'?12000:7000;
+ const timeout=p.id==='cloudflare'?9000:p.id==='openrouter'?15000:7000;
  const deadline=start+timeout;
  const body={model:p.model,messages:messages,temperature:0.2,stream:false};
  if(p.id==='groq'){
@@ -17,8 +17,9 @@ async function call(p,messages){
    body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};
   }
  }else if(p.id==='openrouter'){
-  body.max_tokens=1600;
-  // Nemotron 3 Ultra free ne prend pas en charge response_format : JSON demandé par le prompt.
+  body.max_tokens=2400;
+  body.reasoning={effort:'none'};
+  // Désactive le raisonnement étendu pour réserver le budget à la réponse JSON finale.
  }else body.max_tokens=1600;
  let attempts=0;
  try{
@@ -34,8 +35,10 @@ async function call(p,messages){
    });
    const d=await r.json().catch(()=>({}));
    if(!r.ok)return {provider:p.name,model:p.model,ok:false,status:r.status,latencyMs:Date.now()-start,timeoutBudgetMs:timeout,attempts,code:r.status===503?'PROVIDER_OVERLOADED':r.status===429?'RATE_LIMIT_OR_QUOTA':r.status===402?'BILLING_REQUIRED':r.status===401||r.status===403?'AUTH_OR_PERMISSION':'HTTP_ERROR',error:clean((d.error&&d.error.message)||d.message||('HTTP '+r.status),180),diagnostic:r.status===503?'Google a renvoyé 503 après une tentative dans le budget autorisé : indisponibilité/surcharge probable, pas une preuve de clé invalide.':r.status===429?'Limite de débit ou quota atteint.':r.status===401||r.status===403?'Vérifier la clé API et ses autorisations.':'Consulter le message renvoyé par le fournisseur.'};
-   const content=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content;
-   if(!content)return {provider:p.name,model:p.model,ok:false,status:r.status,latencyMs:Date.now()-start,timeoutBudgetMs:timeout,attempts,code:'EMPTY_RESPONSE',error:'Réponse vide.'};
+   const choice=d.choices&&d.choices[0];
+   const message=choice&&choice.message;
+   const content=message&&message.content;
+   if(!content)return {provider:p.name,model:p.model,ok:false,status:r.status,latencyMs:Date.now()-start,timeoutBudgetMs:timeout,attempts,code:choice&&choice.finish_reason==='length'?'OUTPUT_BUDGET_EXHAUSTED':'EMPTY_RESPONSE',error:choice&&choice.finish_reason==='length'?'Budget de sortie épuisé avant la réponse finale.':'Réponse vide.',diagnostic:{finishReason:choice&&choice.finish_reason||null,reasoningPresent:Boolean(message&&(message.reasoning||message.reasoning_content||message.reasoning_details)),completionTokens:d.usage&&d.usage.completion_tokens||null,reasoningTokens:d.usage&&d.usage.completion_tokens_details&&d.usage.completion_tokens_details.reasoning_tokens||null}};
    try{return {provider:p.name,model:p.model,ok:true,status:r.status,latencyMs:Date.now()-start,timeoutBudgetMs:timeout,attempts,result:parseJson(content)};}
    catch(e){return {provider:p.name,model:p.model,ok:false,status:r.status,latencyMs:Date.now()-start,timeoutBudgetMs:timeout,attempts,code:'INVALID_JSON',error:'JSON invalide.'};}
   }
