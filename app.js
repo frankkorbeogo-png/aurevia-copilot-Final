@@ -383,7 +383,7 @@ function renderAiBenchmark(data){
  host.replaceChildren();summary.replaceChildren();summary.hidden=false;
  const comparison=data.comparison||{};
  const decisionLabel={BUY:'ACHAT',SELL:'VENTE',WAIT:'ATTENTE',INVALID:'FORMAT INVALIDE'};
- const stats=[['Instrument',data.instrument||'—'],['Bougies M15',data.candleCount??'—'],['Réponses valides',data.summary?.succeeded??0],['Décisions comparées',comparison.decisionsCompared??0],['Scores fournis',comparison.scoreCount??0],['Plus rapide',data.summary?.fastest||'—']];
+ const stats=[['Instrument',data.instrument||'—'],['Bougies M15',data.candleCount??'—'],['Réponses valides',data.summary?.succeeded??0],['Décisions comparées',comparison.decisionsCompared??0],['Notes fournies',comparison.scoreCount??0],['Plus rapide',data.summary?.fastest||'—']];
  for(const [label,value] of stats){const card=document.createElement('div');const small=document.createElement('small');small.textContent=label;const strong=document.createElement('b');strong.textContent=String(value);card.append(small,strong);summary.append(card);}
  const consensus=document.createElement('article');consensus.className='notice-box';
  const consensusTitle=document.createElement('b');consensusTitle.textContent='Comparaison automatique · '+(comparison.agreement==='UNANIMOUS'?'Accord unanime':comparison.agreement==='DIVERGENCE'?'Désaccord entre les IA':'Données insuffisantes');
@@ -398,8 +398,11 @@ function renderAiBenchmark(data){
    const result=item.result;
    const decision=document.createElement('p');decision.textContent='Décision : '+(decisionLabel[result.decision]||'Non précisée')+(result.schemaValid?'':' · format à vérifier');card.append(decision);
    const summaryText=document.createElement('p');summaryText.textContent=String(result.summary||result.marketReading||'Aucun résumé fourni.');card.append(summaryText);
-   const quality=document.createElement('p');quality.textContent='Score de confirmation : '+(result.scoreValid?result.confirmationScore+'/100':'Non fourni · non calculé');card.append(quality);
-   if(Array.isArray(result.scoreFactors)&&result.scoreFactors.length){const factors=document.createElement('p');factors.textContent='Facteurs annoncés : '+result.scoreFactors.join(' · ');card.append(factors);}
+   const scoreLine=(label,value)=>{const line=document.createElement('p');line.textContent=label+' : '+(Number.isFinite(value)?value+'/100':'Non fourni · non calculé');card.append(line);};
+    scoreLine('Qualité de lecture du marché',result.marketReadingScore);
+    if(Array.isArray(result.marketReadingFactors)&&result.marketReadingFactors.length){const factors=document.createElement('p');factors.textContent='Facteurs de lecture : '+result.marketReadingFactors.join(' · ');card.append(factors);}
+    const scenarioLine=(direction,scenario)=>{if(!scenario){const line=document.createElement('p');line.textContent='Confirmation '+direction+' : aucun scénario fourni';card.append(line);return;}scoreLine('Confirmation '+direction,scenario.confirmationScore);if(Array.isArray(scenario.scoreFactors)&&scenario.scoreFactors.length){const factors=document.createElement('p');factors.textContent='Facteurs '+direction+' : '+scenario.scoreFactors.join(' · ');card.append(factors);}};
+    scenarioLine('BUY',result.buy);scenarioLine('SELL',result.sell);
    const risks=document.createElement('p');risks.textContent='Risques : '+(Array.isArray(result.risks)?result.risks.join(' · '):'Non précisés');card.append(risks);
   }else{
    const issue=document.createElement('p');issue.textContent=(item.code||'ERREUR')+' : '+(item.error||'Échec sans détail');card.append(issue);
