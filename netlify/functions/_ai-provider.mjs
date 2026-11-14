@@ -3,7 +3,7 @@
 const env = (name) => String(process.env[name] || '').trim();
 const PROVIDER_TIMEOUT_MS = 9000;
 const TOTAL_BUDGET_MS = 18000;
-const PROVIDER_TIMEOUTS = { groq: 7000, cloudflare: 9000 };
+const PROVIDER_TIMEOUTS = { groq: 7000, cloudflare: 9000, openrouter: 12000 };
 
 export function configuredAIProviders() {
   const providers = [];
@@ -16,6 +16,11 @@ export function configuredAIProviders() {
     id: 'cloudflare', name: 'Cloudflare', key: env('CLOUDFLARE_API_TOKEN'),
     model: env('CLOUDFLARE_MODEL') || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     url: `https://api.cloudflare.com/client/v4/accounts/${env('CLOUDFLARE_ACCOUNT_ID')}/ai/v1/chat/completions`
+  });
+  if (env('OPENROUTER_API_KEY')) providers.push({
+    id: 'openrouter', name: 'OpenRouter', key: env('OPENROUTER_API_KEY'),
+    model: env('OPENROUTER_MODEL') || 'openrouter/free',
+    url: 'https://openrouter.ai/api/v1/chat/completions'
   });
   return providers;
 }
@@ -160,7 +165,8 @@ export async function runAureviaAI({ messages, temperature = 0.25, max_tokens = 
           method: 'POST',
           headers: {
             authorization: `Bearer ${provider.key}`,
-            'content-type': 'application/json'
+            'content-type': 'application/json',
+            ...(provider.id === 'openrouter' ? { 'HTTP-Referer': 'https://aurevia-copilot-ia.netlify.app', 'X-Title': 'AUREVIA COPILOT' } : {})
           },
           body: requestBody,
           signal: AbortSignal.timeout(timeoutMs)
