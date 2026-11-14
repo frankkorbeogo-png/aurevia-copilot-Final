@@ -11,7 +11,10 @@ async function call(p,messages){
  const timeout=p.id==='gemini'?9000:p.id==='cloudflare'?9000:7000;
  const deadline=start+timeout;
  const body={model:p.model,messages:messages,temperature:0.2,stream:false};
- if(p.id==='groq'){
+ if(p.id==='gemini'){
+  body.reasoning_effort='low';
+  body.max_tokens=1600;
+ }else if(p.id==='groq'){
   body.max_completion_tokens=1400;
   if(p.model.indexOf('openai/gpt-oss-')===0){
    body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};
