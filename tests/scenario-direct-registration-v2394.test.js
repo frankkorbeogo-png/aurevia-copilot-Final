@@ -5,9 +5,9 @@ const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const api=readFileSync(new URL('../netlify/functions/scenario-api.mjs',import.meta.url),'utf8');
 const watch=readFileSync(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
 const webhook=readFileSync(new URL('../netlify/functions/telegram-webhook.mjs',import.meta.url),'utf8');
-test('l’enregistrement direct dans AUREVIA n’est proposé qu’après confirmation M5',()=>{
+test('l’enregistrement direct dans AUREVIA n’est proposé qu’après confirmation M15',()=>{
  assert.match(app,/s\.status==='entry_confirmed'/);
- assert.match(app,/status M15|confirmation M5/i);
+ assert.match(app,/status M15|confirmation M15/i);
  assert.match(api,/scenario\.status!=='entry_confirmed'/);
 });
 test('le mode direct utilise la même RPC transactionnelle que Telegram',()=>{

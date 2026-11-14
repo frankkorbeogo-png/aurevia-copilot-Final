@@ -31,7 +31,7 @@ test('le routeur tente les trois fournisseurs dans l’ordre et poursuit après 
 test('le routeur limite chaque tentative et son budget total', async () => {
   const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
   assert.match(source, /PROVIDER_TIMEOUT_MS = 8500/);
-  assert.match(source, /TOTAL_BUDGET_MS = 32000/);
+  assert.match(source, /TOTAL_BUDGET_MS = 28000/);
   assert.match(source, /gemini-3\.8-flash/);
   assert.match(source, /max_completion_tokens/);
   assert.match(source, /BUDGET_EXHAUSTED/);
@@ -55,7 +55,7 @@ test('le routeur adapte le paramètre de sortie Groq sans changer les autres fou
   const bodies = [];
   globalThis.fetch = async (_url, options) => {
     bodies.push(JSON.parse(options.body));
-    if (bodies.length < 3) return new Response(JSON.stringify({error:{message:'unavailable'}}), {status:503});
+    if (bodies.length < 4) return new Response(JSON.stringify({error:{message:'unavailable'}}), {status:503});
     return new Response(JSON.stringify({choices:[{message:{content:'{"decision":"WAIT"}'}}]}), {status:200});
   };
   t.after(() => {
@@ -66,8 +66,8 @@ test('le routeur adapte le paramètre de sortie Groq sans changer les autres fou
   assert.equal(bodies[0].model, 'gemini-3.8-flash');
   assert.equal(bodies[0].max_tokens, 1234);
   assert.equal('max_completion_tokens' in bodies[0], false);
-  assert.equal(bodies[2].max_completion_tokens, 1234);
-  assert.equal('max_tokens' in bodies[2], false);
+  assert.equal(bodies[3].max_completion_tokens, 1234);
+  assert.equal('max_tokens' in bodies[3], false);
 });
 
 test('le routeur distingue les erreurs de facturation, modèle absent et charge trop grande', async () => {
@@ -107,5 +107,5 @@ test('GPT-OSS Groq limite le raisonnement interne et exige un JSON final exploit
 test('SambaNova est retiré du routage et le budget est recalé sur trois fournisseurs', async () => {
   const source = await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/_ai-provider.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /SAMBANOVA_API_KEY|api\\.sambanova\\.ai|name: 'SambaNova'/);
-  assert.match(source, /TOTAL_BUDGET_MS = 32000/);
+  assert.match(source, /TOTAL_BUDGET_MS = 28000/);
 });

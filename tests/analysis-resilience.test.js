@@ -21,8 +21,7 @@ test('M15 est chargé en priorité et les unités H4/H1/M30 restent optionnelles
   assert.match(source,/requiredMissing/);
   assert.match(source,/allRequiredAvailable/);
   assert.match(source,/analyses\.M15\?\.last/);
-  assert.match(source,/M5:'5min'/);
-  assert.match(source,/aiTimeframes/);
+  assert.doesNotMatch(source,/M5:'5min'/);
 });
 test('les erreurs réseau sont affichées comme indisponibilité et non comme simple signal WAIT',()=>{
   assert.match(source,/Erreur technique pendant l’analyse/);

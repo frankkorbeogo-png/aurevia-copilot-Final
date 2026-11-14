@@ -2,8 +2,8 @@
 // Les délais sont compatibles avec la limite synchrone Netlify (60 s).
 const env = (name) => String(process.env[name] || '').trim();
 const PROVIDER_TIMEOUT_MS = 8500;
-const TOTAL_BUDGET_MS = 32000;
-const PROVIDER_TIMEOUTS = { gemini: 11000, cloudflare: 10000, groq: 8500 };
+const TOTAL_BUDGET_MS = 28000;
+const PROVIDER_TIMEOUTS = { gemini: 8500, cloudflare: 9000, groq: 7000 };
 
 export function configuredAIProviders() {
   const providers = [];
@@ -57,8 +57,39 @@ function providerErrorCode(status) {
   return 'HTTP_ERROR';
 }
 
-function providerRequestBody(provider, messages, temperature, max_tokens) {
-  const body = { model: provider.model, messages, temperature, stream: false };
+function compactMessagesForGroq(messages) {
+  // Groq peut refuser les requêtes trop volumineuses (HTTP 413). On garde
+  // le prompt système et les données décisionnelles, mais on réduit le détail.
+  return messages.map((message, index) => {
+    const content = String(message?.content || '');
+    if (index === 0 || message?.role === 'system') return { ...message, content: content.slice(0, 8500) };
+    try {
+      const data = JSON.parse(content);
+      if (Array.isArray(data.candles)) data.candles = data.candles.slice(-20);
+      if (Array.isArray(data.patterns)) data.patterns = data.patterns.slice(-4);
+      for (const key of ['indicators', 'structure', 'volumeProfile', 'fibonacci']) {
+        if (data[key] && typeof data[key] === 'object') {
+          const entries = Object.entries(data[key]).slice(0, 12);
+          data[key] = Object.fromEntries(entries);
+        }
+      }
+      if (data.context) {
+        data.context = {
+          h4: typeof data.context.h4 === 'string' ? data.context.h4.slice(0, 900) : data.context.h4,
+          m30: typeof data.context.m30 === 'string' ? data.context.m30.slice(0, 900) : data.context.m30,
+          macro: typeof data.context.macro === 'string' ? data.context.macro.slice(0, 700) : data.context.macro
+        };
+      }
+      return { ...message, content: JSON.stringify(data) };
+    } catch {
+      return { ...message, content: content.slice(0, 12000) };
+    }
+  });
+}
+
+function providerRequestBody(provider, messages, temperature, max_tokens, compact = false) {
+  const selectedMessages = compact && provider.id === 'groq' ? compactMessagesForGroq(messages) : messages;
+  const body = { model: provider.model, messages: selectedMessages, temperature, stream: false };
   // Groq déprécie max_tokens au profit de max_completion_tokens.
   if (provider.id === 'groq') {
     body.max_completion_tokens = max_tokens;
@@ -100,25 +131,47 @@ export async function runAureviaAI({ messages, temperature = 0.25, max_tokens = 
     const timeoutMs = Math.max(700, Math.min(providerLimit, remaining - 500));
     const attemptStarted = Date.now();
     try {
-      const response = await fetch(provider.url, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${provider.key}`,
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify(providerRequestBody(provider, messages, temperature, max_tokens)),
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-      const bodyText = await response.text();
+      let response;
+      let bodyText = '';
       let payload = {};
-      try { payload = JSON.parse(bodyText); } catch {}
+      let compactGroqRetry = false;
+      let transientGeminiRetry = false;
+      for (let requestNo = 0; requestNo < 2; requestNo++) {
+        const compact = provider.id === 'groq' && compactGroqRetry;
+        const requestBody = JSON.stringify(providerRequestBody(provider, messages, temperature, max_tokens, compact));
+        response = await fetch(provider.url, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${provider.key}`,
+            'content-type': 'application/json'
+          },
+          body: requestBody,
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+        bodyText = await response.text();
+        payload = {};
+        try { payload = JSON.parse(bodyText); } catch {}
+        if (provider.id === 'groq' && response.status === 413 && !compactGroqRetry) {
+          compactGroqRetry = true;
+          continue;
+        }
+        const geminiTemporary = provider.id === 'gemini' &&
+          (response.status === 503 || response.status === 429 ||
+           /RESOURCE_EXHAUSTED|high demand|overloaded/i.test(String(payload?.error?.message || bodyText)));
+        if (geminiTemporary && !transientGeminiRetry && Date.now() - startedAt < TOTAL_BUDGET_MS - 5000) {
+          transientGeminiRetry = true;
+          await new Promise(resolve => setTimeout(resolve, 350));
+          continue;
+        }
+        break;
+      }
 
       if (!response.ok) {
         const attempt = {
           provider: provider.name, model: provider.model, status: response.status,
           code: providerErrorCode(response.status),
           issue: safeIssue(response.status, bodyText, payload),
-          elapsedMs: Date.now() - attemptStarted, timeoutMs
+          elapsedMs: Date.now() - attemptStarted, timeoutMs, compactRetry: compactGroqRetry
         };
         attempts.push(attempt);
         logAttempt(attempt);

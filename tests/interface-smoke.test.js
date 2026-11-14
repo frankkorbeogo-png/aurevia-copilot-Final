@@ -83,8 +83,7 @@ test('M15 est prioritaire et les unités de contexte sont chargées après lui',
   assert.match(analysis, /if\(frames\.M15\)/);
   assert.match(analysis, /Promise\.allSettled/);
   assert.match(analysis, /requiredMissing/);
-  assert.match(analysis, /M5:'5min'/);
-  assert.match(analysis, /aiTimeframes/);
+  assert.doesNotMatch(analysis, /M5:'5min'/);
 });
 
 
