@@ -1,9 +1,9 @@
-// Routage IA serveur AUREVIA : ordre strict Gemini > Cloudflare > SambaNova > Groq.
+// Routage IA serveur AUREVIA : ordre strict Gemini > Cloudflare > Groq.
 // Les délais sont compatibles avec la limite synchrone Netlify (60 s).
 const env = (name) => String(process.env[name] || '').trim();
-const PROVIDER_TIMEOUT_MS = 11000;
-const TOTAL_BUDGET_MS = 44000;
-const PROVIDER_TIMEOUTS = { gemini: 11000, cloudflare: 10000, sambanova: 8500, groq: 8500 };
+const PROVIDER_TIMEOUT_MS = 8500;
+const TOTAL_BUDGET_MS = 32000;
+const PROVIDER_TIMEOUTS = { gemini: 11000, cloudflare: 10000, groq: 8500 };
 
 export function configuredAIProviders() {
   const providers = [];
@@ -16,11 +16,6 @@ export function configuredAIProviders() {
     id: 'cloudflare', name: 'Cloudflare', key: env('CLOUDFLARE_API_TOKEN'),
     model: env('CLOUDFLARE_MODEL') || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     url: `https://api.cloudflare.com/client/v4/accounts/${env('CLOUDFLARE_ACCOUNT_ID')}/ai/v1/chat/completions`
-  });
-  if (env('SAMBANOVA_API_KEY')) providers.push({
-    id: 'sambanova', name: 'SambaNova', key: env('SAMBANOVA_API_KEY'),
-    model: env('SAMBANOVA_MODEL') || 'DeepSeek-V3.1',
-    url: 'https://api.sambanova.ai/v1/chat/completions'
   });
   if (env('GROQ_API_KEY')) providers.push({
     id: 'groq', name: 'Groq', key: env('GROQ_API_KEY'),
@@ -65,8 +60,17 @@ function providerErrorCode(status) {
 function providerRequestBody(provider, messages, temperature, max_tokens) {
   const body = { model: provider.model, messages, temperature, stream: false };
   // Groq déprécie max_tokens au profit de max_completion_tokens.
-  if (provider.id === 'groq') body.max_completion_tokens = max_tokens;
-  else body.max_tokens = max_tokens;
+  if (provider.id === 'groq') {
+    body.max_completion_tokens = max_tokens;
+    // GPT-OSS peut consommer le budget de sortie dans son raisonnement interne
+    // et retourner HTTP 200 avec message.content vide. Réduire l'effort
+    // et demander explicitement une réponse JSON exploitable.
+    if (provider.model.startsWith('openai/gpt-oss-')) {
+      body.reasoning_effort = 'low';
+      body.include_reasoning = false;
+      body.response_format = { type: 'json_object' };
+    }
+  } else body.max_tokens = max_tokens;
   return body;
 }
 
@@ -121,11 +125,21 @@ export async function runAureviaAI({ messages, temperature = 0.25, max_tokens = 
         continue;
       }
 
-      const content = payload?.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || !content.trim()) {
+      const message = payload?.choices?.[0]?.message;
+      const rawContent = message?.content;
+      const content = typeof rawContent === 'string'
+        ? rawContent
+        : Array.isArray(rawContent)
+          ? rawContent.map(part => typeof part === 'string' ? part : (part?.text || '')).join('\\n')
+          : '';
+      if (!content.trim()) {
+        const finishReason = String(payload?.choices?.[0]?.finish_reason || 'unknown');
         const attempt = {
           provider: provider.name, model: provider.model, status: response.status,
-          code: 'EMPTY_RESPONSE', issue: 'Réponse vide ou format inattendu',
+          code: finishReason === 'length' ? 'OUTPUT_BUDGET_EXHAUSTED' : 'EMPTY_RESPONSE',
+          issue: finishReason === 'length'
+            ? 'Budget de sortie épuisé avant le JSON final'
+            : `HTTP 200 sans texte exploitable (finish_reason: ${finishReason})`,
           elapsedMs: Date.now() - attemptStarted, timeoutMs
         };
         attempts.push(attempt);

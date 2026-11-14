@@ -10,14 +10,14 @@ test('Twelve Data distingue quota, authentification et indisponibilité fourniss
 test('Twelve Data ne sert pas de cache périmé après un quota ou un refus de clé',()=>{
  assert.match(market,/lastError\?\.failure\?\.retryable&&lastError\?\.status!==429/);
 });
-test('le routeur respecte l’ordre Gemini, Cloudflare, SambaNova puis Groq',()=>{
- const positions=['Gemini','Cloudflare','SambaNova','Groq'].map(name=>router.indexOf(`name: '${name}'`));
+test('le routeur respecte l’ordre Gemini, Cloudflare puis Groq, sans SambaNova',()=>{
+ const positions=['Gemini','Cloudflare','Groq'].map(name=>router.indexOf(`name: '${name}'`));
  assert.ok(positions.every((v)=>v>=0));
  assert.deepEqual([...positions].sort((a,b)=>a-b),positions);
- assert.match(ai,/runAureviaAI/);
+ assert.match(ai,/runAureviaAI/); assert.doesNotMatch(router,/SAMBANOVA_API_KEY|api\\.sambanova\\.ai/);
 });
 test('les erreurs et diagnostics fournisseur ne révèlent jamais les clés API',()=>{
  assert.match(router,/status: response\.status/);
  assert.match(router,/slice\(0, 180\)/);
- assert.doesNotMatch(ai,/process\.env\.(GEMINI|CLOUDFLARE|SAMBANOVA|GROQ)_API_KEY/);
+ assert.doesNotMatch(ai,/process\.env\.(GEMINI|CLOUDFLARE|GROQ)_API_KEY/);
 });

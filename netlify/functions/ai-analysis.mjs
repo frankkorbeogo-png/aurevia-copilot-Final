@@ -41,7 +41,7 @@ DÉCISION: BUY/SELL si le M15 présente une direction identifiable avec entrée 
 SCÉNARIO: zone d'entrée réaliste, entrée dans la zone, SL derrière invalidation structurelle, 1 à 3 TP et RR cohérent. Le score confirmationScore (0-100) mesure la confluence technique, pas une probabilité. estimatedWinRate doit être null si non estimable honnêtement; si fourni, il reste subjectif et non calibré statistiquement.
 FORMAT JSON exact: {decision:"BUY|SELL|WAIT",summary,marketReading,buy,sell,risks:[],missingData:[]}. buy/sell = objet ou null. Chaque scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType:"BUY LIMIT|BUY STOP|SELL LIMIT|SELL STOP",confirmationScore,estimatedWinRate:null|number,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}. Ne force jamais les deux directions. Donne des prix cohérents avec le dernier cours M15.`;
  try {
-   const result=await runAureviaAI({messages:[{role:'system',content:system},{role:'user',content:JSON.stringify(payload)}],temperature:0.25,max_tokens:900});
+   const result=await runAureviaAI({messages:[{role:'system',content:system},{role:'user',content:JSON.stringify(payload)}],temperature:0.25,max_tokens:1800});
    const out=result.data;
    const buy=cleanScenario(out.buy,'BUY',last.c),sell=cleanScenario(out.sell,'SELL',last.c);
    let decision=['BUY','SELL','WAIT'].includes(out.decision)?out.decision:'WAIT';

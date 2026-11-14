@@ -13,5 +13,5 @@ test('les contextes secondaires sont compactés et la sortie est plafonnée', ()
   assert.match(source, /function compactAIContext/);
   assert.match(source, /compactAIContext\(m15\.indicators/);
   assert.match(source, /compactAIContext\(context\.macro/);
-  assert.match(source, /max_tokens:900/);
+  assert.match(source, /max_tokens:1800/);
 });
