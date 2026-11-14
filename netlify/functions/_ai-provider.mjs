@@ -1,6 +1,10 @@
 // Routage IA serveur AUREVIA : ordre strict Gemini > Cloudflare > Groq.
 // Les délais sont compatibles avec la limite synchrone Netlify (60 s).
-const env = (name) => String(process.env[name] || '').trim();
+const env = (name) => {
+  let value = '';
+  try { value = globalThis.Netlify?.env?.get?.(name) || ''; } catch {}
+  return String(value || process.env[name] || '').trim();
+};
 const PROVIDER_TIMEOUT_MS = 8500;
 const TOTAL_BUDGET_MS = 28000;
 const PROVIDER_TIMEOUTS = { gemini: 8500, cloudflare: 9000, groq: 7000 };
@@ -11,6 +15,11 @@ export function configuredAIProviders() {
     id: 'gemini', name: 'Gemini', key: env('GEMINI_API_KEY'),
     model: env('GEMINI_MODEL') || 'gemini-3.8-flash',
     url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+  });
+  if (env('OPENROUTER_API_KEY')) providers.push({
+    id: 'openrouter', name: 'OpenRouter', key: env('OPENROUTER_API_KEY'),
+    model: env('OPENROUTER_MODEL') || 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    url: 'https://openrouter.ai/api/v1/chat/completions'
   });
   if (env('CLOUDFLARE_API_TOKEN') && env('CLOUDFLARE_ACCOUNT_ID')) providers.push({
     id: 'cloudflare', name: 'Cloudflare', key: env('CLOUDFLARE_API_TOKEN'),
