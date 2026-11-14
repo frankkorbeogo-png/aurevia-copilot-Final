@@ -378,6 +378,43 @@ async function loadServiceStatus(){
 }
 
 
+function renderAiBenchmark(data){
+ const host=$('aiBenchmarkResults'),summary=$('aiBenchmarkSummary');if(!host||!summary)return;
+ host.replaceChildren();summary.replaceChildren();summary.hidden=false;
+ const stats=[['Fournisseurs',data.summary?.configured??0],['Réponses valides',data.summary?.succeeded??0],['Échecs',data.summary?.failed??0],['Plus rapide',data.summary?.fastest||'—']];
+ for(const [label,value] of stats){const card=document.createElement('div');const small=document.createElement('small');small.textContent=label;const strong=document.createElement('b');strong.textContent=String(value);card.append(small,strong);summary.append(card);}
+ for(const item of data.results||[]){
+  const card=document.createElement('article');card.className='notice-box';
+  const title=document.createElement('b');title.textContent=item.provider+' · '+(item.model||'modèle non précisé');
+  const meta=document.createElement('p');meta.textContent=(item.ok?'Réponse reçue':'Échec')+' · '+(Number.isFinite(item.latencyMs)?item.latencyMs+' ms':'délai indisponible')+(item.status?' · HTTP '+item.status:'');
+  card.append(title,meta);
+  if(item.ok&&item.result){
+   const result=item.result;
+   const decision=document.createElement('p');decision.textContent='Décision : '+String(result.decision||'Non précisée');card.append(decision);
+   const summaryText=document.createElement('p');summaryText.textContent=String(result.summary||result.marketReading||'Aucun résumé fourni.');card.append(summaryText);
+   const quality=document.createElement('p');quality.textContent='Score annoncé : '+String(result.buy?.confirmationScore??result.sell?.confirmationScore??'Non fourni')+'/100';card.append(quality);
+   const risks=document.createElement('p');risks.textContent='Risques : '+(Array.isArray(result.risks)?result.risks.join(' · '):'Non précisés');card.append(risks);
+  }else{
+   const issue=document.createElement('p');issue.textContent=(item.code||'ERREUR')+' : '+(item.error||'Échec sans détail');card.append(issue);
+  }
+  host.append(card);
+ }
+}
+async function runAiBenchmark(){
+ const button=$('runAiBenchmark'),status=$('aiBenchmarkStatus'),host=$('aiBenchmarkResults'),summary=$('aiBenchmarkSummary');
+ if(!button||!status)return;
+ button.disabled=true;button.textContent='Benchmark en cours…';status.textContent='Vérification de la session et récupération des données M15…';host?.replaceChildren();if(summary)summary.hidden=true;
+ try{
+  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connectez-vous avec le compte administrateur.');
+  const response=await fetch('/api/ai-benchmark',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({instrument:$('benchmarkInstrument')?.value||'XAU/USD'}),cache:'no-store'});
+  const data=await response.json().catch(()=>({error:'Réponse serveur illisible.'}));
+  if(!response.ok)throw new Error(data.error||'Benchmark indisponible.');
+  renderAiBenchmark(data);
+  status.textContent='Terminé · '+data.candleCount+' bougies M15 · '+data.summary.succeeded+' réponse(s) valide(s), '+data.summary.failed+' échec(s).';
+ }catch(error){status.textContent='Benchmark non terminé : '+error.message;}
+ finally{button.disabled=false;button.textContent='Relancer le benchmark →';}
+}
+
 async function adminRequest(payload=null,query=''){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connectez-vous pour continuer.');
  const response=await fetch('/api/admin'+query,{method:payload?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(payload?{'content-type':'application/json'}:{})},body:payload?JSON.stringify(payload):undefined,cache:'no-store'});
@@ -433,11 +470,11 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
   const query=new URLSearchParams({page:String(adminPage)});if(adminSearchValue)query.set('q',adminSearchValue);
   const data=await adminRequest(null,`?${query.toString()}`);
   adminHasMore=Boolean(data.pagination?.has_more);$('adminUsersPage').textContent=`Page ${adminPage} · ${data.pagination?.total??0} compte(s)`;$('adminUsersPrev').disabled=adminPage<=1;$('adminUsersNext').disabled=!adminHasMore;
-  $('adminUnlocked')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
+  $('adminUnlocked')?.removeAttribute('hidden');$('adminBenchmarkPanel')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
   const stats=data.stats||{};$('adminStatProfiles').textContent=stats.profiles??'—';$('adminStatOnline').textContent=stats.users_online??'—';$('adminStatSessions').textContent=stats.active_sessions??'—';$('adminStatSuspended').textContent=stats.suspended??'—';$('adminStatTrades').textContent=stats.trading_journal??'—';$('adminStatPositions').textContent=stats.trading_position_groups??'—';$('adminStatTelegram').textContent=stats.telegram_connections??'—';
   adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAnnouncementRecipientPicker();renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();
  }catch(error){
-  $('adminUnlocked')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
+  $('adminUnlocked')?.setAttribute('hidden','');$('adminBenchmarkPanel')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
   if(error.status===403||error.status===409){window.__aureviaAdminVerified=false;document.querySelector('[data-page="admin"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');if(location.hash==='#admin')history.replaceState(null,'','#accueil');}
   if($('adminUsersNote'))$('adminUsersNote').textContent=error.message;
  }
@@ -628,6 +665,7 @@ function bindEvents(){
     }
   });
   $('adminRefreshStatus')?.addEventListener('click',()=>loadAdminConsole(adminPage,adminSearchValue));
+  $('runAiBenchmark')?.addEventListener('click',runAiBenchmark);
   $('adminAnnouncementAudience')?.addEventListener('change',renderAnnouncementRecipientPicker);
   $('adminAnnouncementRecipients')?.addEventListener('change',event=>{
     for(const option of event.target.options){
