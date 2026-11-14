@@ -7,10 +7,9 @@ import {getAnalysisAccessToken} from './auth.js';
 import {generateOpportunityScenarios} from './opportunity-engine.js';
 import {getMarketStatus} from './market-hours.js';
 const SYMBOLS={XAUUSD:'XAU/USD',XAGUSD:'XAG/USD',EURUSD:'EUR/USD',GBPUSD:'GBP/USD',USDJPY:'USD/JPY',AUDUSD:'AUD/USD',USDCAD:'USD/CAD',USDCHF:'USD/CHF',NZDUSD:'NZD/USD',EURGBP:'EUR/GBP',EURJPY:'EUR/JPY',GBPJPY:'GBP/JPY',BTCUSD:'BTC/USD',ETHUSD:'ETH/USD'};
-// M15 est chargé en premier : c'est l'unique unité décisionnelle.
-// H4/H1/M30 restent des contextes optionnels ; M5/M1 sont consultés sur TradingView
-// pour affiner l'entrée, sans ajouter quatre appels OHLC à chaque analyse.
-const FRAMES={H4:'4h',H1:'1h',M30:'30min',M15:'15min'};
+// Hiérarchie multi-timeframes : H4 direction, H1 structure, M30 préparation, M15 scénario, M5 déclenchement.
+// M15 reste indispensable ; les quatre autres unités sont facultatives et ne bloquent pas la décision.
+const FRAMES={H4:'4h',H1:'1h',M30:'30min',M15:'15min',M5:'5min'};
 const FRAME_MINUTES={H4:240,H1:60,M30:30,M15:15,M5:5};
 let latest={message:'En attente',tableMessage:'Sélectionnez un instrument pour commencer.',signalReason:'Aucune conclusion avant validation des données.'};
 const inFlight=new Map();
@@ -30,10 +29,10 @@ export function parseProviderTime(value,zone){
 }
 function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=(Date.now()-stamp)/60000;return age>=-intervalMinutes*1.5&&age<=intervalMinutes*2.5;}
 async function fetchMacroContext(instrument){try{const token=await getAnalysisAccessToken();if(!token)return {configured:false,notice:'Connexion requise pour les données macro.'};const r=await fetch(`/api/macro-context?instrument=${encodeURIComponent(instrument)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return {configured:false,notice:'Flux macro indisponible.'};return await r.json();}catch{return {configured:false,notice:'Flux macro indisponible.'};}}
-async function requestGroqAnalysis(symbol,m15,context){
+async function requestGroqAnalysis(symbol,m15,context,timeframes={}){
  const token=await getAnalysisAccessToken();
  if(!token)throw new Error('Connexion requise pour solliciter le moteur IA.');
- const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
+ const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},timeframes,context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
  const d=await r.json().catch(()=>({}));
  if(!r.ok){
   const attempts=d.providerDiagnostics?.attempts||[];
@@ -85,8 +84,8 @@ async function runInstrumentAnalysis(symbol){
   // Prioriser l'historique M15 : si le fournisseur est limité, le moteur
   // tente d'abord de récupérer les données réellement nécessaires au moteur IA.
   try{frames.M15=await fetchFrame(pair,FRAMES.M15);}catch(error){unavailable.push({tf:'M15',error:error?.message||'Données indisponibles'});}
-  // Les unités supérieures ne sont que du contexte. Leur panne ne bloque
-  // jamais l'analyse M15 et elles sont demandées seulement après le M15.
+  // Charger les quatre unités complémentaires en parallèle après M15. Une panne
+  // facultative n'empêche jamais l'analyse si le M15 est valide.
   if(frames.M15){
    const optional=Object.entries(FRAMES).filter(([tf])=>tf!=='M15');
    const settled=await Promise.allSettled(optional.map(async([tf,interval])=>[tf,await fetchFrame(pair,interval)]));
@@ -107,16 +106,17 @@ async function runInstrumentAnalysis(symbol){
   if(!allRequiredAvailable){
    const details=[...requiredMissing.map(x=>`${x.tf}: ${x.error}`),...requiredStale.map(tf=>`${tf}: données périmées ou horodatage non vérifiable`)];
    const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
-   latest={message:'Données opérationnelles incomplètes',tableMessage:'L’analyse directionnelle exige uniquement des données M15 valides.',rows,signalReason:`WAIT — analyse suspendue : ${details.join(' ; ')||'M15 indisponible'}. Réessayez lorsque le flux sera rétabli.`,decision:'WAIT',probability:null,score:null,unavailableFrames:unavailable,staleFrames:stale,frames};
+   latest={message:'Données opérationnelles incomplètes',tableMessage:'Le scénario exige des données M15 valides ; les autres unités enrichissent la lecture sans la bloquer.',rows,signalReason:`WAIT — analyse suspendue : ${details.join(' ; ')||'M15 indisponible'}. Réessayez lorsque le flux sera rétabli.`,decision:'WAIT',probability:null,score:null,unavailableFrames:unavailable,staleFrames:stale,frames};
    return null;
   }
   const macroContext=await fetchMacroContext(symbol);
   const m15=analyses.M15;
-  const higherTimeframes={h4:analyses.H4?.structure?.bias||'indisponible',m30:analyses.M30?.structure?.bias||'indisponible'};
+  const higherTimeframes={h4:analyses.H4?.structure?.bias||'indisponible',h1:analyses.H1?.structure?.bias||'indisponible',m30:analyses.M30?.structure?.bias||'indisponible',m5:analyses.M5?.structure?.bias||'indisponible'};
+  const aiTimeframes=Object.fromEntries(['H4','H1','M30','M5'].map(tf=>{const a=analyses[tf],d=frames[tf];return [tf,a?{candles:d.candles.slice(-24),indicators:a.indicators,structure:a.structure,patterns:a.patterns.slice(-6),last:a.last}:null];}));
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
   const technicalScenarios=generateOpportunityScenarios({analyses,frames,staleFrames:stale});
   let aiResult=null,aiError=null;
-  try{aiResult=await requestGroqAnalysis(symbol,{candles:frames.M15.candles,analysis:m15},{h4:higherTimeframes.h4,m30:higherTimeframes.m30,macro:macroContext?.configured?macroContext:'indisponible'});}catch(error){aiError=error.message||'Moteur IA indisponible';}
+  try{aiResult=await requestGroqAnalysis(symbol,{candles:frames.M15.candles,analysis:m15},{h4:higherTimeframes.h4,h1:higherTimeframes.h1,m30:higherTimeframes.m30,m5:higherTimeframes.m5,macro:macroContext?.configured?macroContext:'indisponible'},aiTimeframes);}catch(error){aiError=error.message||'Moteur IA indisponible';}
   const scenarios=aiResult?.scenarios||{buy:null,sell:null};
   const technicalBest=(!technicalScenarios.sell||technicalScenarios.buy?.score>=technicalScenarios.sell?.score)?technicalScenarios.buy:technicalScenarios.sell;
   const best=aiResult?.decision==='BUY'?scenarios.buy:aiResult?.decision==='SELL'?scenarios.sell:(aiResult?(scenarios.buy||scenarios.sell):null);
@@ -124,13 +124,13 @@ async function runInstrumentAnalysis(symbol){
   // réservée au score de confirmation de l'analyse AUREVIA.
   const score=aiResult?(best?.score??best?.scoreComponents?.filter(x=>x.passed).reduce((a,x)=>a+(x.weight||0),0)??null):null;
   const scoreComponents=aiResult?(best?.scoreComponents||[]):[];
-  const decision={decision:aiResult?.decision||'WAIT',reason:aiResult?.summary||aiError||'Le moteur IA n’a pas fourni de proposition exploitable.',score,probability:best?.probability??null,scenarios,marketReading:aiResult?.marketReading||'',risks:aiResult?.risks||[],probabilityDisclaimer:aiResult?.probabilityDisclaimer||'Estimation IA non calibrée.'};
+  const decision={decision:aiResult?.decision||'WAIT',reason:aiResult?.summary||aiError||'Le moteur IA n’a pas fourni de proposition exploitable.',score,probability:best?.probability??null,scenarios,marketReading:aiResult?.marketReading||'',timeframeAnalysis:aiResult?.timeframeAnalysis||{},risks:aiResult?.risks||[],probabilityDisclaimer:aiResult?.probabilityDisclaimer||'Estimation IA non calibrée.'};
   const optionalMissing=unavailable.filter(x=>x.tf!=='M15');
   const optionalStale=stale.filter(tf=>tf!=='M15');
   const higherConflict=Boolean(best&&[analyses.H4,analyses.H1,analyses.M30].filter(Boolean).some(a=>!['range','indéterminé'].includes(a.structure.bias)&&a.structure.bias!==(best.side==='BUY'?'haussier':'baissier')));
   const patterns=(m15.patterns||[]).map(x=>x.name);
   const warnings=[...optionalMissing.map(x=>`${x.tf} indisponible`),...optionalStale.map(tf=>`${tf} périmé`)];
-  latest={message:aiError?'Échec analyse IA · données techniques seules':stale.length||unavailable.length?'Analyse partielle · vérifier les unités de temps':'Analyse AUREVIA · décision et chiffres exclusivement M15',analysisStatus:aiError?'AI_FAILED':'AI_COMPLETED',scoreSource:aiError?'none':'ai',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${aiError?' Moteur IA indisponible : '+aiError:''}${warnings.length?' Unités manquantes/périmées : '+warnings.join(', ')+'.':''}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios,probability:best?.probability??null,probabilityDisclaimer:decision.probabilityDisclaimer,marketReading:decision.marketReading,risks:decision.risks,higherTimeframes,higherConflict,frames,macroContext,unavailableFrames:unavailable,staleFrames:stale};
+  latest={message:aiError?'Échec analyse IA · données techniques seules':stale.length||unavailable.length?'Analyse multi-timeframes partielle · vérifier les unités':'Analyse AUREVIA · H4/H1/M30/M15/M5',analysisStatus:aiError?'AI_FAILED':'AI_COMPLETED',scoreSource:aiError?'none':'ai',tableMessage:'',rows,score,scoreComponents,analysis:analyses,signalReason:`${decision.decision||'WAIT'} : ${decision.reason||'Aucune justification fournie.'}${aiError?' Moteur IA indisponible : '+aiError:''}${warnings.length?' Unités manquantes/périmées : '+warnings.join(', ')+'.':''}${patterns.length?' Figures détectées : '+[...new Set(patterns)].join(', ')+'.':''}`,decision:decision.decision||'WAIT',decisionDetails:decision,scenarios:decision.scenarios,probability:best?.probability??null,probabilityDisclaimer:decision.probabilityDisclaimer,marketReading:decision.marketReading,timeframeAnalysis:decision.timeframeAnalysis,risks:decision.risks,higherTimeframes,higherConflict,frames,macroContext,unavailableFrames:unavailable,staleFrames:stale};
   return {price:m15.last.close,status:unavailable.length||stale.length?'partiel':'reçu'};
  }catch(error){latest={message:'Erreur technique pendant l’analyse',tableMessage:'Les données n’ont pas pu être traitées.',signalReason:`WAIT — erreur technique : ${error.message||'erreur inconnue'}. Aucune entrée ne sera proposée sans données valides.`,decision:'WAIT',probability:null,score:null};return null;}
 }
