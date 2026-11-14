@@ -1,0 +1,3 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import {getMarketStatus} from '../market-hours.js';
+test('les horaires de fermeture sont affichés au fuseau du Burkina',()=>{const s=getMarketStatus('EURUSD',new Date('2026-11-14T12:00:00Z'));assert.equal(s.timezone,'Africa/Ouagadougou');assert.match(s.schedule,/heure du Burkina Faso/);assert.match(s.schedule,/Dimanche/);assert.match(s.schedule,/vendredi/);});
+test('la règle de session Forex reste correcte',()=>{assert.equal(getMarketStatus('EURUSD',new Date('2026-11-14T12:00:00Z')).tradable,false);assert.equal(getMarketStatus('EURUSD',new Date('2026-11-13T12:00:00Z')).tradable,true);});
