@@ -125,7 +125,7 @@ async function runInstrumentAnalysis(symbol){
   // réservée au score de confirmation de l'analyse AUREVIA.
   const score=aiResult?(best?.score??best?.scoreComponents?.filter(x=>x.passed).reduce((a,x)=>a+(x.weight||0),0)??null):null;
   const scoreComponents=aiResult?(best?.scoreComponents||[]):[];
-  const decision={decision:aiResult?.decision||'WAIT',reason:aiResult?.summary||aiError||'Le moteur IA n’a pas fourni de proposition exploitable.',score,probability:best?.probability??null,scenarios,marketReading:aiResult?.marketReading||'',noScenarioReason:aiResult?.noScenarioReason||'',watchDirectives:aiResult?.watchDirectives||[],risks:aiResult?.risks||[],probabilityDisclaimer:aiResult?.probabilityDisclaimer||'Estimation IA non calibrée.'};
+  const decision={decision:aiResult?.decision||'WAIT',reason:aiResult?.summary||aiError||'Le moteur IA n’a pas fourni de proposition exploitable.',score,probability:best?.probability??null,collaboration:aiResult?.collaboration||null,scenarios,marketReading:aiResult?.marketReading||'',noScenarioReason:aiResult?.noScenarioReason||'',watchDirectives:aiResult?.watchDirectives||[],risks:aiResult?.risks||[],probabilityDisclaimer:aiResult?.probabilityDisclaimer||'Estimation IA non calibrée.'};
   const optionalMissing=unavailable.filter(x=>x.tf!=='M15');
   const optionalStale=stale.filter(tf=>tf!=='M15');
   const higherConflict=Boolean(best&&[analyses.H4,analyses.H1,analyses.M30].filter(Boolean).some(a=>!['range','indéterminé'].includes(a.structure.bias)&&a.structure.bias!==(best.side==='BUY'?'haussier':'baissier')));
