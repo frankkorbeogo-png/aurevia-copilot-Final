@@ -1,6 +1,14 @@
 // Routage IA serveur AUREVIA : Groq en principal, Cloudflare en secours.
 // Les délais restent compatibles avec la limite synchrone Netlify (60 s).
-const env = (name) => String(process.env[name] || '').trim();
+const env = (name) => {
+  // Netlify.env.get is the supported runtime API; keep process.env as a
+  // compatibility fallback for local development and existing deployments.
+  try {
+    const value = globalThis.Netlify?.env?.get?.(name);
+    if (value != null && String(value).trim()) return String(value).trim();
+  } catch {}
+  return String(process.env[name] || '').trim();
+};
 const PROVIDER_TIMEOUT_MS = 9000;
 const TOTAL_BUDGET_MS = 18000;
 const PROVIDER_TIMEOUTS = { groq: 7000, cloudflare: 9000, openrouter: 12000 };
