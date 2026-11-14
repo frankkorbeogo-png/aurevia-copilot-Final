@@ -381,8 +381,14 @@ async function loadServiceStatus(){
 function renderAiBenchmark(data){
  const host=$('aiBenchmarkResults'),summary=$('aiBenchmarkSummary');if(!host||!summary)return;
  host.replaceChildren();summary.replaceChildren();summary.hidden=false;
- const stats=[['Fournisseurs',data.summary?.configured??0],['Réponses valides',data.summary?.succeeded??0],['Échecs',data.summary?.failed??0],['Plus rapide',data.summary?.fastest||'—']];
+ const comparison=data.comparison||{};
+ const decisionLabel={BUY:'ACHAT',SELL:'VENTE',WAIT:'ATTENTE',INVALID:'FORMAT INVALIDE'};
+ const stats=[['Instrument',data.instrument||'—'],['Bougies M15',data.candleCount??'—'],['Réponses valides',data.summary?.succeeded??0],['Décisions comparées',comparison.decisionsCompared??0],['Scores fournis',comparison.scoreCount??0],['Plus rapide',data.summary?.fastest||'—']];
  for(const [label,value] of stats){const card=document.createElement('div');const small=document.createElement('small');small.textContent=label;const strong=document.createElement('b');strong.textContent=String(value);card.append(small,strong);summary.append(card);}
+ const consensus=document.createElement('article');consensus.className='notice-box';
+ const consensusTitle=document.createElement('b');consensusTitle.textContent='Comparaison automatique · '+(comparison.agreement==='UNANIMOUS'?'Accord unanime':comparison.agreement==='DIVERGENCE'?'Désaccord entre les IA':'Données insuffisantes');
+ const counts=comparison.decisionCounts||{};const consensusText=document.createElement('p');consensusText.textContent='BUY : '+(counts.BUY||0)+' · SELL : '+(counts.SELL||0)+' · WAIT : '+(counts.WAIT||0)+'. Les décisions sont comparées uniquement lorsque le format de réponse est valide.';
+ consensus.append(consensusTitle,consensusText);host.append(consensus);
  for(const item of data.results||[]){
   const card=document.createElement('article');card.className='notice-box';
   const title=document.createElement('b');title.textContent=item.provider+' · '+(item.model||'modèle non précisé');
@@ -390,14 +396,22 @@ function renderAiBenchmark(data){
   card.append(title,meta);
   if(item.ok&&item.result){
    const result=item.result;
-   const decision=document.createElement('p');decision.textContent='Décision : '+String(result.decision||'Non précisée');card.append(decision);
+   const decision=document.createElement('p');decision.textContent='Décision : '+(decisionLabel[result.decision]||'Non précisée')+(result.schemaValid?'':' · format à vérifier');card.append(decision);
    const summaryText=document.createElement('p');summaryText.textContent=String(result.summary||result.marketReading||'Aucun résumé fourni.');card.append(summaryText);
-   const quality=document.createElement('p');quality.textContent='Score annoncé : '+String(result.buy?.confirmationScore??result.sell?.confirmationScore??'Non fourni')+'/100';card.append(quality);
+   const quality=document.createElement('p');quality.textContent='Score de confirmation : '+(result.scoreValid?result.confirmationScore+'/100':'Non fourni · non calculé');card.append(quality);
+   if(Array.isArray(result.scoreFactors)&&result.scoreFactors.length){const factors=document.createElement('p');factors.textContent='Facteurs annoncés : '+result.scoreFactors.join(' · ');card.append(factors);}
    const risks=document.createElement('p');risks.textContent='Risques : '+(Array.isArray(result.risks)?result.risks.join(' · '):'Non précisés');card.append(risks);
   }else{
    const issue=document.createElement('p');issue.textContent=(item.code||'ERREUR')+' : '+(item.error||'Échec sans détail');card.append(issue);
   }
   host.append(card);
+ }
+ if(Array.isArray(comparison.disagreement)&&comparison.disagreement.length){
+  const divergence=document.createElement('article');divergence.className='notice-box';
+  const heading=document.createElement('b');heading.textContent='Pourquoi les avis divergent';
+  divergence.append(heading);
+  for(const item of comparison.disagreement){const line=document.createElement('p');line.textContent=item.provider+' · '+(decisionLabel[item.decision]||item.decision)+' : '+item.reason;divergence.append(line);}
+  host.append(divergence);
  }
 }
 async function runAiBenchmark(){
@@ -410,7 +424,7 @@ async function runAiBenchmark(){
   const data=await response.json().catch(()=>({error:'Réponse serveur illisible.'}));
   if(!response.ok)throw new Error(data.error||'Benchmark indisponible.');
   renderAiBenchmark(data);
-  status.textContent='Terminé · '+data.candleCount+' bougies M15 · '+data.summary.succeeded+' réponse(s) valide(s), '+data.summary.failed+' échec(s).';
+  status.textContent='Terminé · '+data.instrument+' · '+data.candleCount+' bougies M15 · '+data.summary.succeeded+' réponse(s) valide(s), '+data.summary.failed+' échec(s).';
  }catch(error){status.textContent='Benchmark non terminé : '+error.message;}
  finally{button.disabled=false;button.textContent='Relancer le benchmark →';}
 }
