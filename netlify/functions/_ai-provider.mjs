@@ -75,9 +75,8 @@ function compactMessagesForGroq(messages) {
       }
       if (data.context) {
         data.context = {
-          h4: typeof data.context.h4 === 'string' ? data.context.h4.slice(0, 900) : data.context.h4,
-          m30: typeof data.context.m30 === 'string' ? data.context.m30.slice(0, 900) : data.context.m30,
-          macro: typeof data.context.macro === 'string' ? data.context.macro.slice(0, 700) : data.context.macro
+          timeframes: data.context.timeframes || {},
+          macro: typeof data.context.macro === 'string' ? data.context.macro.slice(0, 500) : (data.context.macro && typeof data.context.macro === 'object' ? {configured:data.context.macro.configured,notice:data.context.macro.notice} : data.context.macro)
         };
       }
       return { ...message, content: JSON.stringify(data) };
@@ -87,12 +86,36 @@ function compactMessagesForGroq(messages) {
   });
 }
 
+function compactMessagesForCloudflare(messages) {
+  // Llama sur Workers reçoit un contexte intermédiaire : assez riche pour
+  // comparer les unités, mais sans historique OHLC exhaustif ni macro verbeuse.
+  return messages.map((message, index) => {
+    const content = String(message?.content || '');
+    if (message?.role === 'system') return { ...message, content: content.slice(0, 10500) };
+    try {
+      const data = JSON.parse(content);
+      if (Array.isArray(data.candles)) data.candles = data.candles.slice(-24);
+      if (Array.isArray(data.patterns)) data.patterns = data.patterns.slice(-5);
+      if (data.context?.timeframes) {
+        for (const [tf, frame] of Object.entries(data.context.timeframes)) {
+          if (frame && typeof frame === 'object') {
+            data.context.timeframes[tf] = { available: frame.available, bias: frame.bias, ema20: frame.ema20, ema50: frame.ema50, ema200: frame.ema200, rsi14: frame.rsi14, breaks: (frame.breaks || []).slice(-2), sweeps: (frame.sweeps || []).slice(-1) };
+          }
+        }
+      }
+      if (data.context?.macro && typeof data.context.macro === 'object') data.context.macro = { configured: data.context.macro.configured, notice: data.context.macro.notice };
+      return { ...message, content: JSON.stringify(data).slice(0, 18000) };
+    } catch { return { ...message, content: content.slice(0, index === 0 ? 10500 : 14000) }; }
+  });
+}
+
 function providerRequestBody(provider, messages, temperature, max_tokens, compact = false) {
-  const selectedMessages = compact && provider.id === 'groq' ? compactMessagesForGroq(messages) : messages;
+  const selectedMessages = provider.id === 'groq' ? (compact ? compactMessagesForGroq(messages) : messages) : provider.id === 'cloudflare' ? compactMessagesForCloudflare(messages) : messages;
+  const providerOutputLimit = provider.id === 'gemini' ? Math.min(max_tokens, 2200) : provider.id === 'cloudflare' ? Math.min(max_tokens, 1400) : Math.min(max_tokens, 1800);
   const body = { model: provider.model, messages: selectedMessages, temperature, stream: false };
   // Groq déprécie max_tokens au profit de max_completion_tokens.
   if (provider.id === 'groq') {
-    body.max_completion_tokens = max_tokens;
+    body.max_completion_tokens = providerOutputLimit;
     // GPT-OSS peut consommer le budget de sortie dans son raisonnement interne
     // et retourner HTTP 200 avec message.content vide. Réduire l'effort
     // et demander explicitement une réponse JSON exploitable.
@@ -101,7 +124,7 @@ function providerRequestBody(provider, messages, temperature, max_tokens, compac
       body.include_reasoning = false;
       body.response_format = { type: 'json_object' };
     }
-  } else body.max_tokens = max_tokens;
+  } else body.max_tokens = providerOutputLimit;
   return body;
 }
 
