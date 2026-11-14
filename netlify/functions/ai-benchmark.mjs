@@ -8,7 +8,7 @@ function allowed(id){const now=Date.now(),x=rate.get(id);if(!x||now-x.start>6000
 function parseJson(s){return JSON.parse(String(s).trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}
 async function call(p,messages){
  const start=Date.now();
- const timeout=p.id==='cloudflare'?9000:7000;
+ const timeout=p.id==='cloudflare'?9000:p.id==='openrouter'?12000:7000;
  const deadline=start+timeout;
  const body={model:p.model,messages:messages,temperature:0.2,stream:false};
  if(p.id==='groq'){
@@ -16,6 +16,9 @@ async function call(p,messages){
   if(p.model.indexOf('openai/gpt-oss-')===0){
    body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};
   }
+ }else if(p.id==='openrouter'){
+  body.max_tokens=1600;
+  body.response_format={type:'json_object'};
  }else body.max_tokens=1600;
  let attempts=0;
  try{
@@ -25,7 +28,7 @@ async function call(p,messages){
    attempts++;
    const r=await fetch(p.url,{
     method:'POST',
-    headers:{authorization:'Bearer '+p.key,'content-type':'application/json'},
+    headers:{authorization:'Bearer '+p.key,'content-type':'application/json',...(p.id==='openrouter'?{'HTTP-Referer':'https://aurevia-copilot-ia.netlify.app','X-Title':'AUREVIA COPILOT'}:{})},
     body:JSON.stringify(body),
     signal:AbortSignal.timeout(remaining)
    });
