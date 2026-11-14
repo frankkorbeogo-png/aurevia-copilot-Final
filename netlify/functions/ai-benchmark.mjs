@@ -18,7 +18,7 @@ async function call(p,messages){
   }
  }else if(p.id==='openrouter'){
   body.max_tokens=1600;
-  body.response_format={type:'json_object'};
+  // Nemotron 3 Ultra free ne prend pas en charge response_format : JSON demandé par le prompt.
  }else body.max_tokens=1600;
  let attempts=0;
  try{
