@@ -49,7 +49,7 @@ test('la migration SQL valide la devise du profil sans exiger de broker ni de ty
  assert.match(migration,/p_auto_journal boolean/);
  assert.match(migration,/p_broker_snapshot jsonb\n\) returns uuid/);
  assert.match(migration,/p_scenario_id, p_user_id, p_mode, p_volume/);
- assert.match(migration,/grant execute on function public\\.aurevia_create_position_from_scenario/);
+ assert.match(migration,/grant execute on function public\.aurevia_create_position_from_scenario/);
 });
 
 test('le canal Telegram conserve le parcours de confirmation du lot dans le bot',()=>{
