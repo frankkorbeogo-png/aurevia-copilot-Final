@@ -1,48 +1,67 @@
 import { configuredAIProviders } from './_ai-provider.mjs';
 
-const clean=(v,n=900)=>String(v??'').replace(/[\r\n\t]+/g,' ').slice(0,n);
-const parseJson=s=>JSON.parse(String(s||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
-async function ask(provider,messages,timeoutMs=10000){
- const body={model:provider.model,messages,temperature:0.2,stream:false};
- if(provider.id==='groq'){body.max_completion_tokens=1400;if(provider.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}}
- else body.max_tokens=1400;
- const headers={authorization:'Bearer '+provider.key,'content-type':'application/json'};
- if(provider.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
- const response=await fetch(provider.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs)});
- const payload=await response.json().catch(()=>({}));
- if(!response.ok)throw new Error(provider.name+' HTTP '+response.status);
- const content=payload?.choices?.[0]?.message?.content;
- if(typeof content!=='string'||!content.trim())throw new Error(provider.name+' réponse vide');
- return parseJson(content);
+const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
+const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
+function parseJson(s){
+ const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\\s*/i,'').replace(/\\s*\x60{3}$/,'');
+ const a=raw.indexOf('{'),b=raw.lastIndexOf('}');
+ if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
+ return JSON.parse(raw.slice(a,b+1));
 }
-const system=role=>`Tu es ${role} du système collaboratif AUREVIA COPILOT. Réponds uniquement en JSON valide, en français. N'invente aucune donnée ni aucun prix. Les notes sur 100 sont qualitatives, jamais des probabilités.`;
+async function ask(p,messages,timeout=11000){
+ const body={model:p.model,messages,temperature:0.2,stream:false};
+ if(p.id==='groq'){body.max_completion_tokens=1500;if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}}
+ else body.max_tokens=1500;
+ const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
+ if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
+ const r=await fetch(p.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(p.name+' HTTP '+r.status);
+ const c=j?.choices?.[0]?.message?.content;
+ if(typeof c!=='string'||!c.trim())throw new Error(p.name+' réponse vide');
+ return parseJson(c);
+}
+const base='Tu es une IA d’AUREVIA COPILOT. Réponds en français et en JSON valide. N’invente aucun cours, indicateur, niveau ni donnée absente. BUY, SELL ou WAIT sont les seules décisions. Les scores sur 100 mesurent la qualité de lecture/confluence, jamais une probabilité de gain.';
+const dir=x=>['BUY','SELL','WAIT'].includes(String(x?.decision||'').toUpperCase())?String(x.decision).toUpperCase():'WAIT';
+const arr=x=>Array.isArray(x)?x.slice(0,10).map(v=>clean(v,240)).filter(Boolean):[];
 export async function runAureviaCollaboration({messages}){
- const providers=configuredAIProviders(),byId=Object.fromEntries(providers.map(p=>[p.id,p]));
- const primary=byId.groq;
- if(!primary)throw new Error('Groq (IA principale) n’est pas configurée côté serveur.');
- const started=Date.now(),main=await ask(primary,messages,11000);
- const primaryInfo={provider:primary.name,model:primary.model,latencyMs:Date.now()-started,ok:true};
+ const ps=Object.fromEntries(configuredAIProviders().map(p=>[p.id,p]));
+ const groq=ps.groq,openrouter=ps.openrouter,cloudflare=ps.cloudflare;
+ if(!cloudflare)throw Object.assign(new Error('Cloudflare est indispensable comme solution de secours, mais n’est pas configuré.'),{code:'CLOUDFLARE_NOT_CONFIGURED'});
  const raw=messages.find(m=>m.role==='user')?.content||'{}';let market={};try{market=JSON.parse(raw);}catch{}
- const reviewers=[];
- if(byId.openrouter){
-  const t=Date.now();
-  try{
-   const review=await ask(byId.openrouter,[{role:'system',content:system('l’analyste contradicteur OpenRouter')+' Analyse indépendamment les données et la proposition Groq. Cherche erreurs, contradictions et invalidations. JSON: {verdict:"CONFIRME|NUANCE|CONTESTE",criticalBlockers:[],agreements:[],disagreements:[],alternativeDecision:"BUY|SELL|WAIT",reasoning:"",marketReadingScore:0-100,buyConfirmationScore:null,sellConfirmationScore:null}. Ne crée aucun niveau absent.'},{role:'user',content:JSON.stringify({marketData:market,groqAnalysis:main})}],12000);
-   reviewers.push({role:'CONTRE_ANALYSE',provider:byId.openrouter.name,model:byId.openrouter.model,latencyMs:Date.now()-t,ok:true,...review});
-  }catch(e){reviewers.push({role:'CONTRE_ANALYSE',provider:byId.openrouter.name,model:byId.openrouter.model,latencyMs:Date.now()-t,ok:false,error:clean(e.message,180)});}
+ const info={instrument:market.instrument||null,candleCountM15:Array.isArray(market.candles)?market.candles.length:0};
+ const results={groq:null,openrouter:null,cloudflare:null};
+ let lead=null,leadProvider=null,leadRole='ANALYSTE_PRINCIPAL';
+ if(groq){
+  const t=Date.now();try{lead=await ask(groq,messages,11000);leadProvider=groq;results.groq={ok:true,provider:groq.name,model:groq.model,role:'ANALYSTE_PRINCIPAL',latencyMs:Date.now()-t,...lead,decision:dir(lead)};}
+  catch(e){results.groq={ok:false,provider:groq.name,role:'ANALYSTE_PRINCIPAL',error:clean(e.message,180)};}
+ }else results.groq={ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré'};
+ if(!lead){
+  const t=Date.now();try{
+   lead=await ask(cloudflare,[{role:'system',content:base+' Groq est indisponible. Tu prends exceptionnellement le rôle d’analyste de secours et dois produire une analyse complète multi-timeframes, les signaux BUY/SELL/WAIT, les scores de lecture du marché, les scénarios chiffrés seulement si justifiés, les risques et les données manquantes. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,risks,missingData,noScenarioReason,watchDirectives}.'},...messages.filter(m=>m.role!=='system')],12000);
+   leadProvider=cloudflare;leadRole='ANALYSTE_SECOURS';results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:leadRole,latencyMs:Date.now()-t,...lead,decision:dir(lead),fallbackFor:'Groq'};
+  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_SECOURS',error:clean(e.message,180)};throw Object.assign(new Error('Groq et Cloudflare indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:Object.values(results).filter(Boolean)});}
  }
- if(byId.cloudflare){
-  const t=Date.now();
-  try{
-   const audit=await ask(byId.cloudflare,[{role:'system',content:system('l’auditeur indépendant des risques Cloudflare')+' Contrôle risques, contradictions et données manquantes. JSON: {riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,criticalBlockers:[],risks:[],missingData:[],reasoning:"",marketReadingScore:0-100}. veto=true uniquement si un défaut concret invalide le scénario.'},{role:'user',content:JSON.stringify({marketData:market,groqAnalysis:main,openrouterReview:reviewers.find(x=>x.role==='CONTRE_ANALYSE')||null})}],10000);
-   reviewers.push({role:'CONTROLE_RISQUE',provider:byId.cloudflare.name,model:byId.cloudflare.model,latencyMs:Date.now()-t,ok:true,...audit});
-  }catch(e){reviewers.push({role:'CONTROLE_RISQUE',provider:byId.cloudflare.name,model:byId.cloudflare.model,latencyMs:Date.now()-t,ok:false,error:clean(e.message,180)});}
+ if(openrouter){
+  const t=Date.now();try{
+   const review=await ask(openrouter,[{role:'system',content:base+' Tu es l’ANALYSTE CONTRADICTEUR. Vérifie rigoureusement le raisonnement principal, recherche faiblesses, confirmations, invalidations et contradictions. Propose un scénario alternatif uniquement si les données le justifient. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,primaryProvider:leadProvider.name})}],12000);
+   results.openrouter={ok:true,provider:openrouter.name,model:openrouter.model,role:'ANALYSTE_CONTREDICTEUR',latencyMs:Date.now()-t,...review,decision:dir(review),agreements:arr(review.agreements),disagreements:arr(review.disagreements),criticalBlockers:arr(review.criticalBlockers)};
+  }catch(e){results.openrouter={ok:false,provider:openrouter.name,role:'ANALYSTE_CONTREDICTEUR',error:clean(e.message,180)};}
+ }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré'};
+ if(leadProvider!==cloudflare){
+  const t=Date.now();try{
+   const audit=await ask(cloudflare,[{role:'system',content:base+' Tu es l’ANALYSTE DE CONTRÔLE indépendant et solution de secours. Fais ta propre lecture des données, vérifie les contradictions et risques oubliés, et vérifie la conclusion principale et la critique OpenRouter. Si Groq ou OpenRouter est indisponible, assure la continuité de l’analyse en signalant cette indisponibilité. JSON: {decision,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,openrouterReview:results.openrouter})}],11000);
+   results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:'ANALYSTE_CONTROLE',latencyMs:Date.now()-t,...audit,decision:dir(audit),criticalBlockers:arr(audit.criticalBlockers),risks:arr(audit.risks),missingData:arr(audit.missingData)};
+  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_CONTROLE',error:clean(e.message,180)};}
  }
- const critic=reviewers.find(x=>x.role==='CONTRE_ANALYSE'&&x.ok),audit=reviewers.find(x=>x.role==='CONTROLE_RISQUE'&&x.ok);
- const blockers=[...(Array.isArray(critic?.criticalBlockers)?critic.criticalBlockers:[]),...(Array.isArray(audit?.criticalBlockers)?audit.criticalBlockers:[])].map(x=>clean(x,240)).filter(Boolean);
- let decision=['BUY','SELL','WAIT'].includes(String(main.decision||'').toUpperCase())?String(main.decision).toUpperCase():'WAIT';
- let reason='Décision Groq conservée après les contrôles disponibles.';
- if(audit?.veto||blockers.length){decision='WAIT';reason=audit?.veto?'Scénario suspendu : contrôle de risque Cloudflare avec veto.':'Scénario suspendu : un ou plusieurs points critiques ont été relevés.';}
- else if(critic?.verdict==='CONTESTE'&&critic?.alternativeDecision==='WAIT'){decision='WAIT';reason='OpenRouter conteste le scénario et recommande WAIT.';}
- return {data:{...main,decision,collaboration:{mode:'THREE_ROLE_REVIEW',primary:primaryInfo,reviewers,decisionBeforeReview:String(main.decision||'WAIT').toUpperCase(),decisionAfterReview:decision,synthesisReason:reason,criticalBlockers:blockers,marketReadingScore:Number.isFinite(Number(main.marketReadingScore))?Math.max(0,Math.min(100,Math.round(Number(main.marketReadingScore)))):null,marketReadingFactors:Array.isArray(main.marketReadingFactors)?main.marketReadingFactors.slice(0,8):[],buyConfirmationScore:main.buy?.confirmationScore??null,sellConfirmationScore:main.sell?.confirmationScore??null,disclaimer:'Les IA assistent l’analyse et ne garantissent aucun résultat. Une IA indisponible ne vaut pas validation.'}},provider:'AUREVIA · 3 IA',model:primary.model,attempts:reviewers.filter(x=>!x.ok)};
+ const valid=Object.values(results).filter(x=>x?.ok);
+ const blockers=valid.flatMap(x=>x.criticalBlockers||[]).map(x=>clean(x,240)).filter(Boolean);
+ const audit=results.cloudflare?.ok?results.cloudflare:null,critic=results.openrouter?.ok?results.openrouter:null;
+ let decision=dir(lead),reason='Décision principale conservée après les contrôles disponibles.';
+ if(audit?.veto===true||audit?.riskLevel==='CRITICAL'){decision='WAIT';reason='WAIT : veto de contrôle Cloudflare — '+clean(audit.vetoReason||'risque critique',220);}
+ else if(blockers.length){decision='WAIT';reason='WAIT : points critiques relevés — '+blockers.slice(0,3).join(' · ');}
+ else if(critic?.verdict==='CONTESTE'&&['BUY','SELL'].includes(dir(lead))&&dir(critic)!==dir(lead)){decision=dir(critic)==='WAIT'?'WAIT':dir(critic);reason='Scénario principal contesté par OpenRouter ; décision revue après contre-analyse.';}
+ const allThree=Boolean(results.groq?.ok&&results.openrouter?.ok&&results.cloudflare?.ok);
+ const fallbackUsed=leadProvider===cloudflare||!results.openrouter?.ok||!results.cloudflare?.ok||!results.groq?.ok;
+ return {data:{...lead,decision,collaboration:{mode:'THREE_AI_ROLE_REVIEW',...info,providerOrder:['Groq','OpenRouter','Cloudflare'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers:results,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Les scores sont qualitatifs et non des probabilités. Si une IA est indisponible, la synthèse est signalée comme dégradée.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(results).filter(x=>x&&!x.ok)};
 }
