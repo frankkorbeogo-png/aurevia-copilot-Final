@@ -1,5 +1,4 @@
 import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
-import {deleteUserApplicationData} from './_account-deletion.mjs';
 const headers=(key)=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'POST,OPTIONS','access-control-allow-headers':'authorization,content-type'}};
@@ -9,13 +8,21 @@ export async function handler(event){
  try{
   const context=await verifyBearerUser(event);
   await assertActiveSession(context);
-  // A final server-side identity check prevents deleting a different account.
-  // Purge every AUREVIA-owned record before removing the Auth identity.
-  // If cleanup fails, keep the Auth account so the operation can be retried.
-  const cleanup=await deleteUserApplicationData(context.base,context.service,context.user.id);
-  const response=await fetch(`${context.base}/auth/v1/admin/users/${encodeURIComponent(context.user.id)}`,{method:'DELETE',headers:headers(context.service),signal:AbortSignal.timeout(10000)});
+  // One database transaction protects the final administrator and deletes the
+  // user's application data plus Auth identity atomically.
+  const response=await fetch(`${context.base}/rest/v1/rpc/aurevia_account_delete_guarded`,{
+   method:'POST',
+   headers:headers(context.service),
+   body:JSON.stringify({p_user_id:context.user.id}),
+   signal:AbortSignal.timeout(15000)
+  });
   const data=await response.json().catch(()=>null);
-  if(!response.ok)throw Object.assign(new Error(data?.msg||data?.message||'La suppression du compte a échoué.'),{statusCode:response.status});
-  return json(200,{ok:true,deleted:true,application_data_deleted:true,cleaned_tables:cleanup.tables_cleaned,reauthentication_required:true});
+  if(!response.ok){
+   const message=String(data?.message||data?.details||data?.hint||'');
+   if(message.includes('LAST_ADMIN_PROTECTED'))return json(409,{error:'Le dernier administrateur ne peut pas supprimer son propre compte. Ajoutez d’abord un autre administrateur ou utilisez la procédure de récupération.',code:'LAST_ADMIN_PROTECTED'});
+   if(message.includes('AUTH_USER_NOT_FOUND'))return json(404,{error:'Ce compte utilisateur n’existe plus.'});
+   throw Object.assign(new Error('La suppression sécurisée du compte a échoué.'),{statusCode:response.status===404?503:500});
+  }
+  return json(200,{ok:true,deleted:true,application_data_deleted:true,reauthentication_required:true});
  }catch(error){return json(error.statusCode||500,{error:error.statusCode>=500?'Service de suppression temporairement indisponible.':error.message,code:error.code||null});}
 }
