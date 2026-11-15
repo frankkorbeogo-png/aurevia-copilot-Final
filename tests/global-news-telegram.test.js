@@ -18,8 +18,10 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
+  if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
+  if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id')){calls.insert=JSON.parse(options.body);return response([],201);}
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:null,seen_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
@@ -55,6 +57,7 @@ test('sans token Telegram, le flux GDELT reste disponible sans prétendre à une
   if(url.includes('api.gdeltproject.org'))return response({articles:[]});
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
+  if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([]);
   throw new Error('Unexpected URL '+url);
@@ -74,6 +77,7 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
+  if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url')){
