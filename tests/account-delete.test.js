@@ -70,6 +70,6 @@ test('la révocation partagée invalide toutes les sessions avant le nettoyage',
 test('bootstrap, révocation de rôle et suppression de compte partagent le verrou anti-concurrence', () => {
   assert.ok(guardedDeletionMigration.includes('create or replace function public.aurevia_bootstrap_admin'));
   assert.ok(guardedDeletionMigration.includes('create or replace function public.aurevia_admin_manage'));
-  assert.equal((guardedDeletionMigration.match(/pg_advisory_xact_lock\\(hashtextextended\\('aurevia:last-admin-protection', 0\\)\\)/g)||[]).length, 3);
+  assert.equal(guardedDeletionMigration.split("pg_advisory_xact_lock(hashtextextended('aurevia:last-admin-protection', 0))").length - 1, 3);
   assert.ok(guardedDeletionMigration.includes('grant execute on function public.aurevia_account_delete_guarded(uuid) to service_role'));
 });
