@@ -44,7 +44,7 @@ test('FRED synchronise les dates, désactive les dates retirées et rappelle au 
   assert.equal(local,'08:30');assert.ok(body.economicReminders,JSON.stringify(body));assert.ok(body.economicReminders,JSON.stringify(body));assert.equal(body.economicReminders.processed,1);
   assert.equal(patches.length,1);assert.equal(patches[0].is_active,false);
   assert.equal(messages.length,1);assert.match(messages[0].text,/Heure Burkina Faso/);
-  assert.match(messages[0].text,/environ 30 à 60 minutes avant selon l’horaire de publication/);
+  assert.match(messages[0].text,/entre 0 et 60 minutes avant selon l’horaire exact et le passage du contrôle horaire/);
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
  }
