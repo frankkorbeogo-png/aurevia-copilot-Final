@@ -203,6 +203,66 @@ function renderAITradePlan(state){
 }
 
 
+let pendingValidationScenario=null;
+function openTradeValidation(scenario){
+ pendingValidationScenario=scenario;
+ $('validationScenarioTitle').textContent=`${scenario.instrument} · ${scenario.direction}`;
+ $('validationScenarioStatus').textContent='Entrée confirmée M15';
+ $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Entrée <b>${escapeText(scenario.last_price??scenario.entry)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
+ $('validationLot').value='';
+ $('validationCurrency').value=accountCurrency||'';
+ $('validationTradeStatus').textContent='Vérifiez les niveaux, choisissez le mode et renseignez les paramètres de votre broker.';
+ $('validationTradeNav').hidden=false;
+ document.querySelector('[data-page="validation-trade"]')?.click();
+}
+function updateValidationContractFields(){
+ const type=$('validationCalcType')?.value||'contract';
+ document.querySelectorAll('[data-validation-contract]').forEach(field=>{field.hidden=field.dataset.validationContract!==type;});
+}
+function validationContractSpec(){
+ return {
+  brokerName:$('validationBroker').value.trim(),accountType:$('validationAccountType').value.trim(),
+  accountCurrency:$('validationCurrency').value.trim().toUpperCase(),leverage:$('validationLeverage').value.trim()?Number($('validationLeverage').value):null,
+  calculationType:$('validationCalcType').value,contractSize:$('validationContractSize').value.trim()?Number($('validationContractSize').value):null,
+  quoteToAccount:1,quoteCurrency:inferQuoteCurrency(pendingValidationScenario?.instrument),
+  pointSize:$('validationPointSize').value.trim()?Number($('validationPointSize').value):null,pointValue:$('validationPointValue').value.trim()?Number($('validationPointValue').value):null,
+  tickSize:$('validationTickSize').value.trim()?Number($('validationTickSize').value):null,tickValue:$('validationTickValue').value.trim()?Number($('validationTickValue').value):null,
+  minLot:Number($('validationMinLot').value),lotStep:Number($('validationLotStep').value),maxLot:$('validationMaxLot').value.trim()?Number($('validationMaxLot').value):null,
+  feesPerLot:Number($('validationFees').value||0),marginPerLot:$('validationMargin').value.trim()?Number($('validationMargin').value):null
+ };
+}
+function updateValidationModeHelp(){
+ $('validationModeHelp').textContent=$('validationMode').value==='unique'?'Position unique : le lot saisi est réparti entre les TP sélectionnés, avec une seule fiche journal.':'Trades séparés : le lot saisi est appliqué à chaque TP sélectionné, avec un suivi et une fiche par TP.';
+}
+async function confirmTradeValidation(){
+ const button=$('confirmTradeValidation'),status=$('validationTradeStatus');
+ try{
+  const s=pendingValidationScenario;if(!s?.id)throw new Error('Aucun scénario confirmé n’est sélectionné.');
+  const volume=Number($('validationLot').value),mode=$('validationMode').value;
+  if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un lot valide.');
+  const rawSpec=validationContractSpec(),checked=validateContractSpec(rawSpec);
+  if(!checked.ok)throw new Error(checked.error);
+  if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi est en dehors des limites de votre broker.');
+  if(Math.abs(volume/checked.spec.lotStep-Math.round(volume/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas le pas de volume du broker.');
+  const count=(s.take_profits||[]).length;
+  if(mode==='unique'&&Math.floor((volume/count)/checked.spec.lotStep)*checked.spec.lotStep<checked.spec.minLot)throw new Error('Le lot est trop faible pour être réparti entre les TP sélectionnés.');
+  button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
+  const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
+  const brokerSnapshot={brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
+  const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id:s.id,mode,volume,contract_spec:checked.spec,broker_snapshot:brokerSnapshot,auto_journal:$('validationAutoJournal').checked}),cache:'no-store'});
+  const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
+  status.textContent='Trade enregistré. Synchronisation du suivi des positions et du journal…';
+  const restored=await restoreTradeGroupsFromSupabase();
+  if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();}
+  await refreshScenarioWatchList();
+  status.textContent='Trade enregistré avec succès. Retrouvez-le dans « Suivi des positions ».';
+  showInAppNotice('Trade confirmé et enregistré. Le suivi AUREVIA est activé.',{type:'success'});
+  pendingValidationScenario=null;
+  $('validationTradeNav').hidden=true;
+  document.querySelector('[data-page="positions"]')?.click();
+ }catch(error){status.textContent=error.message||'Impossible d’enregistrer ce trade.';}
+ finally{button.disabled=false;}
+}
 async function refreshScenarioWatchList(){
  const host=$('scenarioWatchList');if(!host||!window.__aureviaAuthenticated)return;
  host.textContent='Chargement des scénarios surveillés…';
@@ -212,27 +272,18 @@ async function refreshScenarioWatchList(){
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Chargement des scénarios impossible.');
   const rows=data.scenarios||[];
   if(!rows.length){host.innerHTML='<div class="empty-cell">Aucun scénario enregistré. Après confrontation de ta zone d’entrée, valide la synthèse pour lancer la surveillance.</div>';return;}
-  const statusLabel={monitoring:'Surveillance M15',zone_reached:'Zone atteinte · confirmation M15 attendue',entry_confirmed:'Entrée confirmée · enregistrement disponible',stopped:'Surveillance arrêtée',invalidated:'Scénario invalidé'};
+  const statusLabel={monitoring:'Surveillance M15',zone_reached:'Zone atteinte · confirmation M15 attendue',entry_confirmed:'Entrée confirmée',stopped:'Surveillance arrêtée',invalidated:'Scénario invalidé'};
   host.innerHTML=rows.map(s=>{
    const confirmed=s.status==='entry_confirmed'&&!s.trade_group_id&&s.lot_confirmation_expires_at&&Date.parse(s.lot_confirmation_expires_at)>Date.now();
    const already=Boolean(s.trade_group_id);
-   const expires=confirmed?` · expiration ${new Date(s.lot_confirmation_expires_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`:'';
+   const expires=confirmed?` · validation jusqu’à ${new Date(s.lot_confirmation_expires_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`:'';
    return `<article class="scenario-watch-card"><header><strong>${escapeText(s.instrument)} · ${escapeText(s.direction)}</strong><span>${escapeText(statusLabel[s.status]||s.status)}</span></header>
     <div class="scenario-watch-levels"><span>Zone <b>${escapeText(s.entry_low)} – ${escapeText(s.entry_high)}</b></span><span>Entrée indicative <b>${escapeText(s.entry)}</b></span><span>SL <b>${escapeText(s.stop_loss)}</b></span><span>TP <b>${(s.take_profits||[]).map(escapeText).join(' · ')}</b></span><span>Dernier prix <b>${escapeText(s.last_price??'—')}</b></span></div>
-    ${already?'<p class="muted">Position déjà créée. Le suivi et le journal sont actifs.</p>':confirmed?`<div class="scenario-direct-entry"><label>Lot à enregistrer<input type="number" min="0.0001" step="0.0001" data-scenario-lot="${escapeText(s.id)}" placeholder="Ex. 0.05"></label><label>Mode de gestion<select data-scenario-mode="${escapeText(s.id)}"><option value="unique">Position unique · lot total réparti entre TP</option><option value="separate">Trades séparés · lot par TP</option></select></label><button class="primary-btn" type="button" data-scenario-register="${escapeText(s.id)}">Enregistrer directement dans AUREVIA</button><small>Ou utilise la notification privée Telegram déjà envoyée pour confirmer le lot depuis le bot.${expires}</small><p data-scenario-status="${escapeText(s.id)}" aria-live="polite"></p></div>`:s.status==='monitoring'||s.status==='zone_reached'?'<p class="muted">L’enregistrement sera proposé après la confirmation d’entrée M15.</p>':'<p class="muted">Ce scénario n’est plus actif.</p>'}
+    ${already?'<p class="muted">Position déjà créée. Le suivi et le journal sont actifs.</p>':confirmed?`<div class="scenario-direct-entry"><button class="primary-btn" type="button" data-scenario-validate="${escapeText(s.id)}">Ouvrir « Validation et enregistrement du trade » →</button><small>Renseignez le lot, le mode de gestion et les paramètres broker dans l’interface dédiée.${expires}</small></div>`:s.status==='monitoring'||s.status==='zone_reached'?'<p class="muted">L’enregistrement sera proposé après la confirmation d’entrée M15.</p>':'<p class="muted">Ce scénario n’est plus actif.</p>'}
    </article>`;
   }).join('');
-  host.querySelectorAll('[data-scenario-register]').forEach(button=>button.addEventListener('click',async()=>{
-   const id=button.dataset.scenarioRegister,lot=Number(host.querySelector(`[data-scenario-lot="${id}"]`)?.value),mode=host.querySelector(`[data-scenario-mode="${id}"]`)?.value||'unique',status=host.querySelector(`[data-scenario-status="${id}"]`);
-   try{
-    if(!Number.isFinite(lot)||lot<=0)throw new Error('Saisis un lot valide.');
-    button.disabled=true;if(status)status.textContent='Enregistrement sécurisé en cours…';
-    const freshToken=await getAnalysisAccessToken();const r=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${freshToken}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id,mode,volume:lot}),cache:'no-store'});
-    const result=await r.json().catch(()=>({}));if(!r.ok)throw new Error(result.error||'Création de la position impossible.');
-    if(status)status.textContent='Position enregistrée. Actualisation du suivi et du journal…';
-    const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();}
-    await refreshScenarioWatchList();
-   }catch(error){if(status)status.textContent=error.message||'Enregistrement impossible.';button.disabled=false;}
+  host.querySelectorAll('[data-scenario-validate]').forEach(button=>button.addEventListener('click',()=>{
+   const scenario=rows.find(x=>x.id===button.dataset.scenarioValidate);if(scenario)openTradeValidation(scenario);
   }));
  }catch(error){host.textContent=error.message||'Impossible de charger les scénarios.';}
 }
@@ -676,6 +727,7 @@ function bindEvents(){
   $('myAnalysisDirection')?.addEventListener('change',updateScenarioEditorMeta);
   $('clearAnalysisHistory').addEventListener('click',()=>{localStorage.removeItem('aurevia_analysis_history');renderAnalysisHistory();});
   $('createPositionBtn').addEventListener('click',createPositionFromForm);
+  $('validationMode')?.addEventListener('change',updateValidationModeHelp);$('validationCalcType')?.addEventListener('change',updateValidationContractFields);$('confirmTradeValidation')?.addEventListener('click',confirmTradeValidation);$('cancelTradeValidation')?.addEventListener('click',()=>{pendingValidationScenario=null;$('validationTradeNav').hidden=true;document.querySelector('[data-page="marches"]')?.click();});updateValidationModeHelp();updateValidationContractFields();
   $('savePartialClose').addEventListener('click',savePartialCloseFromForm);
   $('generateTelegramCode').addEventListener('click',async()=>{const generate=$('generateTelegramCode'),unlink=$('unlinkTelegramAccount'),save=$('saveTelegramPrefs'),test=$('sendTelegramTest');try{generate.disabled=true;$('telegramPairStatus').textContent='Génération du code…';const code=await createTelegramPairingCode();$('telegramPairCode').textContent=code;$('telegramPairStatus').textContent='Code valable 10 minutes. Envoyez /start '+code+' au bot officiel.';unlink.disabled=false;save.disabled=false;test.disabled=false;for(let attempt=0;attempt<10;attempt++){await new Promise(resolve=>setTimeout(resolve,2000));const connection=await loadTelegramPreferences();if(connection?.chat_id){$('telegramConnectionStatus').textContent='Telegram connecté · conversation privée vérifiée.';$('telegramPairStatus').textContent='Liaison confirmée. Vous pouvez enregistrer vos préférences et envoyer un test.';break;}}await refreshTelegramHomeNotice();}catch(error){$('telegramPairStatus').textContent='Connexion Telegram impossible : '+error.message;}finally{generate.disabled=false;}});
   $('unlinkTelegramAccount')?.addEventListener('click',async()=>{
