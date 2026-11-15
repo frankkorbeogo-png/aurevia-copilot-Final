@@ -63,3 +63,23 @@ test('la suppression personnelle et administrative passent par la révocation pa
   assert.ok(sharedRevocationMigration.includes('grant execute on function public.aurevia_account_revoke_all_sessions(uuid) to service_role'));
   assert.ok(sharedRevocationMigration.includes('revoked_at = now()')); 
 });
+
+const guardedDeletionMigration = await read('../supabase/migrations/20261116070000_guard_last_admin_account_deletion.sql');
+
+test('la suppression personnelle passe par une RPC atomique et protège le dernier administrateur', () => {
+  assert.ok(endpoint.includes('aurevia_account_delete_guarded'));
+  assert.ok(endpoint.includes('LAST_ADMIN_PROTECTED'));
+  assert.ok(endpoint.includes('return json(409'));
+  assert.doesNotMatch(endpoint, /deleteUserApplicationData/);
+  assert.doesNotMatch(endpoint, /auth\/v1\/admin\/users/);
+  assert.ok(guardedDeletionMigration.includes('pg_advisory_xact_lock'));
+  assert.ok(guardedDeletionMigration.includes('LAST_ADMIN_PROTECTED'));
+  assert.ok(guardedDeletionMigration.includes('delete from auth.users where id = p_user_id'));
+});
+
+test('le bootstrap et la révocation administrative utilisent le même verrou anti-concurrence', () => {
+  assert.ok(guardedDeletionMigration.includes('create or replace function public.aurevia_bootstrap_admin'));
+  assert.ok(guardedDeletionMigration.includes('create or replace function public.aurevia_admin_manage'));
+  assert.equal((guardedDeletionMigration.match(/pg_advisory_xact_lock\(hashtextextended\('aurevia:last-admin-protection', 0\)\)/g)||[]).length, 3);
+  assert.ok(guardedDeletionMigration.includes('grant execute on function public.aurevia_account_delete_guarded(uuid) to service_role'));
+});
