@@ -98,3 +98,37 @@ test('le worker transmet le snapshot FX à la RPC de clôture, sans seconde écr
   assert.ok(workerCloseMigration.includes('to service_role'));
   assert.ok(workerCloseMigration.includes('from public,anon,authenticated'));
 });
+
+
+const deletionMigration = await readFile(new URL('../supabase/migrations/20261115212000_atomic_trade_tracking_deletion.sql', import.meta.url), 'utf8');
+
+test('le retrait d’un trade clôturé et le retrait de son groupe sont atomiques', () => {
+  assert.ok(auth.includes("supabase.rpc('aurevia_delete_closed_trade_position'"));
+  assert.ok(auth.includes("supabase.rpc('aurevia_delete_open_trade_group'"));
+  assert.ok(auth.includes("supabase.rpc('aurevia_delete_closed_trade_group'"));
+  assert.ok(deletionMigration.includes('TRADE_NOT_FULLY_CLOSED'));
+  assert.ok(deletionMigration.includes('TRADE_CLOSE_RECORD_REQUIRED'));
+  assert.ok(deletionMigration.includes('OPEN_UNIQUE_GROUP_REQUIRED'));
+  assert.ok(deletionMigration.includes('TRADE_GROUP_HAS_CLOSES'));
+  assert.ok(deletionMigration.includes('TRADE_GROUP_NOT_FULLY_CLOSED'));
+});
+
+test('les suppressions du suivi exigent le propriétaire et une session active', () => {
+  const functions = ['aurevia_delete_closed_trade_position','aurevia_delete_open_trade_group','aurevia_delete_closed_trade_group','aurevia_delete_linked_journal_entry'];
+  for (const name of functions) {
+    const start = deletionMigration.indexOf(`create or replace function public.${name}`);
+    assert.ok(start >= 0, `fonction manquante: ${name}`);
+    const end = deletionMigration.indexOf('$$;',start);
+    const fn = deletionMigration.slice(start,end);
+    assert.ok(fn.includes('auth.uid()'), `auth.uid manquant: ${name}`);
+    assert.ok(fn.includes('aurevia_session_is_active()'), `session active manquante: ${name}`);
+    assert.ok(fn.includes('security invoker'), `security invoker manquant: ${name}`);
+  }
+});
+
+test('les fiches journal sont conservées lors du retrait du suivi, avec clés étrangères détachées', () => {
+  assert.ok(deletionMigration.includes("'journal_preserved',true"));
+  assert.ok(deletionMigration.includes('delete from public.trading_position_groups'));
+  assert.ok(deletionMigration.includes('delete from public.trading_positions'));
+  assert.ok(deletionMigration.includes('grant execute on function public.aurevia_delete_linked_journal_entry(uuid,uuid,uuid) to authenticated'));
+});
