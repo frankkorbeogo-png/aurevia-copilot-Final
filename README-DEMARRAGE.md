@@ -83,7 +83,7 @@ Ne jamais placer de clé secrète dans `index.html`, les fichiers JavaScript du 
 3. L'utilisateur se connecte à AUREVIA, génère un code de liaison et envoie `/start CODE` en conversation privée à `@AureviaCopilotBot`.
 4. Les notifications d'analyse et de signal sont envoyées uniquement au chat associé au compte authentifié et selon ses préférences. Après liaison, le bouton « Envoyer un test de réception » permet de demander un message test et de vérifier la réponse de l'API Telegram. Le backend vérifie que le chat privé n'est pas partagé entre plusieurs comptes et limite les appels IA par utilisateur.
 
-Les annonces économiques sont visibles via le widget calendrier externe ; leur envoi automatique Telegram nécessite encore une source d'événements disposant d'un flux serveur autorisé. Ne pas activer cette fonction comme si elle était déjà opérationnelle.
+Les rappels Telegram des publications économiques américaines sélectionnées utilisent le calendrier officiel FRED, sous réserve de configurer `FRED_API_KEY` côté serveur et d’appliquer la migration dédiée ci-dessous. Le calendrier TradingView reste le calendrier visible dans l’interface.
 
 ## Actualités macroéconomiques et géopolitiques
 
