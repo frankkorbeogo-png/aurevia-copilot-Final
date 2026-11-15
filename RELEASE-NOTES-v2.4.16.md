@@ -8,7 +8,7 @@
 - Actions américaines : ajout de AAPL, MSFT, NVDA, TSLA et AMZN.
 - Les cotations, l'historique OHLC, le moteur IA et le suivi interne utilisent le même catalogue.
 - Les graphiques TradingView utilisent les symboles de visualisation distincts des symboles Twelve Data.
-- Les indices US30, NAS100 et SPX500 restent désactivés pour l'analyse automatique : Twelve Data indique que ses données d'indices ne sont pas encore disponibles. Ils ne sont pas présentés comme pris en charge par le moteur.
+- Les indices US30, NAS100 et SPX500 restent désactivés : la page produit Twelve Data affiche encore « Indices coming soon » malgré une présentation générale de couverture mondiale. Sans confirmation par l'API et le plan de la clé, ils ne sont pas présentés comme pris en charge par le moteur.
 - Les symboles non confirmés (platine/palladium) ont été retirés du catalogue actif.
 
 ## Limites à vérifier avant activation en production
