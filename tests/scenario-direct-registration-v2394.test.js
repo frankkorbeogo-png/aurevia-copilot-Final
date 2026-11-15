@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const api=readFileSync(new URL('../netlify/functions/scenario-api.mjs',import.meta.url),'utf8');
 const watch=readFileSync(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
 const webhook=readFileSync(new URL('../netlify/functions/telegram-webhook.mjs',import.meta.url),'utf8');
@@ -24,8 +25,8 @@ test('l’interface dédiée est ouverte uniquement depuis un scénario confirm�
  assert.match(app,/function openTradeValidation\(scenario\)/);
  assert.match(app,/data-scenario-validate/);
  assert.match(app,/validationLot/);
- assert.match(app,/value="unique"/);
- assert.match(app,/value="separate"/);
+ assert.match(html,/value="unique"/);
+ assert.match(html,/value="separate"/);
  assert.doesNotMatch(app,/validationBroker|validationAccountType/);
  assert.match(app,/validationContractSpec/);
  assert.match(app,/validationLeverage/);
