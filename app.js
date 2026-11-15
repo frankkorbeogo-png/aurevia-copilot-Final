@@ -583,7 +583,9 @@ async function closeChildAtCurrentQuote(childId,button=null){
     const groups=loadTradeGroups();
     const group=groups.find(g=>g.children.some(c=>c.id===childId));
     const child=group?.children.find(c=>c.id===childId);
-    if(!group||!child||child.status!=='OPEN'||!(Number(child.remainingLot)>0))throw new Error('Ce lot n’est plus ouvert ou ne peut pas être clôturé.');
+    if(!group||!child)throw new Error('Trade introuvable.');
+    if(child.status==='PENDING')throw new Error('Ce trade est encore en attente : il ne peut pas être clôturé avant son activation et son passage au statut OUVERT.');
+    if(child.status!=='OPEN'||!(Number(child.remainingLot)>0))throw new Error('Seul un trade ouvert avec un volume restant peut être clôturé.');
     const volume=Number(child.remainingLot);
     const token=await getAnalysisAccessToken();
     if(!token)throw new Error('Connectez-vous pour récupérer un cours de marché récent.');
