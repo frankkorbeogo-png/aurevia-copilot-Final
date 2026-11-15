@@ -195,3 +195,26 @@ test('la modification groupée refuse le mode Trades séparés',async()=>{
  const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});
  assert.throws(()=>editOpenTradeGroup(group,{entry:2001,stopLoss:1991,takeProfits:[2011]}),/Position unique/);
 });
+
+
+test('position unique sans clôture : suppression du suivi conserve la fiche journal',async()=>{
+ const {deleteOpenTradeGroup}=await import('../trade-management.js');
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ saveTradeGroup(group);const journalBefore=loadLinkedJournal().filter(row=>row.groupId===group.id);
+ assert.equal(journalBefore.length,1);
+ assert.equal(deleteOpenTradeGroup(group.id),true);
+ assert.equal(loadTradeGroups().some(row=>row.id===group.id),false);
+ assert.equal(loadLinkedJournal().filter(row=>row.groupId===group.id).length,1);
+ delete globalThis.localStorage;
+});
+
+test('position unique avec clôture partielle : suppression du suivi refusée',async()=>{
+ const {deleteOpenTradeGroup}=await import('../trade-management.js');
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ saveTradeGroup(group);recordPartialClose(group,group.children[0].id,{volume:0.01,exit:2010,contractSize:100});persistTradeGroup(group);
+ assert.throws(()=>deleteOpenTradeGroup(group.id),/avant toute clôture/);
+ assert.equal(loadTradeGroups().some(row=>row.id===group.id),true);
+ delete globalThis.localStorage;
+});
