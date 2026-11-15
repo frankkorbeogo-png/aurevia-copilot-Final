@@ -158,6 +158,7 @@ test('market-quote returns timestamped metadata from Twelve Data quote endpoint'
   assert.equal(data.price,31.25);
   assert.ok(data.asOf);
   assert.match(getProviderUrl(),/api\.twelvedata\.com\/quote/);
+  assert.match(getProviderUrl(),/interval=1min/);
  });
 });
 
