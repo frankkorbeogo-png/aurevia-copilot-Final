@@ -12,9 +12,9 @@ const sharedRevocationMigration = await read('../supabase/migrations/20261113100
 test('la suppression personnelle vérifie le jeton Supabase et la session AUREVIA active', () => {
   assert.ok(endpoint.includes('verifyBearerUser(event)'));
   assert.ok(endpoint.includes('assertActiveSession(context)'));
-  assert.ok(endpoint.indexOf('assertActiveSession(context)') < endpoint.indexOf('/auth/v1/admin/users/'));
+  assert.ok(endpoint.indexOf('assertActiveSession(context)') < endpoint.indexOf('aurevia_account_delete_guarded'));
   assert.ok(endpoint.includes('context.user.id'));
-  assert.ok(endpoint.includes('/auth/v1/admin/users/'));
+  assert.ok(endpoint.includes('aurevia_account_delete_guarded'));
 });
 
 test('la suppression exige la confirmation explicite SUPPRIMER', () => {
