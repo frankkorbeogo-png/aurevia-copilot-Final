@@ -1,7 +1,11 @@
-// Shared, server-validated market catalogue. Provider symbols are passed unchanged to Twelve Data.
+// Catalogue central des instruments AUREVIA.
+// Seuls les instruments enabled:true sont autorisés par les flux et le moteur IA.
+// Les instruments non confirmés chez le fournisseur restent visibles mais désactivés.
 export const MARKET_INSTRUMENTS = Object.freeze({
   XAUUSD:{label:'XAU/USD',provider:'XAU/USD',tv:'OANDA:XAUUSD',category:'Métaux précieux',market:'METALS'},
   XAGUSD:{label:'XAG/USD',provider:'XAG/USD',tv:'OANDA:XAGUSD',category:'Métaux précieux',market:'METALS'},
+  XPTUSD:{label:'Platine · XPT/USD',provider:null,tv:'TVC:PLATINUM',category:'Métaux précieux',market:'METALS',enabled:false,reason:'Symbole Twelve Data à confirmer'},
+  XPDUSD:{label:'Palladium · XPD/USD',provider:null,tv:'TVC:PALLADIUM',category:'Métaux précieux',market:'METALS',enabled:false,reason:'Symbole Twelve Data à confirmer'},
   EURUSD:{label:'EUR/USD',provider:'EUR/USD',tv:'OANDA:EURUSD',category:'Forex majeur',market:'FOREX'},
   GBPUSD:{label:'GBP/USD',provider:'GBP/USD',tv:'OANDA:GBPUSD',category:'Forex majeur',market:'FOREX'},
   USDJPY:{label:'USD/JPY',provider:'USD/JPY',tv:'OANDA:USDJPY',category:'Forex majeur',market:'FOREX'},
@@ -24,9 +28,16 @@ export const MARKET_INSTRUMENTS = Object.freeze({
   MSFT:{label:'MSFT',provider:'MSFT',tv:'NASDAQ:MSFT',category:'Actions US',market:'EQUITY'},
   NVDA:{label:'NVDA',provider:'NVDA',tv:'NASDAQ:NVDA',category:'Actions US',market:'EQUITY'},
   TSLA:{label:'TSLA',provider:'TSLA',tv:'NASDAQ:TSLA',category:'Actions US',market:'EQUITY'},
-  AMZN:{label:'AMZN',provider:'AMZN',tv:'NASDAQ:AMZN',category:'Actions US',market:'EQUITY'}
+  AMZN:{label:'AMZN',provider:'AMZN',tv:'NASDAQ:AMZN',category:'Actions US',market:'EQUITY'},
+  US30:{label:'US30 · Dow Jones',provider:null,tv:'TVC:DJI',category:'Indices américains',market:'INDEX',enabled:false,reason:'Indice américain non confirmé sur le forfait Twelve Data actuel'},
+  NAS100:{label:'NAS100 · Nasdaq 100',provider:null,tv:'NASDAQ:NDX',category:'Indices américains',market:'INDEX',enabled:false,reason:'Indice américain non confirmé sur le forfait Twelve Data actuel'},
+  SPX500:{label:'SPX500 · S&P 500',provider:null,tv:'SP:SPX',category:'Indices américains',market:'INDEX',enabled:false,reason:'Indice américain non confirmé sur le forfait Twelve Data actuel'},
+  WTIUSD:{label:'WTI/USD · pétrole américain',provider:null,tv:'TVC:USOIL',category:'Énergies',market:'ENERGY',enabled:false,reason:'Symbole et accès Twelve Data à confirmer'},
+  BRENTUSD:{label:'Brent/USD · pétrole Brent',provider:null,tv:'TVC:UKOIL',category:'Énergies',market:'ENERGY',enabled:false,reason:'Symbole et accès Twelve Data à confirmer'},
+  NATGASUSD:{label:'Gaz naturel · NATGAS',provider:null,tv:'NYMEX:NG1!',category:'Énergies',market:'ENERGY',enabled:false,reason:'Symbole et accès Twelve Data à confirmer'}
 });
-export const MARKET_IDS = Object.freeze(Object.keys(MARKET_INSTRUMENTS));
-export const MARKET_PROVIDER_SYMBOLS = Object.freeze(Object.values(MARKET_INSTRUMENTS).map(x=>x.provider));
-export const MARKET_LABELS = Object.freeze(Object.values(MARKET_INSTRUMENTS).map(x=>x.label));
-export const getMarketInstrument = value => MARKET_INSTRUMENTS[String(value||'').toUpperCase()] || Object.values(MARKET_INSTRUMENTS).find(x=>x.provider===String(value||'').toUpperCase()||x.label===String(value||'').toUpperCase()) || null;
+export const MARKET_ALL_IDS = Object.freeze(Object.keys(MARKET_INSTRUMENTS));
+export const MARKET_IDS = Object.freeze(MARKET_ALL_IDS.filter(id=>MARKET_INSTRUMENTS[id].enabled!==false));
+export const MARKET_PROVIDER_SYMBOLS = Object.freeze(MARKET_IDS.map(id=>MARKET_INSTRUMENTS[id].provider).filter(Boolean));
+export const MARKET_LABELS = Object.freeze(MARKET_IDS.map(id=>MARKET_INSTRUMENTS[id].label));
+export const getMarketInstrument = value => MARKET_INSTRUMENTS[String(value||'').toUpperCase()] || Object.values(MARKET_INSTRUMENTS).find(x=>x.provider&&x.provider===String(value||'').toUpperCase()||x.label===String(value||'').toUpperCase()) || null;
