@@ -35,12 +35,12 @@ async function fetchGlobalNews(){
  if(!base||!key)return {configured:false,source:'GDELT DOC 2.0',articles:[],notice:'Accès serveur Supabase non configuré.'};
  const since=new Date(Date.now()-72*60*60*1000).toISOString();
  const url=new URL(base+'/rest/v1/global_news_events');
- url.searchParams.set('select','title,source_url,source_domain,source_country,source_language,published_at,category,tone,source_provider');
- url.searchParams.set('published_at','gte.'+since);url.searchParams.set('order','published_at.desc');url.searchParams.set('limit','12');
+ url.searchParams.set('select','title,source_url,source_domain,source_country,source_language,seen_at,category,tone,source_provider');
+ url.searchParams.set('seen_at','gte.'+since);url.searchParams.set('order','seen_at.desc');url.searchParams.set('limit','12');
  const response=await fetch(url,{headers:{apikey:key,authorization:'Bearer '+key,accept:'application/json'},signal:AbortSignal.timeout(7000)});
  if(!response.ok){if(response.status===404)return {configured:false,source:'GDELT DOC 2.0',articles:[],notice:'La migration des actualités internationales n’est pas encore appliquée.'};throw new Error('Supabase global news HTTP '+response.status);}
  const rows=await response.json();
- return {configured:true,source:'GDELT DOC 2.0',articles:(Array.isArray(rows)?rows:[]).map(x=>({title:x.title,url:x.source_url,domain:x.source_domain,country:x.source_country,language:x.source_language,publishedAt:x.published_at,category:x.category,tone:x.tone,provider:x.source_provider})),asOf:new Date().toISOString(),notice:'Titres et liens de couverture macroéconomique/géopolitique issus de GDELT. Les articles sont des sources à vérifier, pas des faits confirmés ni des signaux de trading.'};
+ return {configured:true,source:'GDELT DOC 2.0',articles:(Array.isArray(rows)?rows:[]).map(x=>({title:x.title,url:x.source_url,domain:x.source_domain,country:x.source_country,language:x.source_language,observedAt:x.seen_at,observationSource:'GDELT first-seen time, not publisher publication time',category:x.category,tone:x.tone,provider:x.source_provider})),asOf:new Date().toISOString(),notice:'TItres et liens de couverture macroéconomique/géopolitique issus de GDELT. Les dates indiquent la première observation par GDELT, pas la date de publication du média. Les articles sont des sources à vérifier, pas des faits confirmés ni des signaux de trading.'};
 }
 async function fetchEconomicReleaseSchedule(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
