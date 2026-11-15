@@ -37,8 +37,11 @@ export function createTradeGroup(input) {
   if(Math.abs(lot/lotStep-Math.round(lot/lotStep))>1e-7) throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');
   if(!Number.isFinite(quoteToAccount)||quoteToAccount<=0||!Number.isFinite(feesPerLot)||feesPerLot<0) throw new Error('Conversion ou frais broker invalides.');
   if(contractSize!==null&&(!Number.isFinite(contractSize)||contractSize<=0)) throw new Error('La taille du contrat doit être positive.');
-  let snapshot = contractSpec ? normalizeContractSpec(contractSpec) : null;
-  if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);if(Math.abs(lot/checked.spec.lotStep-Math.round(lot/checked.spec.lotStep))>1e-7)throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');if(lot<checked.spec.minLot||(checked.spec.maxLot!==null&&lot>checked.spec.maxLot))throw new Error('Le lot est en dehors des limites du broker.');}
+  const lotStepFixed=0.01;
+  if(lot<0.01)throw new Error('Le lot minimum autorisé est de 0,01.');
+  if(Math.abs(lot/lotStepFixed-Math.round(lot/lotStepFixed))>1e-7)throw new Error('Le lot doit être un multiple de 0,01.');
+  let snapshot = contractSpec ? normalizeContractSpec({...contractSpec,minLot:0.01,lotStep:lotStepFixed,maxLot:null}) : null;
+  if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);}
   const allowedOrders=['MARKET','BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'];
   if(!allowedOrders.includes(orderType))throw new Error('Type d’ordre non reconnu.');
   if(orderType!=='MARKET'&&((orderType.startsWith('BUY')&&direction!=='BUY')||(orderType.startsWith('SELL')&&direction!=='SELL')))throw new Error('Le type d’ordre ne correspond pas à la direction BUY/SELL.');
@@ -54,15 +57,15 @@ export function createTradeGroup(input) {
   if(direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le stop-loss doit être au-dessus du prix d’entrée.');
   if(tps.some(tp=>direction==='BUY'?tp.price<=entry:tp.price>=entry))throw new Error('Les take-profits doivent être du côté favorable de l’entrée.');
   if (!tps.length) throw new Error('Sélectionnez au moins un take-profit.');
-  const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStep) : tps.map(()=>lot);
-  if(snapshot&&volumes.some(volume=>volume<snapshot.minLot||(snapshot.maxLot!==null&&volume>snapshot.maxLot)))throw new Error('Chaque volume enfant doit respecter les limites minimum et maximum du broker.');
+  const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStepFixed) : tps.map(()=>lot);
+  if(volumes.some(volume=>volume<0.01))throw new Error('Chaque TP doit recevoir au moins 0,01 lot.');
   const groupId=id();
   const createdAt=new Date().toISOString();
   const initialStatus=orderType==='MARKET'?'OPEN':'PENDING';
   const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:initialStatus,triggerSeen:false,activatedAt:orderType==='MARKET'?createdAt:null,activationPrice:orderType==='MARKET'?entry:null,realizedPnl:0,fees:0,closes:[],createdAt}));
   const effectiveLimitPrice = orderType.endsWith('LIMIT') && !orderType.includes('STOP LIMIT') ? (limitPrice ?? entry) : limitPrice;
   if(expiresAt){const expiry=new Date(expiresAt);if(Number.isNaN(expiry.getTime())||expiry.getTime()<=Date.now())throw new Error('La date d’expiration doit être valide et située dans le futur.');if(orderType==='MARKET')throw new Error('Une position au marché ne possède pas de date d’expiration d’ordre en attente.');}
-  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep: snapshot?.lotStep ?? lotStep,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt};
+  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep:lotStepFixed,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt};
   return group;
 }
 
