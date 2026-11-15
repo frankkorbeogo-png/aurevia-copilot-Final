@@ -72,6 +72,19 @@ export function recordPartialClose(group, childId, {volume,exit,contractSize=gro
   return {group,child,pnl};
 }
 
+export function resolveLinkedJournalStatus(row, group) {
+  if (row?.result && ['WIN','LOSS','BREAKEVEN'].includes(row.result)) return 'CLOSED';
+  if (row?.result === 'OPEN') {
+    const children = row.position_id
+      ? (group?.children || []).filter(child => child.id === row.position_id)
+      : (group?.children || []);
+    if (children.length && children.every(child => child.status === 'PENDING')) return 'PENDING';
+    if (children.length && children.every(child => child.status === 'CLOSED')) return 'CLOSED';
+    return 'OPEN';
+  }
+  return row?.result === 'PENDING' ? 'PENDING' : 'CLOSED';
+}
+
 export function groupSummary(group) {
   const realized=round(group.children.reduce((s,c)=>s+c.realizedPnl,0),2);
   const remaining=round(group.children.reduce((s,c)=>s+c.remainingLot,0),8);
