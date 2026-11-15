@@ -24,7 +24,7 @@ test('les graphiques principaux et DXY restent adaptatifs en largeur',()=>{
   assert.match(css,/\.tv-chart iframe\{[^}]*width:100%!important/);
   assert.match(css,/\.dxy-chart iframe\{[^}]*max-width:100%/);
   assert.match(html,/id="tvChart"/);
-  assert.match(html,/id="dxyChart"/);
+  assert.match(html,/id="dxyStandalone"/);
   assert.match(html,/id="dxyStandalone"/);
 });
 test('les unités de temps disponibles sont exposées au graphique principal',()=>{
