@@ -385,7 +385,7 @@ test('lot minimum technique de 0,01 accepté et volume inférieur refusé',()=>{
  const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010}]};
  const group=createTradeGroup({...base,lot:0.01,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}});
  assert.equal(group.children[0].lot,0.01);
- assert.throws(()=>createTradeGroup({...base,lot:0.009,lotStep:0.01}),/Paramètres de position/);
+ assert.throws(()=>createTradeGroup({...base,lot:0.009,lotStep:0.01}),/pas de volume/);
 });
 
 test('position unique exige au moins 0,01 par TP',()=>{
