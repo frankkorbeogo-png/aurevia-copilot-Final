@@ -386,7 +386,7 @@ export async function deleteOpenTradeGroupFromSupabase(groupId){
 
 export async function deleteClosedTradeGroupFromSupabase(groupId){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,status').eq('id',groupId).eq('user_id',user.id).maybeSingle();if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};if(group.status!=='CLOSED')throw new Error('Un groupe encore ouvert ne peut pas être supprimé.');
+ const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,status,mode').eq('id',groupId).eq('user_id',user.id).maybeSingle();if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};if(group.mode==='unique')throw new Error('Une position unique ayant atteint une clôture ne peut plus être supprimée du suivi.');if(group.status!=='CLOSED')throw new Error('Un groupe encore ouvert ne peut pas être supprimé.');
  const removed=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');if(removed.error)throw new Error(removed.error.message);return {synced:true};
 }
 
