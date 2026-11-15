@@ -47,7 +47,7 @@ async function fetchEconomicReleaseSchedule(){
  const now=new Date(),end=new Date(Date.now()+14*86400000);
  const url=new URL(base+'/rest/v1/economic_release_events');
  url.searchParams.set('select','event_name,release_date,scheduled_at,source_timezone,currency,impact,source_url,time_basis');
- url.searchParams.set('scheduled_at','gte.'+now.toISOString());url.searchParams.set('scheduled_at','lte.'+end.toISOString());
+ url.searchParams.append('scheduled_at','gte.'+now.toISOString());url.searchParams.append('scheduled_at','lte.'+end.toISOString());
  url.searchParams.set('order','scheduled_at.asc');url.searchParams.set('limit','20');
  const response=await fetch(url,{headers:{apikey:key,authorization:'Bearer '+key,accept:'application/json'},signal:AbortSignal.timeout(7000)});
  if(!response.ok){if(response.status===404)return {configured:false,source:'FRED release calendar',events:[],notice:'La migration du calendrier économique n’est pas encore appliquée.'};throw new Error('Supabase economic release schedule HTTP '+response.status);}
