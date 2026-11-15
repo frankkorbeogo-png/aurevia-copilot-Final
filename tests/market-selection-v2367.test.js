@@ -27,7 +27,7 @@ test('le flux OHLC, les cotations et le moteur IA partagent le catalogue autoris
   assert.match(market,/new Set\(MARKET_PROVIDER_SYMBOLS\)/);
   assert.match(quote,/new Set\(MARKET_PROVIDER_SYMBOLS\)/);
   assert.match(ai,/new Set\(MARKET_IDS\)/);
-  assert.match(analysis,/Object\.entries\(MARKET_INSTRUMENTS\)/);
+  assert.match(analysis,/MARKET_IDS\.map/);
 });
 test('le suivi interne et le worker WebSocket acceptent les mêmes symboles affichés', async () => {
   const watch = await read('netlify/functions/trade-watch.mjs');
@@ -66,7 +66,7 @@ test('WTI reste visible mais désactivé tant que le plan matières premières n
   assert.equal(MARKET_INSTRUMENTS.US30.enabled,false);
   assert.equal(MARKET_INSTRUMENTS.NAS100.enabled,false);
   assert.equal(MARKET_INSTRUMENTS.SPX500.enabled,false);
-  assert.match(html, /WTI\/USD[^<]*accès matières premières à confirmer/);
+  assert.match(html, /WTI\/USD[^<]*accès à confirmer/);
   assert.doesNotMatch(html, /data-symbol="WTIUSD"/);
   assert.match(html, /value="WTIUSD" disabled/);
 });
