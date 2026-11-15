@@ -1,5 +1,6 @@
 import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
-const ALLOWED=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
+import {MARKET_PROVIDER_SYMBOLS} from '../../market-catalog.js';
+const ALLOWED=new Set(MARKET_PROVIDER_SYMBOLS);
 const cache=new Map();
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'same-origin'},body:JSON.stringify(body)});
 export async function handler(event){
