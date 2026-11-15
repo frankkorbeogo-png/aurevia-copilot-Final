@@ -74,3 +74,17 @@ export async function handler(event) {
     };
   }
 }
+
+
+// Native Netlify Request/Response entrypoint used by scheduled invocations.
+// Keep the named Lambda handler exported for existing unit tests and compatibility.
+export default async function scheduledCmeCalendarSync(request) {
+  const result = await handler({
+    httpMethod: request?.method || 'POST',
+    headers: Object.fromEntries(request?.headers || [])
+  });
+  return new Response(result.body || '', {
+    status: result.statusCode || 200,
+    headers: result.headers || { 'content-type': 'application/json' }
+  });
+}
