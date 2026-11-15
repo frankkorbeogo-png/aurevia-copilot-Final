@@ -30,7 +30,7 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   throw new Error('Unexpected URL '+url);
  };
  try{
-  const result=await syncNews({httpMethod:'GET'}),body=JSON.parse(result.body);
+  const result=await syncNews({httpMethod:'POST'}),body=JSON.parse(result.body);
   assert.equal(result.statusCode,200);assert.equal(body.ok,true);assert.equal(body.fetched,1);
   assert.equal(calls.insert.length,1);assert.equal(calls.insert[0].category,'macro_geopolitics');
   assert.equal(calls.claims,2);assert.equal(calls.telegram.length,2);
@@ -50,7 +50,7 @@ test('sans token Telegram, le flux GDELT reste disponible sans prétendre à une
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([]);
   throw new Error('Unexpected URL '+url);
  };
- try{const r=await syncNews({httpMethod:'GET'}),d=JSON.parse(r.body);assert.equal(r.statusCode,200);assert.equal(d.telegramProcessed,0);}
+ try{const r=await syncNews({httpMethod:'POST'}),d=JSON.parse(r.body);assert.equal(r.statusCode,200);assert.equal(d.telegramProcessed,0);}
  finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}
 });
 
@@ -90,10 +90,10 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
   throw new Error('Unexpected URL '+url);
  };
  try{
-  const first=await syncNews({httpMethod:'GET'}),firstBody=JSON.parse(first.body);
+  const first=await syncNews({httpMethod:'POST'}),firstBody=JSON.parse(first.body);
   assert.equal(first.statusCode,200);assert.equal(firstBody.telegram[0].status,'retry_pending');
   assert.equal(sendCount['123'],1);assert.equal(sendCount['456'],1);
-  const second=await syncNews({httpMethod:'GET'}),secondBody=JSON.parse(second.body);
+  const second=await syncNews({httpMethod:'POST'}),secondBody=JSON.parse(second.body);
   assert.equal(second.statusCode,200);assert.equal(secondBody.telegram[0].status,'sent');
   assert.equal(sendCount['123'],1);assert.equal(sendCount['456'],2);
   assert.equal(deliveries.get('123').status,'sent');assert.equal(deliveries.get('456').status,'sent');
