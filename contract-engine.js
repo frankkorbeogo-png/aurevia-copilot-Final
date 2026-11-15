@@ -57,6 +57,18 @@ export function getPriceUnitValuePerLot(raw) {
   return spec.tickValue / spec.tickSize;
 }
 
+export function calculateEstimatedMargin({ entry, volume, contractSpec }) {
+  if (!finite(entry) || Number(entry) <= 0 || !finite(volume) || Number(volume) < 0) return null;
+  const spec = normalizeContractSpec(contractSpec);
+  if (!finite(spec.leverage) || spec.leverage <= 0) return null;
+  if (Number(volume) === 0) return 0;
+  try {
+    const unitValuePerLot = getPriceUnitValuePerLot(spec);
+    const margin = Number(volume) * unitValuePerLot * Number(entry) / Number(spec.leverage);
+    return Number.isFinite(margin) && margin >= 0 ? Number(margin.toFixed(2)) : null;
+  } catch { return null; }
+}
+
 export function calculateContractPnl({ direction, entry, exit, volume, contractSpec, fees = null, ...legacy }) {
   if (!['BUY', 'SELL'].includes(direction) || ![entry, exit, volume].every(finite) || Number(entry) <= 0 || Number(exit) <= 0 || Number(volume) <= 0) throw new Error('Données de clôture invalides.');
   let spec = contractSpec ? normalizeContractSpec(contractSpec) : normalizeContractSpec({ calculationType: 'contract', contractSize: legacy.contractSize, quoteToAccount: legacy.quoteToAccount ?? 1, feesPerLot: legacy.feesPerLot ?? 0, minLot: 0.00000001, lotStep: 0.00000001 });
