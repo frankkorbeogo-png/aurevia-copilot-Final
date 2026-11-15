@@ -627,3 +627,44 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 #validationTradeStatus{margin-top:12px}
 @media(max-width:900px){.validation-trade-layout{grid-template-columns:1fr}}
 @media(max-width:600px){.validation-trade-layout .scenario-save-actions{display:grid;grid-template-columns:1fr}.validation-trade-layout .scenario-save-actions button{width:100%}}
+
+
+/* Analyse IA : espace de décision plus lisible, sans calendrier dupliqué. */
+#page-marches .signal-panel{
+  grid-template-columns:minmax(220px,.82fr) minmax(0,1.18fr);
+  align-items:stretch;
+  gap:12px 18px;
+  padding:18px 20px;
+}
+#page-marches .signal-panel .panel-head{grid-column:1/-1}
+#page-marches .signal-panel .analysis-instrument-picker{grid-column:1}
+#page-marches .signal-panel .selected-market-quote{grid-column:2}
+#page-marches .signal-panel .signal-state{grid-column:1;align-self:center}
+#page-marches .signal-panel .signal-explain{grid-column:2;align-self:center}
+#page-marches .signal-panel .analyze-btn{grid-column:1}
+#page-marches .signal-panel .analyze-status{grid-column:2;align-self:center}
+#page-marches .signal-panel .probability,
+#page-marches .signal-panel .ai-plan,
+#page-marches .signal-panel .ai-scenarios,
+#page-marches .signal-panel .scenario-list,
+#page-marches .signal-panel .disclaimer-mini{grid-column:1/-1}
+#page-marches .signal-panel .probability{margin:0;padding:14px 16px}
+#page-marches .signal-panel .scenario-list{padding:12px 16px}
+@media(max-width:900px){
+  #page-marches .signal-panel{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:16px}
+}
+@media(max-width:600px){
+  #page-marches .signal-panel{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:12px}
+  #page-marches .signal-panel .analysis-instrument-picker,
+  #page-marches .signal-panel .selected-market-quote,
+  #page-marches .signal-panel .signal-state,
+  #page-marches .signal-panel .signal-explain,
+  #page-marches .signal-panel .analyze-btn,
+  #page-marches .signal-panel .analyze-status,
+  #page-marches .signal-panel .probability,
+  #page-marches .signal-panel .ai-plan,
+  #page-marches .signal-panel .ai-scenarios,
+  #page-marches .signal-panel .scenario-list,
+  #page-marches .signal-panel .disclaimer-mini{grid-column:1}
+  #page-marches .signal-panel .probability{margin:0;padding:12px}
+}
