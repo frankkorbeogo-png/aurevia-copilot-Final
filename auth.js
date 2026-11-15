@@ -339,6 +339,20 @@ export async function syncTradeGroupToSupabase(group){
  }
  return {synced:true};
 }
+export async function deleteTradePositionFromSupabase(groupId,positionId){
+ await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
+ const {data:position,error:positionError}=await supabase.from('trading_positions').select('id,group_id,status').eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id).maybeSingle();
+ if(positionError)throw new Error(positionError.message);if(!position)return {synced:false,reason:'not_found'};
+ const closes=await supabase.from('trading_position_closes').select('id').eq('position_id',positionId).eq('user_id',user.id).limit(1);
+ if(closes.error)throw new Error(closes.error.message);if((closes.data||[]).length)throw new Error('Ce trade possède déjà des clôtures enregistrées et ne peut pas être supprimé.');
+ const removed=await supabase.from('trading_positions').delete().eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id);
+ if(removed.error)throw new Error(removed.error.message);
+ const remaining=await supabase.from('trading_positions').select('id').eq('group_id',groupId).eq('user_id',user.id).limit(1);
+ if(remaining.error)throw new Error(remaining.error.message);
+ if(!(remaining.data||[]).length){const group=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id);if(group.error)throw new Error(group.error.message);}
+ return {synced:true};
+}
+
 export async function deleteClosedTradeGroupFromSupabase(groupId){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
  const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,status').eq('id',groupId).eq('user_id',user.id).maybeSingle();if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};if(group.status!=='CLOSED')throw new Error('Un groupe encore ouvert ne peut pas être supprimé.');
