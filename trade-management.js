@@ -149,6 +149,7 @@ export function deleteOpenTradeGroup(groupId){
 export function deleteClosedTradeGroup(groupId){
   const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
   if(!group)throw new Error('Groupe de positions introuvable.');
+  if(group.mode==='unique')throw new Error('Une position unique ayant atteint une clôture ne peut plus être supprimée du suivi.');
   if(group.status!=='CLOSED'||group.children.some(c=>c.status!=='CLOSED'||c.remainingLot>1e-8))throw new Error('Seul un groupe entièrement clôturé peut être supprimé.');
   if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
   return true;
