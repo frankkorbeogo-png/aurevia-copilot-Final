@@ -37,7 +37,7 @@ test('FRED synchronise les dates, désactive les dates retirées et rappelle au 
  };
  try{
   const r=await handler({httpMethod:'GET'}),body=JSON.parse(r.body);
-  assert.equal(r.statusCode,200);assert.equal(body.economicCalendar.status,'synced');
+  assert.equal(r.statusCode,200,JSON.stringify(body));assert.equal(body.economicCalendar.status,'synced',JSON.stringify(body));
   assert.ok(inserted.some(x=>x.release_id===10&&x.is_active===true));
   const cpi=inserted.find(x=>x.release_id===10);
   const local=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(cpi.scheduled_at));
