@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {handler,normalizeArticle,buildFomcReleaseEvents} from '../netlify/functions/global-news-sync.mjs';
 
 test('global-news-sync returns an error when one macro subsystem fails',async()=>{
@@ -43,4 +44,12 @@ test('le calendrier FOMC inclut les jours de dÃ©cision officiels et exclut la rÃ
  assert.ok(dates.includes('2027-11-17'));
  assert.ok(!dates.includes('2027-10-27'));
  assert.ok(events.every(x=>x.source_url==='https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm'));
+});
+
+test('la migration distingue seen_at de published_at sans perdre les anciens articles',async()=>{
+ const sql=await readFile(new URL('../supabase/migrations/20261115235000_global_news_seen_at.sql',import.meta.url),'utf8');
+ assert.match(sql,/add column if not exists seen_at timestamptz/);
+ assert.match(sql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);
+ assert.match(sql,/alter column published_at drop not null/);
+ assert.match(sql,/global_news_events_seen_idx/);
 });
