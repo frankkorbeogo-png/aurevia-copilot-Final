@@ -368,3 +368,14 @@ test('valide les côtés de marché des six types d’ordres en attente',()=>{
 test('refuse de créer un ordre en attente sans cours de marché vérifiable',()=>{
  assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:null}).ok,false);
 });
+
+
+test('un horodatage unique est partagé par le groupe, tous les TP, le journal local et le cloud',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}]});
+ assert.ok(group.createdAt);assert.ok(group.children.every(child=>child.createdAt===group.createdAt));
+ saveTradeGroup(group);assert.ok(loadLinkedJournal().every(row=>row.createdAt===group.createdAt));
+ const cloud=buildTradeGroupCloudRows(group,'00000000-0000-4000-8000-000000000001');
+ assert.equal(cloud.groupRow.created_at,group.createdAt);assert.ok(cloud.positions.every(row=>row.opened_at===group.createdAt));assert.ok(cloud.journalRows.every(row=>row.created_at===group.createdAt));
+ delete globalThis.localStorage;
+});
