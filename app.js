@@ -235,7 +235,7 @@ async function validationContractSpec(){
   pointSize:$('validationPointSize').value.trim()?Number($('validationPointSize').value):null,pointValue:$('validationPointValue').value.trim()?Number($('validationPointValue').value):null,
   tickSize:$('validationTickSize').value.trim()?Number($('validationTickSize').value):null,tickValue:$('validationTickValue').value.trim()?Number($('validationTickValue').value):null,
   minLot:Number($('validationMinLot').value),lotStep:Number($('validationLotStep').value),maxLot:$('validationMaxLot').value.trim()?Number($('validationMaxLot').value):null,
-  feesPerLot:Number($('validationFees').value||0),marginPerLot:$('validationMargin').value.trim()?Number($('validationMargin').value):null
+  feesPerLot:Number($('validationFees').value||0)
  };
 }
 function updateValidationModeHelp(){
