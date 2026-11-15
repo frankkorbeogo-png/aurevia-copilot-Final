@@ -15,13 +15,14 @@ export async function handler(event){
   }
   if(action==='create_position'){
    const scenarioId=String(body.id||''),mode=String(body.mode||''),volume=Number(body.volume);
-   if(!scenarioId||!['unique','separate'].includes(mode)||!Number.isFinite(volume)||volume<=0)return json(400,{error:'Scénario, mode et lot valides requis.'});
+   const contractSpec=body.contract_spec,brokerSnapshot=body.broker_snapshot;
+   if(!scenarioId||!['unique','separate'].includes(mode)||!Number.isFinite(volume)||volume<=0||!contractSpec||typeof contractSpec!=='object'||Array.isArray(contractSpec)||!brokerSnapshot||typeof brokerSnapshot!=='object'||Array.isArray(brokerSnapshot))return json(400,{error:'Scénario, mode, lot et paramètres broker valides requis.'});
    const rows=await rest(`aurevia_analysis_scenarios?select=id,status,lot_confirmation_expires_at,trade_group_id,instrument,direction&user_id=eq.${user}&id=eq.${encodeURIComponent(scenarioId)}&limit=1`);
    const scenario=rows?.[0];
    if(!scenario)return json(404,{error:'Scénario introuvable.'});
    if(scenario.trade_group_id)return json(409,{error:'Cette proposition a déjà été enregistrée en position.'});
    if(scenario.status!=='entry_confirmed'||!scenario.lot_confirmation_expires_at||Date.parse(scenario.lot_confirmation_expires_at)<=Date.now())return json(409,{error:'L’entrée n’est pas encore confirmée par la surveillance M15 ou le délai de validation a expiré.'});
-   const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume}});
+   const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot}});
    const groupId=typeof created==='string'?created:created?.[0]?.aurevia_create_position_from_scenario||created?.aurevia_create_position_from_scenario;
    if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
    return json(201,{group_id:groupId,instrument:scenario.instrument,direction:scenario.direction,message:'Position enregistrée. Suivi et journal AUREVIA activés.'});
