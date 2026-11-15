@@ -10,15 +10,7 @@ import { validateContractSpec, calculateEstimatedMargin } from './contract-engin
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
 
 const $ = id => document.getElementById(id);
-const symbols = {
-  XAUUSD:{label:'XAU/USD',tv:'OANDA:XAUUSD'},XAGUSD:{label:'XAG/USD',tv:'OANDA:XAGUSD'},
-  EURUSD:{label:'EUR/USD',tv:'OANDA:EURUSD'},GBPUSD:{label:'GBP/USD',tv:'OANDA:GBPUSD'},USDJPY:{label:'USD/JPY',tv:'OANDA:USDJPY'},AUDUSD:{label:'AUD/USD',tv:'OANDA:AUDUSD'},
-  USDCAD:{label:'USD/CAD',tv:'OANDA:USDCAD'},USDCHF:{label:'USD/CHF',tv:'OANDA:USDCHF'},NZDUSD:{label:'NZD/USD',tv:'OANDA:NZDUSD'},EURGBP:{label:'EUR/GBP',tv:'OANDA:EURGBP'},EURJPY:{label:'EUR/JPY',tv:'OANDA:EURJPY'},GBPJPY:{label:'GBP/JPY',tv:'OANDA:GBPJPY'},
-  US30:{label:'US30',tv:'PEPPERSTONE:US30'},NAS100:{label:'NASDAQ 100',tv:'NASDAQ:NDX'},SPX500:{label:'S&P 500',tv:'SP:SPX'},GER40:{label:'DAX 40',tv:'XETR:DAX'},UK100:{label:'FTSE 100',tv:'TVC:UKX'},JPN225:{label:'Nikkei 225',tv:'TVC:NI225'},
-  USOIL:{label:'WTI / US Oil',tv:'TVC:USOIL'},UKOIL:{label:'Brent',tv:'TVC:UKOIL'},
-  AAPL:{label:'Apple',tv:'NASDAQ:AAPL'},MSFT:{label:'Microsoft',tv:'NASDAQ:MSFT'},NVDA:{label:'NVIDIA',tv:'NASDAQ:NVDA'},TSLA:{label:'Tesla',tv:'NASDAQ:TSLA'},AMZN:{label:'Amazon',tv:'NASDAQ:AMZN'},
-  BTCUSD:{label:'BTC/USD',tv:'BITSTAMP:BTCUSD'},ETHUSD:{label:'ETH/USD',tv:'BITSTAMP:ETHUSD'},SOLUSD:{label:'SOL/USD',tv:'COINBASE:SOLUSD'},XRPUSD:{label:'XRP/USD',tv:'BITSTAMP:XRPUSD'}
-};
+const symbols = Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,{label:item.label,tv:item.tv,provider:item.provider,market:item.market}]));
 let selectedSymbol='XAUUSD', selectedTf='15';
 let accountCurrency=null;
 let tradingViewMountToken=0, tradingViewRetryTimer=null, tradingViewResizeObserver=null;
@@ -34,7 +26,7 @@ async function refreshSelectedQuote(){
     const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].label)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
     const data=await response.json().catch(()=>({}));
     if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
-    const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(['EURUSD','GBPUSD','AUDUSD','NZDUSD','USDCAD','USDCHF','EURGBP'].includes(selectedSymbol)?5:(['BTCUSD','ETHUSD'].includes(selectedSymbol)?2:2));
+    const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
     if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
     if(status)status.textContent=`Twelve Data · ${new Date(data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
   }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
