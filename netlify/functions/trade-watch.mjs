@@ -20,7 +20,7 @@ async function quote(symbol){
  return {price,quoteAt,source:'Twelve Data REST Last Price'};
 }
 export {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
-import {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
+import {evaluateEntryTrigger,isPendingOrderExpired} from './_trade-entry-trigger.mjs';
 export function evaluatePositionThreshold(position,price){
  const observed=Number(price),stop=Number(position?.stop_loss),target=Number(position?.take_profit);
  if(!Number.isFinite(observed)||observed<=0||!Number.isFinite(stop)||stop<=0||!Number.isFinite(target)||target<=0)return null;
@@ -56,10 +56,15 @@ async function deliverPending(){
 export async function handler(event){
  if(!BASE()||!KEY())return json(503,{error:'Surveillance non configurée côté serveur.'});
  try{
-  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
+  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,expires_at,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
   const groups=await rest('trading_position_groups?select=id,user_id,instrument,direction,order_type,mode,status,contract_spec&status=eq.OPEN');const byId=new Map(groups.map(g=>[g.id,g]));
-  let checked=0,activated=0,triggerStages=0,triggered=0,errors=[];const priceCache=new Map();
+  let checked=0,activated=0,triggerStages=0,triggered=0,expired=0,errors=[];const priceCache=new Map();
   for(const p of positions||[]){const g=byId.get(p.group_id);if(!g)continue;try{
+    if(p.status==='PENDING'&&isPendingOrderExpired(p,Date.now())){
+      const result=await rest('rpc/aurevia_expire_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_expired_at:new Date().toISOString()}});
+      if(result?.ok&&result.expired)expired++;
+      continue;
+    }
     let prices=priceCache.get(g.instrument);if(!prices){prices=await quote(g.instrument);priceCache.set(g.instrument,prices);}checked++;
     const observedPrice=prices.price;
     if(p.status==='PENDING'){
@@ -89,6 +94,6 @@ export async function handler(event){
    }catch(e){errors.push({position_id:p.id,error:e.message});}
   }
   const notificationsSent=await deliverPending();const entryNotificationsSent=await deliverEntryNotifications(positions,byId);
-  return json(200,{ok:true,checked,activated,triggerStages,triggered,notificationsSent,entryNotificationsSent,errors});
+  return json(200,{ok:true,checked,activated,triggerStages,triggered,expired,notificationsSent,entryNotificationsSent,errors});
  }catch(e){return json(500,{error:'Surveillance des positions impossible.',detail:e.message});}
 }
