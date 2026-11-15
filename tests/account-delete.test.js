@@ -27,7 +27,7 @@ test('la suppression personnelle utilise une RPC atomique et protège le dernier
   assert.ok(endpoint.includes('return json(409'));
   assert.ok(endpoint.includes('application_data_deleted:true'));
   assert.doesNotMatch(endpoint, /deleteUserApplicationData/);
-  assert.doesNotMatch(endpoint, /auth\\/v1\\/admin\\/users/);
+  assert.equal(endpoint.includes('/auth/v1/admin/users/'), false);
   assert.ok(guardedDeletionMigration.includes('pg_advisory_xact_lock'));
   assert.ok(guardedDeletionMigration.includes('LAST_ADMIN_PROTECTED'));
   assert.ok(guardedDeletionMigration.includes('delete from auth.users where id = p_user_id'));
