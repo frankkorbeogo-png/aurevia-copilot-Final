@@ -35,3 +35,17 @@ test('refuse les paramètres invalides et un risque inférieur au lot minimal', 
   assert.ok(calculatePositionRisk({ riskAmount: 0, stopDistance: 5, unitValuePerLot: 100 }).error);
   assert.ok(calculatePositionRisk({ riskAmount: 0.1, stopDistance: 5, unitValuePerLot: 100, lotStep: 0.01 }).error);
 });
+
+
+test('un risque USD et son équivalent XOF produisent le même lot après conversion', () => {
+  const usd = calculatePositionRisk({ riskAmount: 50, stopDistance: 10, unitValuePerLot: 100, quoteToAccount: 1, lotStep: 0.01 });
+  const xof = calculatePositionRisk({ riskAmount: 30000, stopDistance: 10, unitValuePerLot: 100, quoteToAccount: 600, lotStep: 0.01 });
+  assert.equal(usd.lots, 0.05);
+  assert.equal(xof.lots, usd.lots);
+  assert.equal(xof.riskMoney, 30000);
+});
+
+test('le taux de conversion invalide est refusé', () => {
+  const result = calculatePositionRisk({ riskAmount: 30000, stopDistance: 10, unitValuePerLot: 100, quoteToAccount: 0, lotStep: 0.01 });
+  assert.ok(result.error);
+});
