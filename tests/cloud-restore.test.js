@@ -22,12 +22,12 @@ test('la restauration cloud remplace la fiche liée locale sans créer de doublo
   assert.equal(loadLinkedJournal()[0].id,'cloud-journal-1');
 }));
 
-test('la suppression locale refuse un groupe ouvert et supprime le journal d’un groupe clôturé',()=>withStorage(()=>{
+test('la suppression locale refuse un groupe ouvert et conserve le journal d’un groupe clôturé',()=>withStorage(()=>{
   saveTradeGroup(fixture());
   assert.throws(()=>deleteClosedTradeGroup('group-1'),/entièrement clôturé/);
   const closed=fixture('CLOSED');
   persistTradeGroup(closed);
   assert.equal(deleteClosedTradeGroup('group-1'),true);
   assert.equal(loadTradeGroups().length,0);
-  assert.equal(loadLinkedJournal().length,0);
+  assert.equal(loadLinkedJournal().length,1);
 }));
