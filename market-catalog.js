@@ -2,8 +2,6 @@
 export const MARKET_INSTRUMENTS = Object.freeze({
   XAUUSD:{label:'XAU/USD',provider:'XAU/USD',tv:'OANDA:XAUUSD',category:'Métaux précieux',market:'METALS'},
   XAGUSD:{label:'XAG/USD',provider:'XAG/USD',tv:'OANDA:XAGUSD',category:'Métaux précieux',market:'METALS'},
-  XPTUSD:{label:'XPT/USD',provider:'XPT/USD',tv:'TVC:PLATINUM',category:'Métaux précieux',market:'METALS'},
-  XPDUSD:{label:'XPD/USD',provider:'XPD/USD',tv:'TVC:PALLADIUM',category:'Métaux précieux',market:'METALS'},
   EURUSD:{label:'EUR/USD',provider:'EUR/USD',tv:'OANDA:EURUSD',category:'Forex majeur',market:'FOREX'},
   GBPUSD:{label:'GBP/USD',provider:'GBP/USD',tv:'OANDA:GBPUSD',category:'Forex majeur',market:'FOREX'},
   USDJPY:{label:'USD/JPY',provider:'USD/JPY',tv:'OANDA:USDJPY',category:'Forex majeur',market:'FOREX'},
