@@ -136,8 +136,13 @@ export function deleteClosedTradeGroup(groupId){
   if(!group)throw new Error('Groupe de positions introuvable.');
   if(group.status!=='CLOSED'||group.children.some(c=>c.status!=='CLOSED'||c.remainingLot>1e-8))throw new Error('Seul un groupe entièrement clôturé peut être supprimé.');
   if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
-  const journal=read(JOURNAL_KEY).filter(x=>x.groupId!==groupId);
-  if(!write(JOURNAL_KEY,journal))throw new Error('Position supprimée, mais la suppression de sa fiche journal locale a échoué.');
+  return true;
+}
+
+export function deleteLinkedJournalEntry(journalId){
+  const rows=read(JOURNAL_KEY),next=rows.filter(row=>String(row.id)!==String(journalId)&&String(row.cloudId||'')!==String(journalId));
+  if(next.length===rows.length)throw new Error('Fiche journal introuvable.');
+  if(!write(JOURNAL_KEY,next))throw new Error('Impossible de supprimer cette fiche du journal local.');
   return true;
 }
 
