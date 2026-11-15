@@ -66,7 +66,7 @@
   to = "/.netlify/functions/session-api"
   status = 200
 
-[functions."trade-watch"]
+[functions."cme-calendar-sync"]\n  schedule = "15 6 * * *"\n\n[functions."trade-watch"]
 schedule = "* * * * *"
 
 [[redirects]]
