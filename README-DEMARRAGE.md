@@ -84,6 +84,16 @@ Ne jamais placer de clé secrète dans `index.html`, les fichiers JavaScript du 
 
 Les annonces économiques sont visibles via le widget calendrier externe ; leur envoi automatique Telegram nécessite encore une source d'événements disposant d'un flux serveur autorisé. Ne pas activer cette fonction comme si elle était déjà opérationnelle.
 
+## Actualités macroéconomiques et géopolitiques
+
+La fonction planifiée `global-news-sync` interroge le GDELT DOC 2.0 toutes les 15 minutes, conserve uniquement les métadonnées des titres récents (titre, source, pays/langue, date et lien), et ajoute ces éléments au contexte macro transmis au moteur IA. Les articles complets ne sont pas recopiés. La source et le lien restent visibles pour vérification humaine.
+
+Les utilisateurs ayant activé « Alertes macroéconomiques et actualités internationales » reçoivent une notification privée Telegram. Chaque notification précise qu’une actualité n’est pas, à elle seule, un signal BUY/SELL. Le flux GDELT est public et ne nécessite pas de clé ; il reste soumis aux limites d’utilisation de la source.
+
+**Migration à appliquer uniquement lors de la validation finale :** `supabase/migrations/20261115120000_global_macro_news_and_telegram.sql`. Sans cette migration, la synchronisation des titres et leur insertion dans le contexte IA ne sont pas actives.
+
+**Limite importante :** ce flux couvre les nouvelles macroéconomiques et géopolitiques publiées. Il ne remplace pas un calendrier de publications futures (CPI, NFP, décisions de taux avec heure prévue). L’envoi automatique de ces événements planifiés reste désactivé tant qu’une API calendrier serveur autorisée n’a pas été sélectionnée et validée. Le widget TradingView reste le calendrier visible dans l’interface. Aucun calendrier tiers n’est présenté comme une source officielle.
+
 ## Worker de cotations prix simple du marché
 
 Le suivi exact ASK/BID nécessite le service permanent `workers/market-quote-stream.mjs` (Node 22). Il doit être hébergé séparément de Netlify et utiliser les secrets Supabase service-role et Twelve Data. Voir `workers/README.md`. Le plan Twelve Data doit autoriser le streaming des symboles utilisés.
