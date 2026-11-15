@@ -87,7 +87,8 @@ async function syncEconomicCalendar(){
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
- await rest(eventTable+'?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_started_at:event.telegram_broadcast_started_at||new Date().toISOString()}});\n const recipients=await rest('telegram_connections?select=user_id,chat_id&notify_economic_announcements=eq.true&chat_id=not.is.null&limit=5000');
+ await rest(eventTable+'?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_started_at:event.telegram_broadcast_started_at||new Date().toISOString()}});
+ const recipients=await rest('telegram_connections?select=user_id,chat_id&notify_economic_announcements=eq.true&chat_id=not.is.null&limit=5000');
  const chats=[...new Set((Array.isArray(recipients)?recipients:[]).filter(x=>x.user_id&&x.chat_id).map(x=>String(x.chat_id)))];
  const deliveries=chats.map(chat_id=>({event_type:eventType,event_id:event.id,chat_id,status:'pending'}));
  if(deliveries.length)await rest('telegram_event_deliveries?on_conflict=event_type,event_id,chat_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:deliveries});
@@ -119,19 +120,20 @@ function economicReleaseMessage(event){
  const utc=new Date(event.scheduled_at);
  const burkina=new Intl.DateTimeFormat('fr-FR',{timeZone:'Africa/Ouagadougou',dateStyle:'full',timeStyle:'short'}).format(utc);
  const eastern=new Intl.DateTimeFormat('fr-FR',{timeZone:'America/New_York',dateStyle:'short',timeStyle:'short'}).format(utc);
- return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\\n\\n'+event.event_name+'\\nDevise : '+event.currency+' · Impact : élevé\\nHeure prévue (New York) : '+eastern+'\\nHeure Burkina Faso (UTC+0) : '+burkina+'\\n\\nRappel programmé environ 60 minutes avant la publication. La date vient du calendrier FRED ; l’heure est un horaire habituel de publication, à vérifier sur la source officielle.\\nSource : '+event.source_url+'\\n\\nCette alerte n’est pas un signal BUY/SELL.';
+ return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\n\n'+event.event_name+'\nDevise : '+event.currency+' · Impact : élevé\nHeure prévue (New York) : '+eastern+'\nHeure Burkina Faso (UTC+0) : '+burkina+'\n\nRappel programmé environ 60 minutes avant la publication. La date vient du calendrier FRED ; l’heure est un horaire habituel de publication, à vérifier sur la source officielle.\nSource : '+event.source_url+'\n\nCette alerte n’est pas un signal BUY/SELL.';
 }
 async function broadcastDueReleases(){
  if(!env('TELEGRAM_BOT_TOKEN'))return {processed:0,notice:'TELEGRAM_BOT_TOKEN absent.'};
  const now=new Date(),start=new Date(now.getTime()+50*60*1000),end=new Date(now.getTime()+70*60*1000);
- const cutoff=new Date(now.getTime()-24*60*60*1000);\n const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(cutoff.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
+ const cutoff=new Date(now.getTime()-24*60*60*1000);
+ const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(cutoff.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
  const pending=await rest('economic_release_events?'+filter);
  const results=[];for(const event of (Array.isArray(pending)?pending:[]))results.push({id:event.id,...await broadcastToSubscribers('economic',event,economicReleaseMessage(event),'economic_release_events')});
  return {processed:results.length,results};
 }
 function globalNewsMessage(event){
  const safeTitle=String(event.title||'').replace(/[<>]/g,'').slice(0,400),safeDomain=String(event.source_domain||'').replace(/[<>]/g,'').slice(0,120);
- return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\\n\\n'+safeTitle+'\\n\\nSource : '+safeDomain+'\\nPublié : '+new Date(event.published_at).toISOString()+'\\n\\nLecture et vérification : '+event.source_url+'\\n\\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
+ return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\nPublié : '+new Date(event.published_at).toISOString()+'\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
 }
 async function syncGlobalNews(){
  const articles=await fetchArticles();
