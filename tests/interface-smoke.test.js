@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {handler as marketQuoteHandler} from '../netlify/functions/market-quote.mjs';
+import {getMarketStatus} from '../market-hours.js';
 const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');
 test('l’interface expose les treize espaces fonctionnels',()=>{const pages=[...html.matchAll(/data-page-view="([^"]+)"/g)].map(x=>x[1]);assert.equal(new Set(pages).size,13);for(const page of ['accueil','marches','risque','journal','positions','validation-trade','dxy','actualites','annonces','telegram','parametres','guide','admin'])assert.ok(pages.includes(page));});
@@ -175,4 +176,11 @@ test('market-quote rejects provider timestamps too far in the future',async()=>{
   assert.equal(r.statusCode,502);
   assert.equal(data.code,'TWELVEDATA_FUTURE_TIMESTAMP');
  });
+});
+
+test('le message de réouverture affiche une seule fois l’heure locale du Burkina',()=>{
+ const status=getMarketStatus('XAU/USD',new Date('2026-11-15T12:00:00Z'));
+ assert.equal(status.status,'CLOSED');
+ assert.match(status.reason,/Réouverture prévue le dimanche 15 novembre à 23:00/);
+ assert.doesNotMatch(status.reason,/à 23:00 à 23:00/);
 });
