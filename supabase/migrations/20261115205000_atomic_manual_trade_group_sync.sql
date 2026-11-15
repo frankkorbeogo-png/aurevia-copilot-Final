@@ -33,17 +33,23 @@ begin
   if not public.aurevia_session_is_active() then
     raise exception 'AUREVIA_SESSION_REQUIRED';
   end if;
-  if jsonb_typeof(p_group) <> 'object'
-     or jsonb_typeof(p_positions) <> 'array'
-     or jsonb_array_length(p_positions) < 1
-     or jsonb_typeof(coalesce(p_journal,'[]'::jsonb)) <> 'array' then
+  if p_group is null or jsonb_typeof(p_group) <> 'object' then
     raise exception 'INVALID_TRADE_GROUP_PAYLOAD';
+  end if;
+  if p_positions is null or jsonb_typeof(p_positions) <> 'array' then
+    raise exception 'INVALID_TRADE_GROUP_POSITIONS';
+  end if;
+  if jsonb_array_length(p_positions) < 1 then
+    raise exception 'EMPTY_TRADE_GROUP';
+  end if;
+  if jsonb_typeof(coalesce(p_journal,'[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_TRADE_JOURNAL_PAYLOAD';
   end if;
 
   v_group_id := nullif(p_group->>'id','')::uuid;
   v_mode := p_group->>'mode';
   v_auto_journal := coalesce((p_group->>'auto_journal')::boolean,false);
-  if v_group_id is null or v_mode not in ('unique','separate') then
+  if v_group_id is null or v_mode is null or v_mode not in ('unique','separate') then
     raise exception 'INVALID_TRADE_GROUP';
   end if;
 
@@ -83,7 +89,7 @@ begin
   for v_row in select value from jsonb_array_elements(p_positions)
   loop
     v_position_id := nullif(v_row->>'id','')::uuid;
-    if v_position_id is null or nullif(v_row->>'group_id','')::uuid <> v_group_id then
+    if v_position_id is null or nullif(v_row->>'group_id','')::uuid is distinct from v_group_id then
       raise exception 'INVALID_TRADE_POSITION';
     end if;
     if v_position_id = any(v_position_ids) then
@@ -143,8 +149,8 @@ begin
 
     for v_journal in select value from jsonb_array_elements(coalesce(p_journal,'[]'::jsonb))
     loop
-      if nullif(v_journal->>'group_id','')::uuid <> v_group_id
-         or v_journal->>'mode' <> v_mode then
+      if nullif(v_journal->>'group_id','')::uuid is distinct from v_group_id
+         or v_journal->>'mode' is distinct from v_mode then
         raise exception 'INVALID_TRADE_JOURNAL_ROW';
       end if;
 
