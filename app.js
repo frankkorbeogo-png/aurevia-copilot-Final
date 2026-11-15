@@ -10,7 +10,7 @@ import { validateContractSpec, calculateEstimatedMargin } from './contract-engin
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
 
 const $ = id => document.getElementById(id);
-const symbols = Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,{label:item.label,tv:item.tv,provider:item.provider,market:item.market}]));
+const symbols = Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).filter(([,item])=>item.enabled!==false).map(([id,item])=>[id,{label:item.label,tv:item.tv,provider:item.provider,market:item.market}]));
 let selectedSymbol='XAUUSD', selectedTf='15';
 let accountCurrency=null;
 let tradingViewMountToken=0, tradingViewRetryTimer=null, tradingViewResizeObserver=null;
