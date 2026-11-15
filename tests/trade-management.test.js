@@ -343,6 +343,6 @@ test('supprimer une position unique en attente supprime son groupe et son unique
 test('la suppression en attente refuse un trade déjà ouvert ou clôturé',()=>{
  const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
  const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT'});saveTradeGroup(group);
- group.children[0].status='OPEN';assert.throws(()=>deletePendingSeparateTradeChild(group.id,group.children[0].id),/encore en attente/);
+ const stored=loadTradeGroups()[0];stored.children[0].status='OPEN';persistTradeGroup(stored);assert.throws(()=>deletePendingSeparateTradeChild(group.id,group.children[0].id),/encore en attente/);
  delete globalThis.localStorage;
 });
