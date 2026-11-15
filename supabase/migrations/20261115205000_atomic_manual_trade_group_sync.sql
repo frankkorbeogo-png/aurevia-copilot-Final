@@ -99,7 +99,7 @@ begin
 
     insert into public.trading_positions(
       id,group_id,user_id,tp_label,entry_price,stop_loss,take_profit,
-      trigger_price,limit_price,volume_initial,volume_remaining,
+      trigger_price,limit_price,expires_at,volume_initial,volume_remaining,
       contract_size,quote_to_account,fees_per_lot,contract_spec,status,
       trigger_seen,activated_at,activation_price,opened_at,updated_at
     ) values (
@@ -108,6 +108,7 @@ begin
       (v_row->>'take_profit')::numeric,
       nullif(v_row->>'trigger_price','')::numeric,
       nullif(v_row->>'limit_price','')::numeric,
+      nullif(v_row->>'expires_at','')::timestamptz,
       (v_row->>'volume_initial')::numeric,(v_row->>'volume_remaining')::numeric,
       nullif(v_row->>'contract_size','')::numeric,
       coalesce(nullif(v_row->>'quote_to_account','')::numeric,1),
@@ -125,6 +126,7 @@ begin
       take_profit=excluded.take_profit,
       trigger_price=excluded.trigger_price,
       limit_price=excluded.limit_price,
+      expires_at=excluded.expires_at,
       volume_initial=excluded.volume_initial,
       contract_size=excluded.contract_size,
       quote_to_account=excluded.quote_to_account,
