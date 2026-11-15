@@ -146,6 +146,32 @@ export function deleteLinkedJournalEntry(journalId){
   return true;
 }
 
+export function editSeparateTradeChild(group, childId, {entry,stopLoss,takeProfit}){
+  if(!group||group.mode!=='separate')throw new Error('Cette action est réservée au mode Trades séparés.');
+  const child=group.children.find(item=>item.id===childId);
+  if(!child)throw new Error('Trade introuvable.');
+  if(!['OPEN','PENDING'].includes(child.status)||(child.closes||[]).length)throw new Error('Un trade déjà clôturé ou ayant une clôture enregistrée ne peut plus être modifié.');
+  if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0||!Number.isFinite(takeProfit)||takeProfit<=0)throw new Error('Entrée, Stop Loss et TP doivent être des prix positifs.');
+  if(group.direction==='BUY'&&(stopLoss>=entry||takeProfit<=entry))throw new Error('Pour un BUY, le SL doit être sous l’entrée et le TP au-dessus.');
+  if(group.direction==='SELL'&&(stopLoss<=entry||takeProfit>=entry))throw new Error('Pour un SELL, le SL doit être au-dessus de l’entrée et le TP sous l’entrée.');
+  child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfit;group.updatedAt=new Date().toISOString();return child;
+}
+
+export function deleteSeparateTradeChild(groupId, childId){
+  const rows=read(STORAGE_KEY),group=rows.find(item=>item.id===groupId);
+  if(!group||group.mode!=='separate')throw new Error('Cette action est réservée au mode Trades séparés.');
+  const child=group.children.find(item=>item.id===childId);
+  if(!child)throw new Error('Trade introuvable.');
+  if((child.closes||[]).length||child.status==='CLOSED')throw new Error('Un trade ayant des clôtures enregistrées ne peut pas être supprimé du suivi.');
+  group.children=group.children.filter(item=>item.id!==childId);
+  if(!group.children.length){if(!write(STORAGE_KEY,rows.filter(item=>item.id!==groupId)))throw new Error('Impossible de supprimer le dernier trade du groupe.');return {groupDeleted:true,group};}
+  group.requestedLot=group.children.reduce((sum,item)=>sum+Number(item.initialLot||0),0);
+  group.status=group.children.every(item=>item.status==='CLOSED')?'CLOSED':'OPEN';
+  group.updatedAt=new Date().toISOString();
+  if(!write(STORAGE_KEY,rows))throw new Error('Impossible d’enregistrer la suppression du trade.');
+  return {groupDeleted:false,group};
+}
+
 export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
   if(!group||group.status!=='OPEN'||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length))throw new Error('Seul un groupe ouvert sans clôture enregistrée peut être modifié.');
   if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0)throw new Error('Prix d’entrée et Stop Loss invalides.');
