@@ -61,3 +61,26 @@ test('le mode trades séparés conserve une fiche distincte par enfant', () => {
 test('la RPC ne supprime pas les anciennes fiches ni les positions non présentes dans un payload', () => {
   assert.equal(/delete\s+from\s+public\.trading_(position_groups|positions|journal)/i.test(migration), false);
 });
+
+
+const closeMigration = await readFile(new URL('../supabase/migrations/20261115210000_atomic_close_fx_snapshot.sql', import.meta.url), 'utf8');
+
+test('la clôture manuelle et son snapshot FX sont enregistrés dans une seule RPC', () => {
+  const start = auth.indexOf('export async function syncTradeCloseToSupabase(group,child,closeEvent)');
+  const end = auth.indexOf('export async function sendTelegramTest', start);
+  const fn = auth.slice(start, end);
+  assert.ok(fn.includes("supabase.rpc('aurevia_record_position_close'"));
+  assert.ok(fn.includes('p_fx_snapshot:closeEvent.fxSnapshot??null'));
+  assert.equal(fn.includes(".from('trading_position_closes').update"), false);
+  assert.ok(closeMigration.includes('fx_snapshot'));
+  assert.ok(closeMigration.includes('p_fx_snapshot'));
+  assert.ok(closeMigration.includes('Résultat net incohérent'));
+  assert.ok(closeMigration.includes('aurevia_session_is_active()'));
+});
+
+test('l’ancienne signature de clôture ne reste pas accessible sans snapshot FX', () => {
+  assert.ok(closeMigration.includes('drop function if exists public.aurevia_record_position_close('));
+  assert.ok(closeMigration.includes('revoke all on function public.aurevia_record_position_close('));
+  assert.ok(closeMigration.includes('to authenticated'));
+  assert.ok(closeMigration.includes('from public,anon'));
+});
