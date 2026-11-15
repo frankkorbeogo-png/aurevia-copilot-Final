@@ -29,6 +29,16 @@ test('l’interface dédiée est ouverte uniquement depuis un scénario confirm�
  assert.match(app,/validationBroker/);
  assert.match(app,/validationContractSpec/);
 });
+test('la case journal de l’interface est transmise à la base et respectée transactionnellement',()=>{
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ const migration=readFileSync(new URL('../supabase/migrations/20261115024336_scenario_registration_auto_journal.sql',import.meta.url),'utf8');
+ assert.match(html,/id="validationAutoJournal" type="checkbox" checked/);
+ assert.match(app,/auto_journal:\$\('validationAutoJournal'\)\.checked/);
+ assert.match(api,/p_auto_journal:body\.auto_journal!==false/);
+ assert.match(migration,/p_auto_journal boolean/);
+ assert.match(migration,/coalesce\(p_auto_journal,true\) and p_mode='unique'/);
+ assert.match(migration,/coalesce\(p_auto_journal,true\) and p_mode='separate'/);
+});
 test('le canal Telegram conserve le parcours de confirmation du lot dans le bot',()=>{
  assert.match(webhook,/start:\(\[A-F0-9\]\{8\}\):\(unique\|separate\)/);
  assert.match(watch,/inline_keyboard/);
