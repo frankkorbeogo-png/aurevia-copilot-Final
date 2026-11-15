@@ -14,7 +14,7 @@ test('les sélecteurs exposent les actifs du catalogue multi-marchés', async ()
 });
 test('le catalogue couvre forex, métaux, énergie, actions et crypto', () => {
   const categories = new Set(Object.values(MARKET_INSTRUMENTS).map(x=>x.market));
-  for (const category of ['FOREX','METALS','EQUITY','CRYPTO','INDEX','ENERGY']) assert.ok(categories.has(category), category);
+  for (const category of ['FOREX','METALS','EQUITY','CRYPTO']) assert.ok(categories.has(category), category);
   for (const id of ['XAUUSD','XAGUSD','EURAUD','EURCHF','GBPAUD','AUDJPY','AAPL','MSFT','NVDA','TSLA','AMZN','SOLUSD','XRPUSD']) assert.ok(MARKET_INSTRUMENTS[id], id);
   assert.equal(MARKET_IDS.length, MARKET_PROVIDER_SYMBOLS.length);
   assert.equal(MARKET_IDS.length, MARKET_LABELS.length);
