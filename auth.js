@@ -339,6 +339,12 @@ export async function syncTradeGroupToSupabase(group){
  }
  return {synced:true};
 }
+export async function deleteLinkedJournalEntryFromSupabase(journalId){
+ await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
+ const removed=await supabase.from('trading_journal').delete().eq('id',journalId).eq('user_id',user.id);
+ if(removed.error)throw new Error(removed.error.message);return {synced:true};
+}
+
 export async function deleteTradePositionFromSupabase(groupId,positionId){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
  const {data:position,error:positionError}=await supabase.from('trading_positions').select('id,group_id,status').eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id).maybeSingle();
@@ -356,7 +362,6 @@ export async function deleteTradePositionFromSupabase(groupId,positionId){
 export async function deleteClosedTradeGroupFromSupabase(groupId){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
  const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,status').eq('id',groupId).eq('user_id',user.id).maybeSingle();if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};if(group.status!=='CLOSED')throw new Error('Un groupe encore ouvert ne peut pas être supprimé.');
- const journal=await supabase.from('trading_journal').delete().eq('user_id',user.id).eq('group_id',groupId);if(journal.error)throw new Error(journal.error.message);
  const removed=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');if(removed.error)throw new Error(removed.error.message);return {synced:true};
 }
 
