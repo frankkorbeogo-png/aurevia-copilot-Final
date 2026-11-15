@@ -15,7 +15,7 @@ test('le synchroniseur GDELT stocke les titres récents et les diffuse aux abonn
   }
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id')){calls.insert=JSON.parse(options.body);return response({},201);}
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:new Date().toISOString()}]);
-  if(url.includes('/rest/v1/global_news_events?id=eq.event-1')){calls.claimed++;return response([{id:'event-1'}]);}
+  if(url.includes('/rest/v1/global_news_events?id=eq.event-1')){if(JSON.parse(options.body||'{}').telegram_broadcast_started_at)calls.claimed++;return response([{id:'event-1'}]);}
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'},{user_id:'u2',chat_id:'456'}]);
   if(url.includes('api.telegram.org/botbot/sendMessage')){calls.telegram.push(JSON.parse(options.body));return response({ok:true,result:{message_id:calls.telegram.length}});}
   throw new Error('Unexpected URL '+url);
