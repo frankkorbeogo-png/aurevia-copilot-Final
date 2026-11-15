@@ -22,7 +22,7 @@ test('le contexte macro expose les actualités GDELT stockées sans inventer de 
   assert.equal(result.statusCode,200);assert.equal(data.globalNews.configured,true);
   assert.equal(data.globalNews.source,'GDELT DOC 2.0');assert.equal(data.globalNews.articles.length,1);
   assert.equal(data.globalNews.articles[0].title,'Central bank announces a rate decision');
-  assert.match(data.globalNews.notice,/pas des signaux de trading/);
+  assert.match(data.globalNews.notice,/ni des signaux de trading/);
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
  }
