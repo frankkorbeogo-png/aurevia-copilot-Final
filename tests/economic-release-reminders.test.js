@@ -19,7 +19,7 @@ test('FRED synchronise les dates, désactive les dates retirées et rappelle au 
   if(url.includes('/rest/v1/economic_release_events?id=eq.old-event')){patches.push(JSON.parse(options.body));return response([]);}
   if(url.includes('/rest/v1/economic_release_sync_state?on_conflict=id'))return response([],201);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name')){
-   assert.match(url,/scheduled_at=gte/);assert.match(url,/scheduled_at=lte/);
+   assert.match(url,/scheduled_at=gte/);assert.match(url,/scheduled_at\.lte/);
    return response([{id:'econ-1',event_name:'US Consumer Price Index (CPI)',scheduled_at:new Date(Date.now()+30*60*1000).toISOString(),source_url:'https://www.bls.gov/cpi/',source_timezone:'America/New_York',currency:'USD',impact:'high',telegram_broadcast_started_at:null}]);
   }
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'}]);
@@ -41,7 +41,7 @@ test('FRED synchronise les dates, désactive les dates retirées et rappelle au 
   assert.ok(inserted.some(x=>x.release_id===10&&x.is_active===true));
   const cpi=inserted.find(x=>x.release_id===10);
   const local=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(cpi.scheduled_at));
-  assert.equal(local,'08:30');assert.equal(body.economicReminders.processed,1);
+  assert.equal(local,'08:30');assert.ok(body.economicReminders,JSON.stringify(body));assert.equal(body.economicReminders.processed,1);
   assert.equal(patches.length,1);assert.equal(patches[0].is_active,false);
   assert.equal(messages.length,1);assert.match(messages[0].text,/Heure Burkina Faso/);
   assert.match(messages[0].text,/généralement environ 30 minutes avant/);
