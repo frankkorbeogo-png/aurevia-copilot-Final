@@ -15,7 +15,6 @@ create table if not exists public.global_news_events (
   telegram_broadcast_started_at timestamptz,
   telegram_broadcast_completed_at timestamptz,
   telegram_broadcast_result jsonb,
-  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
 create index if not exists global_news_events_published_idx
@@ -43,6 +42,7 @@ create table if not exists public.economic_release_events (
   telegram_broadcast_started_at timestamptz,
   telegram_broadcast_completed_at timestamptz,
   telegram_broadcast_result jsonb,
+  is_active boolean not null default true,
   created_at timestamptz not null default now(),
   unique(release_id, release_date)
 );
