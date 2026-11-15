@@ -1,5 +1,7 @@
 -- Align the worker close RPC with the FX snapshot payload and close expiry/activation races.
 -- All changes are additive; no production schema is changed until this migration is approved and applied.
+-- Remove the legacy arity so PostgREST has one unambiguous worker signature.
+drop function if exists public.aurevia_record_position_close_worker(uuid,uuid,numeric,numeric,numeric,numeric,numeric,timestamptz,uuid);
 alter table public.trading_position_closes
   add column if not exists fx_snapshot jsonb;
 
