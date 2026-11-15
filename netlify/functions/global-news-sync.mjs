@@ -71,11 +71,11 @@ export function buildFomcReleaseEvents(now=new Date(),horizonDays=15){
 }
 
 async function syncEconomicCalendar(){
- const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
+ const key=env('FRED_API_KEY');
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
- const cacheFresh=Boolean(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000);
+ const cacheFresh=Boolean(key&&state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000);
  const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
- const results=cacheFresh?[]:await Promise.all(RELEASES.map(async release=>{
+ const results=(!key||cacheFresh)?[]:await Promise.all(RELEASES.map(async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
   url.searchParams.set('release_id',String(release.id));url.searchParams.set('api_key',key);url.searchParams.set('file_type','json');
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
@@ -99,8 +99,8 @@ async function syncEconomicCalendar(){
    deactivated++;
   }
  }
- if(!cacheFresh)await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
- return {status:cacheFresh?'fresh_fred_cache_official_fomc_refreshed':'synced',synced:events.length,deactivated,source:'FRED release calendar'};
+ if(key&&!cacheFresh)await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
+ return {status:!key?'fomc_only_fred_not_configured':cacheFresh?'fresh_fred_cache_official_fomc_refreshed':'synced',synced:events.length,deactivated,source:key?'FRED + Federal Reserve FOMC calendar':'Federal Reserve FOMC calendar',...(key?{}:{notice:'FRED_API_KEY absent : seules les dates officielles FOMC sont synchronisées.'})};
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
