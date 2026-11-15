@@ -19,7 +19,7 @@
 
 ## Tests
 - Ajout d'un test de cohérence du catalogue partagé, des sélecteurs et des listes d'autorisation.
-- Les tests automatisés complets et les tests réels avec la clé Twelve Data restent à exécuter avant le déploiement final.
+- Le build CI passe ; le jeu complet conserve 13 échecs préexistants identiques à la branche de référence. Les tests ciblés multi-actifs ajoutés passent. Les appels réels Twelve Data restent à valider avec une session AUREVIA authentifiée.
 
 ## Contrôles supplémentaires
 - Le fichier `market-catalog.js` est inclus dans le build web : les imports des modules client ne seront pas absents du dossier de production.
