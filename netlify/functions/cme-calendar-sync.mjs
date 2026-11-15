@@ -8,7 +8,7 @@ function toText(html){
  return html
   .replace(/<script[\\s\\S]*?<\\/script>/gi,' ')
   .replace(/<style[\\s\\S]*?<\\/style>/gi,' ')
-  .replace(/<\\/(?:tr|h[1-6]|p|li|section|div)>/gi,'\\n')
+  .replace(/<\\/(?:td|th)>/gi,' | ').replace(/<\\/(?:tr|h[1-6]|p|li|section|div)>/gi,'\\n')
   .replace(/<[^>]+>/g,' ')
   .replace(/&nbsp;|&#160;/gi,' ')
   .replace(/&amp;/gi,'&').replace(/&ndash;|&#8211;/gi,'–')
@@ -25,7 +25,7 @@ function extractCandidates(text){
   const end=headings[i+1]?.index ?? Math.min(text.length,start+16000);
   const section=text.slice(start,end);
   const year=Number(headings[i][1].slice(0,4));
-  const pattern=/(New Year’s|New Year's|Dr\\. Martin Luther King, Jr\\.|Martin Luther King|Presidents Day|President’s Day|Good Friday|Memorial Day|Juneteenth|Independence Day|Labor Day|Thanksgiving|Christmas)\\s+([A-Za-z0-9 ,–-]+?)\\s+(?:Holiday Schedule)/gi;
+  const pattern=/(New Year’s|New Year's|Dr\\. Martin Luther King, Jr\\.|Martin Luther King|Presidents Day|President’s Day|Good Friday|Memorial Day|Juneteenth|Independence Day|Labor Day|Thanksgiving|Christmas)\\s*\\|\\s*([A-Za-z0-9 ,–-]+?)\\s*\\|\\s*Holiday Schedule/gi;
   let match;
   while((match=pattern.exec(section))!==null){
    candidates.push({year,holiday:match[1].replace(/[’]/g,"'"),dateRange:match[2].trim(),source:'CME Globex'});
