@@ -379,3 +379,16 @@ test('un horodatage unique est partagé par le groupe, tous les TP, le journal l
  assert.equal(cloud.groupRow.created_at,group.createdAt);assert.ok(cloud.positions.every(row=>row.opened_at===group.createdAt));assert.ok(cloud.journalRows.every(row=>row.created_at===group.createdAt));
  delete globalThis.localStorage;
 });
+
+
+test('lot minimum technique de 0,01 accepté et volume inférieur refusé',()=>{
+ const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010}]};
+ const group=createTradeGroup({...base,lot:0.01,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}});
+ assert.equal(group.children[0].lot,0.01);
+ assert.throws(()=>createTradeGroup({...base,lot:0.009,lotStep:0.01}),/Paramètres de position/);
+});
+
+test('position unique exige au moins 0,01 par TP',()=>{
+ const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020},{price:2030}],lot:0.02,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}};
+ assert.throws(()=>createTradeGroup(base),/Volume insuffisant|minimum et maximum/);
+});
