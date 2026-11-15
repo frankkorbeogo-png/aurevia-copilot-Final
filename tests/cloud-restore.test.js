@@ -9,7 +9,7 @@ function withStorage(fn){
   try{return fn();}finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous;}
 }
 function fixture(status='OPEN'){
-  const child={id:'child-1',groupId:'group-1',instrument:'XAU/USD',direction:'BUY',tpLabel:'TP1',entry:2000,stopLoss:1990,takeProfit:2020,initialLot:0.1,lot:0.1,remainingLot:status==='CLOSED'?0:0.1,status,realizedPnl:status==='CLOSED'?20:0,closes:[],createdAt:'2026-11-12T00:00:00.000Z'};
+  const child={id:'child-1',groupId:'group-1',instrument:'XAU/USD',direction:'BUY',tpLabel:'TP1',entry:2000,stopLoss:1990,takeProfit:2020,initialLot:0.1,lot:0.1,remainingLot:status==='CLOSED'?0:0.1,status,realizedPnl:status==='CLOSED'?20:0,closes:status==='CLOSED'?[{id:'close-1',volume:0.1,exit:2020,closedAt:'2026-11-12T01:00:00.000Z'}]:[],createdAt:'2026-11-12T00:00:00.000Z'};
   return {id:'group-1',instrument:'XAU/USD',direction:'BUY',mode:'unique',requestedLot:0.1,autoJournal:true,status,createdAt:'2026-11-12T00:00:00.000Z',children:[child]};
 }
 
