@@ -23,12 +23,12 @@
 
 /* AUREVIA V2 — navigation par pages et espace graphique agrandi */
 .page-view{display:none;animation:pageIn .22s ease both}.page-view.active{display:block}@keyframes pageIn{from{opacity:.35;transform:translateY(5px)}to{opacity:1;transform:none}}
-.nav-link.active{background:linear-gradient(100deg,#392044aa,#211329);border:1px solid #563365;color:#fff}.risk-page-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);gap:14px;align-items:stretch}.risk-page-grid>.panel{min-height:240px}.dxy-panel{grid-column:1/-1}.dxy-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:4px 15px 12px}.dxy-summary>div{padding:11px;background:#17101e;border:1px solid #382642;border-radius:10px;min-width:0}.dxy-summary small{display:block;color:var(--muted);font-size:9px}.dxy-summary b{display:block;color:#e3d1ed;font-size:12px;margin-top:4px}.dxy-chart{height:330px;margin:0 14px;border:1px solid #33213d;border-radius:11px;overflow:hidden;background:#0b0910}.dxy-chart iframe{display:block;width:100%;height:100%;max-width:100%;border:0}
+.nav-link.active{background:linear-gradient(100deg,#392044aa,#211329);border:1px solid #563365;color:#fff}.risk-page-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.8fr);gap:14px;align-items:stretch}.risk-page-grid>.panel{min-height:240px}.dxy-panel{grid-column:1/-1}.dxy-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:4px 15px 12px}.dxy-summary>div{padding:11px;background:#17101e;border:1px solid #382642;border-radius:10px;min-width:0}.dxy-summary small{display:block;color:var(--muted);font-size:9px}.dxy-summary b{display:block;color:#e3d1ed;font-size:12px;margin-top:4px}.dxy-chart{height:620px;margin:0 14px;border:1px solid #33213d;border-radius:11px;overflow:hidden;background:#0b0910}.dxy-chart iframe{display:block;width:100%;height:100%;max-width:100%;border:0}
 /* Le graphique principal dispose d'une vraie zone de lecture */
 .tv-chart{height:560px;min-height:460px}.chart-panel{min-width:0}.workspace-grid{grid-template-columns:minmax(0,2.1fr) minmax(280px,.78fr)}.chart-panel .panel-head{padding-bottom:14px}.chart-footer{font-size:10px}
 @media(max-width:1200px){.tv-chart{height:500px;min-height:420px}.workspace-grid{grid-template-columns:minmax(0,1.7fr) minmax(260px,.85fr)}}
-@media(max-width:900px){.tv-chart{height:460px;min-height:400px}.workspace-grid{grid-template-columns:1fr}.dxy-chart{height:300px}}
-@media(max-width:600px){.tv-chart{height:420px;min-height:380px}.dxy-summary{grid-template-columns:1fr}.dxy-chart{height:280px;margin:0 10px}.risk-page-grid{grid-template-columns:1fr}.page-view{padding-bottom:8px}}
+@media(max-width:900px){.tv-chart{height:460px;min-height:400px}.workspace-grid{grid-template-columns:1fr}.dxy-chart{height:520px}}
+@media(max-width:600px){.tv-chart{height:420px;min-height:380px}.dxy-summary{grid-template-columns:1fr}.dxy-chart{height:460px;margin:0 10px}.risk-page-grid{grid-template-columns:1fr}.page-view{padding-bottom:8px}}
 @media(max-width:370px){.tv-chart{height:370px;min-height:340px}}
 
 .market-page-intro{margin:0 0 15px}.market-page-intro h1{font-size:26px;margin:4px 0}.market-page-intro h1 span{color:#c274ed}.quotes-widget{height:94px;margin-bottom:14px;padding:0 8px;display:flex;align-items:center}.quotes-widget .tradingview-widget-container__widget{width:100%}.quotes-widget iframe{width:100%!important}.lower-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.lower-grid>.dxy-panel{grid-column:1/-1;grid-row:2}.lower-grid>#actualites{grid-column:1/-1}.lower-grid>#marches{grid-column:auto}
@@ -51,11 +51,11 @@
 #page-marches .disclaimer-mini{grid-column:1/-1;margin:0}
 #page-marches .lower-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
 #page-marches .lower-grid>.dxy-panel,#page-marches .lower-grid>#actualites{grid-column:1/-1}
-#page-marches .dxy-chart{height:430px}
+#page-marches .dxy-chart{height:520px}
 #page-marches .calendar-frame{height:390px}
 @media(max-width:1200px){#page-marches .tv-chart{height:610px;min-height:520px}}
-@media(max-width:900px){#page-marches .tv-chart{height:540px;min-height:480px}#page-marches .signal-panel{grid-template-columns:1fr 1fr}#page-marches .signal-panel .panel-head,#page-marches .disclaimer-mini{grid-column:1/-1}#page-marches .lower-grid{grid-template-columns:1fr}#page-marches .lower-grid>.dxy-panel,#page-marches .lower-grid>#actualites{grid-column:1}#page-marches .dxy-chart{height:360px}#page-marches .calendar-frame{height:330px}}
-@media(max-width:600px){#page-marches .market-page-intro h1{font-size:23px}#page-marches .tv-chart{height:470px;min-height:430px}#page-marches .signal-panel{display:block}#page-marches .signal-panel .panel-head{padding:12px 13px 10px}#page-marches .signal-state{font-size:36px}#page-marches .probability{margin:8px 13px}#page-marches .dxy-chart{height:320px;margin:0 10px}#page-marches .calendar-frame{height:300px}}
+@media(max-width:900px){#page-marches .tv-chart{height:540px;min-height:480px}#page-marches .signal-panel{grid-template-columns:1fr 1fr}#page-marches .signal-panel .panel-head,#page-marches .disclaimer-mini{grid-column:1/-1}#page-marches .lower-grid{grid-template-columns:1fr}#page-marches .lower-grid>.dxy-panel,#page-marches .lower-grid>#actualites{grid-column:1}#page-marches .dxy-chart{height:460px}#page-marches .calendar-frame{height:330px}}
+@media(max-width:600px){#page-marches .market-page-intro h1{font-size:23px}#page-marches .tv-chart{height:470px;min-height:430px}#page-marches .signal-panel{display:block}#page-marches .signal-panel .panel-head{padding:12px 13px 10px}#page-marches .signal-state{font-size:36px}#page-marches .probability{margin:8px 13px}#page-marches .dxy-chart{height:420px;margin:0 10px}#page-marches .calendar-frame{height:300px}}
 @media(max-width:370px){#page-marches .tv-chart{height:420px;min-height:390px}}
 
 /* AUREVIA V2.1 — dashboard utile, densité équilibrée et calculateur complet */
