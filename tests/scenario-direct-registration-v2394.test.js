@@ -41,6 +41,17 @@ test('la case journal de l’interface est transmise à la base et respectée tr
  assert.match(migration,/coalesce\(p_auto_journal,true\) and p_mode='unique'/);
  assert.match(migration,/coalesce\(p_auto_journal,true\) and p_mode='separate'/);
 });
+test('la migration SQL valide la devise du profil sans exiger de broker ni de type de compte',()=>{
+ const migration=readFileSync(new URL('../supabase/migrations/20261115080000_trade_validation_profile_currency_no_broker_fields.sql',import.meta.url),'utf8');
+ assert.match(migration,/PROFILE_ACCOUNT_CURRENCY_REQUIRED/);
+ assert.match(migration,/PROFILE_ACCOUNT_CURRENCY_MISMATCH/);
+ assert.doesNotMatch(migration,/brokerName|accountType|BROKER_ACCOUNT_SETTINGS_REQUIRED/);
+ assert.match(migration,/p_auto_journal boolean/);
+ assert.match(migration,/p_broker_snapshot jsonb\n\) returns uuid/);
+ assert.match(migration,/p_scenario_id, p_user_id, p_mode, p_volume/);
+ assert.match(migration,/grant execute on function public\\.aurevia_create_position_from_scenario/);
+});
+
 test('le canal Telegram conserve le parcours de confirmation du lot dans le bot',()=>{
  assert.match(webhook,/start:\(\[A-F0-9\]\{8\}\):\(unique\|separate\)/);
  assert.match(watch,/inline_keyboard/);
