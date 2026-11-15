@@ -1,4 +1,4 @@
-import {verifyBearerUser,json} from './_session-auth.mjs';
+import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
 const headers=key=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
  if(event.httpMethod!=='POST')return json(405,{error:'Méthode non autorisée.'});
@@ -6,6 +6,7 @@ export async function handler(event){
  if(body.confirmation!=='REJECT_NEW_LOGIN'||!Number.isFinite(Number(body.startedAt)))return json(400,{error:'Demande de refus invalide.'});
  try{
   const context=await verifyBearerUser(event);
+  await assertActiveSession(context);
   const startedAt=Number(body.startedAt),createdAt=Date.parse(context.user.created_at||'');
   const age=Date.now()-startedAt;
   if(!Number.isFinite(createdAt)||age<0||age>15*60*1000||createdAt<startedAt-30000||createdAt>startedAt+15*60*1000){
