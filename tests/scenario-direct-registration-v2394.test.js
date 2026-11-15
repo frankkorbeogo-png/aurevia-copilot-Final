@@ -12,7 +12,7 @@ test('l’enregistrement direct dans AUREVIA n’est proposé qu’après confir
 });
 test('le mode direct utilise la même RPC transactionnelle que Telegram',()=>{
  assert.match(api,/rpc\/aurevia_create_position_from_scenario/);
- assert.match(api,/p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume/);
+ assert.match(api,/p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot/);
  assert.match(webhook,/rpc\/aurevia_create_position_from_scenario/);
 });
 test('la création vérifie l’appartenance utilisateur, l’expiration et empêche un doublon',()=>{
@@ -20,10 +20,14 @@ test('la création vérifie l’appartenance utilisateur, l’expiration et emp�
  assert.match(api,/scenario\.trade_group_id/);
  assert.match(api,/lot_confirmation_expires_at/);
 });
-test('l’interface permet de saisir le lot et de choisir les deux modes de gestion',()=>{
- assert.match(app,/data-scenario-lot/);
+test('l’interface dédiée est ouverte uniquement depuis un scénario confirmé et propose les deux modes',()=>{
+ assert.match(app,/function openTradeValidation\(scenario\)/);
+ assert.match(app,/data-scenario-validate/);
+ assert.match(app,/validationLot/);
  assert.match(app,/value="unique"/);
  assert.match(app,/value="separate"/);
+ assert.match(app,/validationBroker/);
+ assert.match(app,/validationContractSpec/);
 });
 test('le canal Telegram conserve le parcours de confirmation du lot dans le bot',()=>{
  assert.match(webhook,/start:\(\[A-F0-9\]\{8\}\):\(unique\|separate\)/);
