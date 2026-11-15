@@ -1,5 +1,5 @@
-const FX=new Set(['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','EURGBP','EURJPY','GBPJPY']);
-const METALS=new Set(['XAUUSD','XAGUSD']);
+const FX=new Set(['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','EURGBP','EURJPY','GBPJPY','EURAUD','EURCHF','GBPAUD','AUDJPY']);
+const METALS=new Set(['XAUUSD','XAGUSD','XPTUSD','XPDUSD']);
 const CRYPTO=new Set(['BTCUSD','ETHUSD','SOLUSD','XRPUSD']);
 const NY='America/New_York', BF='Africa/Ouagadougou';
 const FOREX_SESSION={openSunday:17,closeFriday:17};
