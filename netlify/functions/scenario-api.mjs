@@ -15,8 +15,13 @@ export async function handler(event){
   }
   if(action==='create_position'){
    const scenarioId=String(body.id||''),mode=String(body.mode||''),volume=Number(body.volume);
-   const contractSpec=body.contract_spec,brokerSnapshot=body.broker_snapshot;
-   if(!scenarioId||!['unique','separate'].includes(mode)||!Number.isFinite(volume)||volume<=0||!contractSpec||typeof contractSpec!=='object'||Array.isArray(contractSpec)||!brokerSnapshot||typeof brokerSnapshot!=='object'||Array.isArray(brokerSnapshot))return json(400,{error:'Scénario, mode, lot et paramètres broker valides requis.'});
+   const contractSpec=body.contract_spec;
+   if(!scenarioId||!['unique','separate'].includes(mode)||!Number.isFinite(volume)||volume<=0||!contractSpec||typeof contractSpec!=='object'||Array.isArray(contractSpec))return json(400,{error:'Scénario, mode, lot et paramètres techniques valides requis.'});
+   const preferenceRows=await rest(`user_preferences?select=preferences&user_id=eq.${user}&limit=1`);
+   const accountCurrency=String(preferenceRows?.[0]?.preferences?.account_currency||'').trim().toUpperCase();
+   if(!/^[A-Z]{3}$/.test(accountCurrency))return json(400,{error:'Définissez d’abord la devise de votre compte dans Paramètres.'});
+   const brokerSnapshot={accountCurrency,leverage:contractSpec.leverage??null};
+   contractSpec.accountCurrency=accountCurrency;
    const rows=await rest(`aurevia_analysis_scenarios?select=id,status,lot_confirmation_expires_at,trade_group_id,instrument,direction&user_id=eq.${user}&id=eq.${encodeURIComponent(scenarioId)}&limit=1`);
    const scenario=rows?.[0];
    if(!scenario)return json(404,{error:'Scénario introuvable.'});
