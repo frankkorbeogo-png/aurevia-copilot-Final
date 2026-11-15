@@ -598,7 +598,7 @@ function bindEvents(){
   $('analysisInstrumentSelect')?.addEventListener('change',e=>setSelectedSymbol(e.target.value));
   document.querySelectorAll('.ticker').forEach(t=>t.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(t.dataset.symbol);}));
   document.querySelectorAll('#timeframes button').forEach(b=>b.addEventListener('click',()=>setTimeframe(b.dataset.tf)));
-  $('refreshBtn').addEventListener('click',()=>{mountTradingView();loadAnalysis();});
+  $('refreshBtn').addEventListener('click',()=>{mountTradingView();});
   $('analyzeBtn')?.addEventListener('click',()=>loadAnalysis());
   $('menuToggle').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
   const showPage = requestedPage => {
