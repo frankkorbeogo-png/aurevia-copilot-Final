@@ -138,6 +138,14 @@ export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
   return merged;
 }
 
+export function deleteOpenTradeGroup(groupId){
+  const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
+  if(!group||group.mode!=='unique')throw new Error('Position unique introuvable.');
+  if(group.status!=='OPEN'||!group.children.length||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length||c.remainingLot!==c.initialLot))throw new Error('Une position unique ne peut être supprimée du suivi qu’avant toute clôture.');
+  if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
+  return true;
+}
+
 export function deleteClosedTradeGroup(groupId){
   const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
   if(!group)throw new Error('Groupe de positions introuvable.');
