@@ -22,7 +22,7 @@ export async function handler(event){
    if(!scenario)return json(404,{error:'Scénario introuvable.'});
    if(scenario.trade_group_id)return json(409,{error:'Cette proposition a déjà été enregistrée en position.'});
    if(scenario.status!=='entry_confirmed'||!scenario.lot_confirmation_expires_at||Date.parse(scenario.lot_confirmation_expires_at)<=Date.now())return json(409,{error:'L’entrée n’est pas encore confirmée par la surveillance M15 ou le délai de validation a expiré.'});
-   const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot}});
+   const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot,p_auto_journal:body.auto_journal!==false}});
    const groupId=typeof created==='string'?created:created?.[0]?.aurevia_create_position_from_scenario||created?.aurevia_create_position_from_scenario;
    if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
    return json(201,{group_id:groupId,instrument:scenario.instrument,direction:scenario.direction,message:'Position enregistrée. Suivi et journal AUREVIA activés.'});
