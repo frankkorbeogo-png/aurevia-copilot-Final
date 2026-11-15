@@ -1,6 +1,7 @@
 name: AUREVIA baseline quality checks
 
 on:
+  pull_request:
   push:
     branches:
       - work/baseline-ci-2026-11-15
