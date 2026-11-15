@@ -28,7 +28,7 @@ test('global-news-sync returns an error when one macro subsystem fails',async()=
 
 test('GDELT seendate est stocké comme heure observée et non comme publication média',()=>{
  const now=new Date();
- const stamp=now.toISOString().replace(/[-:]/g,'').replace(/\\.\\d{3}Z$/,'Z');
+ const stamp=now.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
  const article=normalizeArticle({url:'https://example.com/macro-story',title:'Central bank update',seendate:stamp,domain:'example.com',language:'English',sourcecountry:'United States'});
  assert.ok(article);
  assert.equal(article.published_at,null);
