@@ -187,11 +187,8 @@
 <label>Lot à enregistrer<input id="validationLot" type="number" min="0.00000001" step="any" placeholder="Ex. 0.05" required></label>
 </div>
 <p class="footnote" id="validationModeHelp">Position unique : le lot saisi est réparti entre les TP sélectionnés, avec une seule fiche journal.</p>
-<div class="field-section-title"><b>Paramètres broker et compte</b><small>Renseignez les spécifications exactes de votre broker pour cet instrument. Aucun compte broker n’est connecté.</small></div>
+<div class="field-section-title"><b>Paramètres techniques du trade</b><small>Saisissez les spécifications de calcul applicables à cet instrument. La devise du compte est reprise automatiquement depuis votre profil.</small></div>
 <div class="risk-fields">
-<label>Broker<input id="validationBroker" type="text" maxlength="100" placeholder="Nom du broker" required></label>
-<label>Type de compte<input id="validationAccountType" type="text" maxlength="80" placeholder="Standard, Raw, Cent…" required></label>
-<label>Devise du compte<input id="validationCurrency" type="text" maxlength="8" placeholder="USD, EUR, XOF…" required></label>
 <label>Levier<input id="validationLeverage" type="number" min="1" max="100000" step="1" placeholder="Ex. 500"></label>
 <label>Méthode de calcul<select id="validationCalcType"><option value="contract">Taille du contrat</option><option value="point">Valeur du point</option><option value="tick">Valeur du tick</option></select></label>
 <label data-validation-contract="contract">Taille du contrat par lot<input id="validationContractSize" type="number" min="0.00000001" step="any" placeholder="Selon la fiche broker"></label>
@@ -206,7 +203,7 @@
 <label>Marge requise par lot (facultatif)<input id="validationMargin" type="number" min="0" step="any"></label>
 </div>
 <label class="check-line"><input id="validationAutoJournal" type="checkbox" checked> Ajouter automatiquement au journal</label><p class="footnote">Activée par défaut. Décochez cette option si vous souhaitez suivre la position sans créer de fiche dans le journal.</p>
-<p class="footnote">AUREVIA enregistrera les paramètres broker avec la position afin que le suivi TP/SL et le calcul des résultats utilisent les mêmes spécifications.</p>
+<p class="footnote">AUREVIA enregistrera les paramètres techniques et la devise du profil avec la position afin de conserver les mêmes règles de calcul dans le suivi TP/SL et le journal.</p>
 <div class="scenario-save-actions"><button class="secondary-btn" id="cancelTradeValidation" type="button">Annuler</button><button class="primary-btn" id="confirmTradeValidation" type="button">Confirmer et enregistrer le trade →</button></div>
 <p id="validationTradeStatus" class="analysis-save-status" role="status" aria-live="polite">En attente de votre validation manuelle.</p>
 </article>
