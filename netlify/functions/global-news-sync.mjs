@@ -111,8 +111,9 @@ async function broadcastToSubscribers(eventType,event,message,eventTable){
   }
  }
  const all=await rest('telegram_event_deliveries?select=status,attempts&event_type=eq.'+eventType+'&event_id=eq.'+encodeURIComponent(event.id)+'&limit=5000');
- const rows=Array.isArray(all)?all:[],done=rows.every(x=>x.status==='sent'||(x.status==='failed'&&Number(x.attempts)>=5));
- const result={status:done?(failed?'completed_with_failures':'sent'):(failed?'retry_pending':'in_progress'),sent,failed,pending:rows.filter(x=>x.status!=='sent'&&!(x.status==='failed'&&Number(x.attempts)>=5)).length,errors};
+ const rows=Array.isArray(all)?all:[],terminalFailed=rows.filter(x=>x.status==='failed'&&Number(x.attempts)>=5).length;
+ const done=rows.every(x=>x.status==='sent'||(x.status==='failed'&&Number(x.attempts)>=5));
+ const result={status:done?(terminalFailed?'completed_with_failures':'sent'):(failed?'retry_pending':'in_progress'),sent:rows.filter(x=>x.status==='sent').length,failed:terminalFailed,pending:rows.filter(x=>x.status!=='sent'&&!(x.status==='failed'&&Number(x.attempts)>=5)).length,errors};
  await rest(eventTable+'?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_started_at:event.telegram_broadcast_started_at||new Date().toISOString(),...(done?{telegram_broadcast_completed_at:new Date().toISOString()}:{}),telegram_broadcast_result:result}});
  return result;
 }
