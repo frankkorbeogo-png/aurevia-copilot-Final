@@ -51,6 +51,9 @@ test('sans token Telegram, le flux GDELT reste disponible sans prétendre à une
  globalThis.fetch=async input=>{
   const url=String(input);
   if(url.includes('api.gdeltproject.org'))return response({articles:[]});
+  if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
+  if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([]);
   throw new Error('Unexpected URL '+url);
  };
