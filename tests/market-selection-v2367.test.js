@@ -14,8 +14,8 @@ test('les sélecteurs exposent les actifs du catalogue multi-marchés', async ()
 });
 test('le catalogue couvre forex, métaux, énergie, actions et crypto', () => {
   const categories = new Set(Object.values(MARKET_INSTRUMENTS).map(x=>x.market));
-  for (const category of ['FOREX','METALS','EQUITY','CRYPTO']) assert.ok(categories.has(category), category);
-  for (const id of ['XAUUSD','XAGUSD','EURAUD','EURCHF','GBPAUD','AUDJPY','AAPL','MSFT','NVDA','TSLA','AMZN','SOLUSD','XRPUSD']) assert.ok(MARKET_INSTRUMENTS[id], id);
+  for (const category of ['FOREX','METALS','EQUITY','CRYPTO','INDEX','ENERGY']) assert.ok(categories.has(category), category);
+  for (const id of ['XAUUSD','XAGUSD','US30','NAS100','SPX500','WTIUSD','BRENTUSD','NATGASUSD','XPTUSD','XPDUSD','EURAUD','EURCHF','GBPAUD','AUDJPY','AAPL','MSFT','NVDA','TSLA','AMZN','SOLUSD','XRPUSD']) assert.ok(MARKET_INSTRUMENTS[id], id);
   assert.equal(MARKET_IDS.length, MARKET_PROVIDER_SYMBOLS.length);
   assert.equal(MARKET_IDS.length, MARKET_LABELS.length);
 });
@@ -37,7 +37,7 @@ test('le suivi interne et le worker WebSocket acceptent les mêmes symboles affi
 });
 test('les symboles TradingView et les symboles fournisseur restent distincts dans le catalogue',()=>{
   for (const item of Object.values(MARKET_INSTRUMENTS)) {
-    assert.ok(item.label && item.provider && item.tv && item.category && item.market);
+    assert.ok(item.label && item.tv && item.category && item.market);\n    if(item.enabled===false)assert.equal(item.provider,null);else assert.ok(item.provider);
   }
 });
 test('les sélecteurs et les cartes de marché sont synchronisés', async () => {
@@ -61,7 +61,7 @@ test('le build de production embarque le catalogue importé par les modules clie
 
 test('WTI reste visible mais désactivé tant que le plan matières premières n’est pas vérifié', async () => {
   const html = await read('index.html');
-  assert.equal(MARKET_INSTRUMENTS.WTIUSD, undefined);
+  assert.equal(MARKET_INSTRUMENTS.WTIUSD.enabled,false);\n  assert.equal(MARKET_INSTRUMENTS.US30.enabled,false);\n  assert.equal(MARKET_INSTRUMENTS.NAS100.enabled,false);\n  assert.equal(MARKET_INSTRUMENTS.SPX500.enabled,false);
   assert.match(html, /WTI\/USD[^<]*accès matières premières à confirmer/);
   assert.doesNotMatch(html, /data-symbol="WTIUSD"/);
   assert.match(html, /value="WTIUSD" disabled/);
