@@ -19,6 +19,8 @@ jobs:
       - name: Run automated tests
         run: npm test
       - name: Build production assets
+        if: always()
         run: npm run build
       - name: Verify shared market catalogue is shipped
+        if: always()
         run: test -s dist/market-catalog.js
