@@ -87,7 +87,7 @@ Les rappels Telegram des publications économiques américaines sélectionnées 
 
 ## Actualités macroéconomiques et géopolitiques
 
-La fonction planifiée `global-news-sync` interroge le GDELT DOC 2.0 toutes les heures, conserve uniquement les métadonnées des titres récents (titre, source, pays/langue, date et lien), et ajoute ces éléments au contexte macro transmis au moteur IA. Les articles complets ne sont pas recopiés. La source et le lien restent visibles pour vérification humaine.
+La fonction planifiée `global-news-sync` interroge le GDELT DOC 2.0 toutes les heures avec une fenêtre glissante de 90 minutes et une déduplication par URL, conserve uniquement les métadonnées des titres récents (titre, source, pays/langue, date et lien), et ajoute ces éléments au contexte macro transmis au moteur IA. Les articles complets ne sont pas recopiés. La source et le lien restent visibles pour vérification humaine.
 
 Les utilisateurs ayant activé « Annonces économiques et alertes macro / géopolitiques » reçoivent une notification privée Telegram. Chaque notification précise qu’une actualité n’est pas, à elle seule, un signal BUY/SELL. Le flux GDELT est public et ne nécessite pas de clé ; il reste soumis aux limites d’utilisation de la source.
 
