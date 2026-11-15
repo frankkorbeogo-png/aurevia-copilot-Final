@@ -171,14 +171,14 @@
 <label>Direction<select id="posDirection"><option>BUY</option><option>SELL</option></select></label>
 <label>Type d'ordre<select id="posOrderType"><option value="MARKET">Marché (suivi manuel)</option><option>BUY LIMIT</option><option>BUY STOP</option><option>BUY STOP LIMIT</option><option>SELL LIMIT</option><option>SELL STOP</option><option>SELL STOP LIMIT</option></select></label>
 <label id="posTriggerWrap" hidden>Prix de déclenchement<input id="posTrigger" type="number" min="0" step="any" placeholder="Requis pour STOP / STOP LIMIT"></label><label id="posLimitWrap" hidden>Prix limite<input id="posLimit" type="number" min="0" step="any" placeholder="Requis pour LIMIT / STOP LIMIT"></label><label id="posExpiryWrap" hidden>Expiration (facultative)<input id="posExpiry" type="datetime-local"></label>
-<label>Mode de gestion<select id="posMode"><option value="unique">Position unique</option><option value="separate">Trades séparés</option></select></label><label>Lot saisi<input id="posLot" type="number" min="0.00000001" step="any" value="0.10"></label><label>Prix d'entrée<input id="posEntry" type="number" min="0" step="any" required></label><label>Stop Loss<input id="posSL" type="number" min="0" step="any" required></label><label>TP1<input id="posTP1" type="number" min="0" step="any" required></label><label>TP2<input id="posTP2" type="number" min="0" step="any"></label><label>TP3<input id="posTP3" type="number" min="0" step="any"></label>
+<label>Mode de gestion<select id="posMode"><option value="unique">Position unique</option><option value="separate">Trades séparés</option></select></label><label>Lot saisi<input id="posLot" type="number" min="0.01" step="0.01" value="0.10"></label><label>Prix d'entrée<input id="posEntry" type="number" min="0" step="any" required></label><label>Stop Loss<input id="posSL" type="number" min="0" step="any" required></label><label>TP1<input id="posTP1" type="number" min="0" step="any" required></label><label>TP2<input id="posTP2" type="number" min="0" step="any"></label><label>TP3<input id="posTP3" type="number" min="0" step="any"></label>
 <div class="field-section-title" style="grid-column:1/-1"><b>Spécifications de cette position</b><small>Renseigne uniquement les paramètres nécessaires au calcul de cette position.</small></div>
 <label>Levier (facultatif)<input id="posLeverage" type="number" min="1" max="100000" step="1" placeholder="Ex. 200"></label>
 <label>Méthode de calcul<select id="posCalculationType"><option value="contract">Taille du contrat</option><option value="point">Valeur du point</option><option value="tick">Valeur du tick</option></select></label>
 <label data-contract-field="contract">Taille du contrat par lot<input id="posContract" type="number" min="0.00000001" step="any" placeholder="Valeur exacte du broker"></label>
 <label data-contract-field="point" hidden>Taille d'un point<input id="posPointSize" type="number" min="0.00000001" step="any"></label><label data-contract-field="point" hidden>Valeur d'un point par lot (devise du compte)<input id="posPointValue" type="number" min="0.00000001" step="any"></label>
 <label data-contract-field="tick" hidden>Taille d'un tick<input id="posTickSize" type="number" min="0.00000001" step="any"></label><label data-contract-field="tick" hidden>Valeur d'un tick par lot (devise du compte)<input id="posTickValue" type="number" min="0.00000001" step="any"></label>
-<label>Lot minimum<input id="posMinLot" type="number" min="0.00000001" step="any" placeholder="Minimum broker" required></label><label>Pas de volume<input id="posLotStep" type="number" min="0.00000001" step="any" placeholder="Ex. 0.01" required></label><label>Lot maximum (facultatif)<input id="posMaxLot" type="number" min="0.00000001" step="any" placeholder="Facultatif"></label><label>Frais par lot clôturé (devise du compte)<input id="posFees" type="number" min="0" step="any" value="0" required></label>
+<label>Frais par lot clôturé (devise du compte)<input id="posFees" type="number" min="0" step="any" value="0" required></label>
 </div>
 <label class="check-line"><input id="posAutoJournal" type="checkbox" checked> Ajouter automatiquement au journal</label><p class="footnote" id="posModeHelp">Position unique : le lot saisi est réparti entre les TP sélectionnés.</p><button class="primary-btn" id="createPositionBtn" type="button">Enregistrer la position <span>→</span></button></article>
 <aside class="panel"><div class="panel-head"><div><div class="eyebrow">RÈGLES DE GESTION</div><h2>Répartition des volumes</h2></div></div><div class="notice-box"><b>Position unique</b><br>Le lot total est réparti entre les TP sélectionnés ; une seule fiche de journal liée au groupe.</div><div class="notice-box"><b>Trades séparés</b><br>Le lot saisi est appliqué à chaque TP. Chaque trade possède son propre suivi.</div><div class="notice-box">Une clôture partielle diminue le volume restant. Pour calculer le P/L réel, renseignez les spécifications contractuelles exactes du broker pour cet instrument. La méthode peut utiliser une taille de contrat, une valeur de point ou une valeur de tick.</div></aside></div>
@@ -191,7 +191,7 @@
 <div class="scenario-watch-levels validation-levels" id="validationScenarioLevels"><span>Instrument <b>—</b></span><span>Direction <b>—</b></span><span>Entrée <b>—</b></span><span>Stop Loss <b>—</b></span><span>Take Profits <b>—</b></span></div>
 <div class="risk-fields">
 <label>Mode de gestion<select id="validationMode"><option value="unique">Position unique · lot total réparti entre les TP</option><option value="separate">Trades séparés · lot appliqué à chaque TP</option></select></label>
-<label>Lot à enregistrer<input id="validationLot" type="number" min="0.00000001" step="any" placeholder="Ex. 0.05" required></label>
+<label>Lot à enregistrer<input id="validationLot" type="number" min="0.01" step="0.01" placeholder="Ex. 0.05" required></label>
 </div>
 <p class="footnote" id="validationModeHelp">Position unique : le lot saisi est réparti entre les TP sélectionnés, avec une seule fiche journal.</p>
 <div class="field-section-title"><b>Paramètres techniques du trade</b><small>Saisissez les spécifications de calcul applicables à cet instrument. La devise du compte est reprise automatiquement depuis votre profil.</small></div>
@@ -203,9 +203,9 @@
 <label data-validation-contract="point" hidden>Valeur d’un point par lot<input id="validationPointValue" type="number" min="0.00000001" step="any"></label>
 <label data-validation-contract="tick" hidden>Taille d’un tick<input id="validationTickSize" type="number" min="0.00000001" step="any"></label>
 <label data-validation-contract="tick" hidden>Valeur d’un tick par lot<input id="validationTickValue" type="number" min="0.00000001" step="any"></label>
-<label>Lot minimum<input id="validationMinLot" type="number" min="0.00000001" step="any" required></label>
-<label>Pas de volume<input id="validationLotStep" type="number" min="0.00000001" step="any" placeholder="Ex. 0.01" required></label>
-<label>Lot maximum (facultatif)<input id="validationMaxLot" type="number" min="0.00000001" step="any"></label>
+
+
+
 <label>Frais par lot clôturé<input id="validationFees" type="number" min="0" step="any" value="0"></label>
 </div>
 <label class="check-line"><input id="validationAutoJournal" type="checkbox" checked> Ajouter automatiquement au journal</label><p class="footnote">Activée par défaut. Décochez cette option si vous souhaitez suivre la position sans créer de fiche dans le journal.</p>
