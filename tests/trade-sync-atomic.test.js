@@ -84,3 +84,17 @@ test('l’ancienne signature de clôture ne reste pas accessible sans snapshot F
   assert.ok(closeMigration.includes('to authenticated'));
   assert.ok(closeMigration.includes('from public,anon'));
 });
+
+
+const worker = await readFile(new URL('../netlify/functions/trade-watch.mjs', import.meta.url), 'utf8');
+const workerCloseMigration = await readFile(new URL('../supabase/migrations/20261115211000_atomic_worker_close_fx_snapshot.sql', import.meta.url), 'utf8');
+
+test('le worker transmet le snapshot FX à la RPC de clôture, sans seconde écriture REST', () => {
+  assert.ok(worker.includes('p_fx_snapshot:fxSnapshot'));
+  assert.equal(worker.includes("trading_position_closes?id=eq."), false);
+  assert.ok(workerCloseMigration.includes('fx_snapshot'));
+  assert.ok(workerCloseMigration.includes("auth.role(),'')<>'service_role'"));
+  assert.ok(workerCloseMigration.includes('Résultat net incohérent'));
+  assert.ok(workerCloseMigration.includes('to service_role'));
+  assert.ok(workerCloseMigration.includes('from public,anon,authenticated'));
+});
