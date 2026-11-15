@@ -180,7 +180,8 @@ export function deleteSeparateTradeChild(groupId, childId){
 }
 
 export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
-  if(!group||group.status!=='OPEN'||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length))throw new Error('Seul un groupe ouvert sans clôture enregistrée peut être modifié.');
+  if(!group||group.mode!=='unique')throw new Error('Cette action est réservée au mode Position unique.');
+  if(group.status!=='OPEN'||!group.children.length||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length))throw new Error('Seule une position unique ouverte, sans clôture enregistrée, peut être modifiée.');
   if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0)throw new Error('Prix d’entrée et Stop Loss invalides.');
   if(group.direction==='BUY'&&stopLoss>=entry)throw new Error('Pour un BUY, le Stop Loss doit rester sous l’entrée.');
   if(group.direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le Stop Loss doit rester au-dessus de l’entrée.');
