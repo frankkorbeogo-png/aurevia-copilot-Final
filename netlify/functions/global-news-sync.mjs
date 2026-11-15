@@ -77,7 +77,7 @@ async function syncEconomicCalendar(){
  const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(new Date().toISOString())+'&is_active=eq.true&release_id=in.('+RELEASES.map(x=>x.id).join(',')+')&limit=500');
  const live=new Set(events.map(x=>x.external_id));let deactivated=0;
  for(const row of (Array.isArray(current)?current:[])){
-  if(!live.has(row.external_id)&&!row.telegram_broadcast_started_at){
+  if(!live.has(row.external_id)){
    await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});
    deactivated++;
   }
