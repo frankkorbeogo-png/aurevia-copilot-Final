@@ -7,6 +7,7 @@ on:
       - main
       - work/trade-validation-no-broker-2026-11-15
       - work/multi-asset-support-2026-11-15
+      - audit/aurevia-general-2026-11-15
 
 jobs:
   test-and-build:
