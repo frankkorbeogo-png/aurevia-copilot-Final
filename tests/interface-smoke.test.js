@@ -151,7 +151,7 @@ async function withQuoteAuthFetch(providerResponse,run){
 }
 
 test('market-quote returns timestamped metadata from Twelve Data quote endpoint',async()=>{
- await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'XAG/USD',close:'31.25',timestamp:Math.floor(Date.now()/1000)}),{status:200}),async({claims,getProviderUrl})=>{
+ await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'XAG/USD',close:'31.25',timestamp:Math.floor(Date.now()/1000),last_quote_at:Math.floor(Date.now()/1000)}),{status:200}),async({claims,getProviderUrl})=>{
   const r=await marketQuoteHandler({httpMethod:'GET',rawQuery:'symbol=XAG/USD',headers:{authorization:`Bearer header.${claims}.signature`}});
   const data=JSON.parse(r.body);
   assert.equal(r.statusCode,200);
@@ -171,7 +171,7 @@ test('market-quote exposes quota errors instead of silently using cache',async()
 });
 
 test('market-quote rejects provider timestamps too far in the future',async()=>{
- await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'MSFT',close:'520',timestamp:Math.floor((Date.now()+60*60*1000)/1000)}),{status:200}),async({claims})=>{
+ await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'MSFT',close:'520',timestamp:Math.floor((Date.now()+60*60*1000)/1000),last_quote_at:Math.floor((Date.now()+60*60*1000)/1000)}),{status:200}),async({claims})=>{
   const r=await marketQuoteHandler({httpMethod:'GET',rawQuery:'symbol=MSFT',headers:{authorization:`Bearer header.${claims}.signature`}});
   const data=JSON.parse(r.body);
   assert.equal(r.statusCode,502);
@@ -212,4 +212,14 @@ test('tous les instruments du catalogue correspondent à une famille horaire con
   const status=getMarketStatus(id,new Date('2026-11-16T12:00:00Z'));
   assert.equal(status.market,item.market, `${id} doit être classé ${item.market}`);
  }
+});
+
+test('market-quote does not treat the quote candle opening timestamp as last quote time',async()=>{
+ await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'AAPL',close:'220',timestamp:Math.floor(Date.now()/1000)}),{status:200}),async({claims})=>{
+  const r=await marketQuoteHandler({httpMethod:'GET',rawQuery:'symbol=AAPL',headers:{authorization:`Bearer header.${claims}.signature`}});
+  const data=JSON.parse(r.body);
+  assert.equal(r.statusCode,200);
+  assert.equal(data.asOf,null);
+  assert.equal(data.freshness,'unknown');
+ });
 });
