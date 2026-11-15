@@ -25,7 +25,7 @@ async function fetchDxy(){
  const stamp=Number(d.last_quote_at??d.timestamp);const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():(d.datetime?new Date(`${d.datetime.replace(' ','T')}Z`).toISOString():null);
  const ageMinutes=asOf?Math.floor((Date.now()-Date.parse(asOf))/60000):null;
  const freshness=ageMinutes===null?'unknown':ageMinutes < -5?'future':ageMinutes<=20?'recent':'stale';
- if(freshness==='future')return {configured:false,symbol:'DXY',price:null,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,notice:'Horodatage DXY situé dans le futur : la valeur est exclue du contexte transmis à l’IA.'};
+ if(freshness==='future'||freshness==='stale')return {configured:false,symbol:'DXY',price:null,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,notice:freshness==='future'?'Horodatage DXY situé dans le futur : la valeur est exclue du contexte transmis à l’IA.':'Cotation DXY trop ancienne : la valeur est exclue du contexte transmis à l’IA.'};
  return {configured:true,symbol:'DXY',price,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,notice:freshness==='stale'?'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.':freshness==='unknown'?'Horodatage de cotation non fourni : fraîcheur non vérifiable.':'Dernière cotation horodatée fournie par Twelve Data; ce flux REST n’est pas un flux tick temps réel.'};
 }
 async function fetchGlobalNews(){
@@ -82,14 +82,14 @@ export async function handler(event){if(event.httpMethod!=='GET')return json(405
  if(key&&usdRelevant){
   const entries=await Promise.all(Object.entries(SERIES).map(async([name,id])=>{
    try{
-    const result=await latestSeries(key,id),future=result.freshness==='future';
-    return [name,{seriesId:id,...result,available:!future,...(future?{error:'Observation FRED datée dans le futur : valeur exclue du contexte IA.'}:{})}];
+    const result=await latestSeries(key,id),unusable=result.freshness==='future'||result.freshness==='stale';
+    return [name,{seriesId:id,...result,available:!unusable,...(unusable?{error:result.freshness==='future'?'Observation FRED datée dans le futur : valeur exclue du contexte IA.':'Observation FRED trop ancienne : valeur exclue du contexte IA.'}:{})}];
    }catch(error){return [name,{seriesId:id,available:false,error:error.message||'Série indisponible.'}];}
   }));
   series=Object.fromEntries(entries);fredConfigured=Object.values(series).some(x=>x.available);
   const failed=Object.values(series).filter(x=>!x.available).length;
   const futureSeries=Object.values(series).filter(x=>x.freshness==='future').length;
-  if(failed||futureSeries)fredNotice=`${failed} série(s) FRED indisponible(s), dont ${futureSeries} datée(s) dans le futur; ces valeurs sont exclues du contexte IA.`;
+  if(failed||futureSeries)fredNotice=`${failed} série(s) FRED indisponible(s), dont ${futureSeries} datée(s) dans le futur; les valeurs futures ou périmées sont exclues du contexte IA.`;
  } else fredNotice=key?'Séries macroéconomiques américaines non sollicitées : aucune devise USD dans cet instrument.':'FRED_API_KEY absent.';
  const dates=Object.values(series).filter(x=>x.available).map(x=>x.latest.date).sort();
  const stale=Object.values(series).filter(x=>x.available&&x.freshness==='stale').length;
