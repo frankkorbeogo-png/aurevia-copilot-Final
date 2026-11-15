@@ -18,11 +18,12 @@ async function latestSeries(apiKey,id){
 async function fetchDxy(){
  const key=process.env.TWELVEDATA_API_KEY;
  if(!key)return {configured:false,source:'Twelve Data',notice:'TWELVEDATA_API_KEY absent.'};
- const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('timezone','UTC');
+ const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('interval','1min');u.searchParams.set('timezone','UTC');
  const r=await fetch(u,{signal:AbortSignal.timeout(9000)});let d={};try{d=await r.json();}catch{}
  const price=Number(d.close??d.price);
  if(!r.ok||!Number.isFinite(price)||price<=0||d.status==='error'||d.code){return {configured:false,source:'Twelve Data',symbol:'DXY',providerStatus:d.code||r.status,notice:d.message||'Le fournisseur ne confirme pas le symbole DXY pour cette clé ou ce forfait.'};}
- const stamp=Number(d.last_quote_at??d.timestamp);const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():(d.datetime?new Date(`${d.datetime.replace(' ','T')}Z`).toISOString():null);
+ // Quote.datetime/timestamp indiquent l'ouverture de la bougie ; seule last_quote_at date la dernière cotation.
+ const stamp=Number(d.last_quote_at);const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():null;
  const ageMinutes=asOf?Math.floor((Date.now()-Date.parse(asOf))/60000):null;
  const freshness=ageMinutes===null?'unknown':ageMinutes < -5?'future':ageMinutes<=20?'recent':'stale';
  if(freshness==='future'||freshness==='stale')return {configured:false,symbol:'DXY',price:null,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,notice:freshness==='future'?'Horodatage DXY situé dans le futur : la valeur est exclue du contexte transmis à l’IA.':'Cotation DXY trop ancienne : la valeur est exclue du contexte transmis à l’IA.'};
