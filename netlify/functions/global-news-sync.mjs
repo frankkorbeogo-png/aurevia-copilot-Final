@@ -152,6 +152,6 @@ export async function handler(event){
  try{Object.assign(result,await syncGlobalNews());}
  catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
  result.asOf=new Date().toISOString();
- const failed=Boolean(result.economicCalendarError&&result.globalNewsError);
+ const failed=Boolean(result.economicCalendarError||result.globalNewsError);
  return json(failed?502:200,result);
 }
