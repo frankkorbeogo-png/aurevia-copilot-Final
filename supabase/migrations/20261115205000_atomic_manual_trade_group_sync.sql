@@ -25,7 +25,6 @@ declare
   v_journal_id uuid;
   v_position_ids uuid[] := array[]::uuid[];
   v_mappings jsonb := '[]'::jsonb;
-  v_rows jsonb;
 begin
   if v_user_id is null then
     raise exception 'AUTHENTICATION_REQUIRED';
