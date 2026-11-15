@@ -119,15 +119,17 @@ test('surveillance ignore les cotations, niveaux ou directions invalides au lieu
 test('BUY LIMIT et BUY STOP exigent un franchissement observé',()=>{
  const limit={entry_price:2000,last_observed_price:2001,entry_armed:true};
  assert.equal(evaluateEntryTrigger(limit,{direction:'BUY',order_type:'BUY LIMIT'},{price:2000}).action,'ACTIVATE');
- const stop={entry_price:1999,last_observed_price:1998,entry_armed:true};
+ const stop={entry_price:2005,trigger_price:1999,last_observed_price:1998,entry_armed:true};
  assert.equal(evaluateEntryTrigger(stop,{direction:'BUY',order_type:'BUY STOP'},{price:1999}).action,'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2005,last_observed_price:2004,entry_armed:true},{direction:'BUY',order_type:'BUY STOP'},{price:2005}).action,'ACTIVATE');
  assert.equal(evaluateEntryTrigger({entry_price:1999,last_observed_price:1999,entry_armed:false},{direction:'BUY',order_type:'BUY LIMIT'},{price:1998}).action,'TRACK');
 });
 test('SELL LIMIT et SELL STOP exigent un franchissement observé',()=>{
  const limit={entry_price:2000,last_observed_price:1999,entry_armed:true};
  assert.equal(evaluateEntryTrigger(limit,{direction:'SELL',order_type:'SELL LIMIT'},{price:2000}).action,'ACTIVATE');
- const stop={entry_price:2001,last_observed_price:2002,entry_armed:true};
+ const stop={entry_price:1995,trigger_price:2001,last_observed_price:2002,entry_armed:true};
  assert.equal(evaluateEntryTrigger(stop,{direction:'SELL',order_type:'SELL STOP'},{price:2001}).action,'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:2001,trigger_price:1995,last_observed_price:1996,entry_armed:true},{direction:'SELL',order_type:'SELL STOP'},{price:1995}).action,'ACTIVATE');
 });
 test('STOP LIMIT exige le franchissement du stop puis le retour vers le prix limite',()=>{
  const group={direction:'BUY',order_type:'BUY STOP LIMIT'};
@@ -163,4 +165,22 @@ test('le worker serveur calcule aussi les instruments à valeur de point ou de t
  const point=calculateInternalClosePnl({volume_remaining:2,entry_price:100,contract_spec:{brokerName:'B',accountCurrency:'EUR',calculationType:'point',pointSize:1,pointValue:2.5,minLot:0.1,lotStep:0.1,feesPerLot:0}},'BUY',105);
  const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
  assert.equal(point.gross,25);assert.equal(point.net,25);assert.equal(tick.gross,7.5);assert.equal(tick.net,7.5);
+});
+
+test('la surveillance vérifie l’expiration avant de demander une cotation',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/isPendingOrderExpired\(p,Date\.now\(\)\)/);
+ assert.ok(source.indexOf('isPendingOrderExpired(p,Date.now())')<source.indexOf('let prices=priceCache.get'));
+ assert.match(source,/rpc\/aurevia_expire_pending_position_worker/);
+});
+test('la migration d’expiration synchronise expires_at et expose un worker service_role',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const sql=await readFile(new URL('../supabase/migrations/20261115220000_pending_order_expiry.sql',import.meta.url),'utf8');
+ assert.match(sql,/add column if not exists expires_at/);
+ assert.match(sql,/add column if not exists expired_at/);
+ assert.match(sql,/aurevia_expire_pending_position_worker/);
+ assert.match(sql,/grant execute .* to service_role/i);
+ assert.match(sql,/revoke all .*authenticated/i);
+ assert.match(sql,/EXPIRED/);
 });
