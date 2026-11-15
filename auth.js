@@ -421,16 +421,20 @@ export async function deleteClosedTradeGroupFromSupabase(groupId){
 }
 
 export async function syncTradeCloseToSupabase(group,child,closeEvent){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- // One server transaction inserts the idempotent close event, recomputes totals,
- // and updates the linked journal/group. A retry cannot double-count the close.
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
+ // The close, FX conversion snapshot, remaining volume, cumulative P/L and
+ // linked journal update are committed together by one PostgreSQL transaction.
  const {data,error}=await supabase.rpc('aurevia_record_position_close',{
   p_close_id:closeEvent.id,p_position_id:child.id,p_volume:closeEvent.volume,
   p_exit_price:closeEvent.exit,p_gross_pnl:closeEvent.gross,p_fees:closeEvent.fees,
-  p_net_pnl:closeEvent.net,p_closed_at:closeEvent.closedAt
+  p_net_pnl:closeEvent.net,p_closed_at:closeEvent.closedAt,
+  p_fx_snapshot:closeEvent.fxSnapshot??null
  });
  if(error)throw new Error(error.message);
- if(closeEvent.fxSnapshot){const {error:fxError}=await supabase.from('trading_position_closes').update({fx_snapshot:closeEvent.fxSnapshot}).eq('id',closeEvent.id).eq('position_id',child.id).eq('user_id',user.id);if(fxError)throw new Error(`Clôture enregistrée, mais archivage du taux impossible : ${fxError.message}`);}
+ if(!data?.ok)throw new Error(data?.error||'La clôture cloud n’a pas été confirmée.');
  return {synced:true,...(data||{})};
 }
 
