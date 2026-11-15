@@ -16,8 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run trade registration regression tests
-        run: node --test tests/scenario-direct-registration-v2394.test.js tests/telegram-spec-flow-v2380.test.js
+      - name: Run focused regression tests
+        run: node --test tests/scenario-direct-registration-v2394.test.js tests/telegram-spec-flow-v2380.test.js tests/global-news-telegram.test.js tests/macro-global-news-context.test.js
       - name: Run complete test suite
         run: npm test
       - name: Build production assets
