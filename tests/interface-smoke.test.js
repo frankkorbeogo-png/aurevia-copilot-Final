@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {handler as marketQuoteHandler} from '../netlify/functions/market-quote.mjs';
 const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');
 test('l’interface expose les treize espaces fonctionnels',()=>{const pages=[...html.matchAll(/data-page-view="([^"]+)"/g)].map(x=>x[1]);assert.equal(new Set(pages).size,13);for(const page of ['accueil','marches','risque','journal','positions','validation-trade','dxy','actualites','annonces','telegram','parametres','guide','admin'])assert.ok(pages.includes(page));});
@@ -121,3 +122,57 @@ test('la migration annonce conserve les annonces publiées expirées et isole le
 test('la devise du compte est définie une fois dans les paramètres et réutilisée pour chaque position',async()=>{const app=await readFile(new URL('../app.js',import.meta.url),'utf8');const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');const engine=await readFile(new URL('../contract-engine.js',import.meta.url),'utf8');assert.doesNotMatch(html,/id="brokerSettingsPanel"/);assert.doesNotMatch(html,/id="posBrokerName"|id="posAccountType"|id="posAccountCurrency"/);assert.match(html,/id="profileAccountCurrency"/);assert.match(html,/id="accountCurrencyNotice"/);assert.doesNotMatch(html,/id="posConversion"/);assert.match(html,/id="posContract"/);assert.match(html,/id="posCalculationType"/);assert.match(app,/readPositionContractSpec/);assert.match(app,/accountCurrency\|\|''/);assert.match(auth,/account_currency/);assert.match(engine,/calculationType/);assert.match(engine,/pointValue/);assert.match(engine,/tickValue/);});
 
 test('le build publie le moteur universel de calcul contractuel',async()=>{const build=await readFile(new URL('../scripts/build.mjs',import.meta.url),'utf8');const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');assert.match(build,/contract-engine\.js/);assert.match(sw,/contract-engine\.js/);});
+
+
+async function withQuoteAuthFetch(providerResponse,run){
+ const old={...process.env};
+ process.env.SUPABASE_URL='https://example.supabase.co';
+ process.env.SUPABASE_PUBLISHABLE_KEY='publishable';
+ process.env.SUPABASE_SERVICE_ROLE_KEY='service';
+ process.env.TWELVEDATA_API_KEY='td-test';
+ const original=globalThis.fetch;
+ const claims=Buffer.from(JSON.stringify({sub:'quote-user',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
+ let providerUrl='';
+ globalThis.fetch=async input=>{
+  const u=String(input);
+  if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'quote-user'}),{status:200});
+  if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});
+  providerUrl=u;
+  return providerResponse();
+ };
+ try{return await run({claims,getProviderUrl:()=>providerUrl});}
+ finally{
+  globalThis.fetch=original;
+  for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];
+  Object.assign(process.env,old);
+ }
+}
+
+test('market-quote returns timestamped metadata from Twelve Data quote endpoint',async()=>{
+ await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'XAG/USD',close:'31.25',timestamp:Math.floor(Date.now()/1000)}),{status:200}),async({claims,getProviderUrl})=>{
+  const r=await marketQuoteHandler({httpMethod:'GET',rawQuery:'symbol=XAG/USD',headers:{authorization:`Bearer header.${claims}.signature`}});
+  const data=JSON.parse(r.body);
+  assert.equal(r.statusCode,200);
+  assert.equal(data.price,31.25);
+  assert.ok(data.asOf);
+  assert.match(getProviderUrl(),/api\.twelvedata\.com\/quote/);
+ });
+});
+
+test('market-quote exposes quota errors instead of silently using cache',async()=>{
+ await withQuoteAuthFetch(()=>new Response(JSON.stringify({code:429,message:'API credits exhausted'}),{status:200}),async({claims})=>{
+  const r=await marketQuoteHandler({httpMethod:'GET',rawQuery:'symbol=AAPL',headers:{authorization:`Bearer header.${claims}.signature`}});
+  const data=JSON.parse(r.body);
+  assert.equal(r.statusCode,429);
+  assert.equal(data.code,'TWELVEDATA_QUOTA');
+ });
+});
+
+test('market-quote rejects provider timestamps too far in the future',async()=>{
+ await withQuoteAuthFetch(()=>new Response(JSON.stringify({symbol:'MSFT',close:'520',timestamp:Math.floor((Date.now()+60*60*1000)/1000)}),{status:200}),async({claims})=>{
+  const r=await marketQuoteHandler({httpMethod:'GET',rawQuery:'symbol=MSFT',headers:{authorization:`Bearer header.${claims}.signature`}});
+  const data=JSON.parse(r.body);
+  assert.equal(r.statusCode,502);
+  assert.equal(data.code,'TWELVEDATA_FUTURE_TIMESTAMP');
+ });
+});
