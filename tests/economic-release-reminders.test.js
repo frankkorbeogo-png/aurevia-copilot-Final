@@ -41,7 +41,7 @@ test('FRED synchronise les dates, désactive les dates retirées et rappelle au 
   assert.ok(inserted.some(x=>x.release_id===10&&x.is_active===true));
   const cpi=inserted.find(x=>x.release_id===10);
   const local=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(cpi.scheduled_at));
-  assert.equal(local,'08:30');assert.ok(body.economicReminders,JSON.stringify(body));assert.equal(body.economicReminders.processed,1);
+  assert.equal(local,'08:30');assert.ok(body.economicReminders,JSON.stringify(body));assert.ok(body.economicReminders,JSON.stringify(body));assert.equal(body.economicReminders.processed,1);
   assert.equal(patches.length,1);assert.equal(patches[0].is_active,false);
   assert.equal(messages.length,1);assert.match(messages[0].text,/Heure Burkina Faso/);
   assert.match(messages[0].text,/généralement environ 30 minutes avant/);
