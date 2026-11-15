@@ -101,4 +101,4 @@ schedule = "* * * * *"
   status = 200
 
 [functions."global-news-sync"]
-  schedule = "*/15 * * * *"
+  schedule = "0 * * * *"
