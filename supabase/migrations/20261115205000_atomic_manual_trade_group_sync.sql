@@ -79,10 +79,10 @@ begin
     contract_spec=excluded.contract_spec,
     broker_snapshot=excluded.broker_snapshot,
     updated_at=now()
-  where public.trading_position_groups.user_id=v_user_id
-  returning 1 into v_group_count;
+  where public.trading_position_groups.user_id=v_user_id;
+  get diagnostics v_group_count = row_count;
 
-  if coalesce(v_group_count,0)=0 then
+  if v_group_count <> 1 then
     raise exception 'TRADE_GROUP_NOT_OWNED';
   end if;
 
@@ -132,13 +132,12 @@ begin
       contract_spec=excluded.contract_spec,
       updated_at=now()
     where public.trading_positions.user_id=v_user_id
-      and public.trading_positions.group_id=v_group_id
-    returning 1 into v_position_count;
+      and public.trading_positions.group_id=v_group_id;
+    get diagnostics v_position_count = row_count;
 
-    if coalesce(v_position_count,0)=0 then
+    if v_position_count <> 1 then
       raise exception 'TRADE_POSITION_NOT_OWNED';
     end if;
-    v_position_count := 0;
   end loop;
 
   if not v_auto_journal and jsonb_array_length(coalesce(p_journal,'[]'::jsonb)) <> 0 then
