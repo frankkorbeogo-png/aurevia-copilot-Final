@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
+import {splitVolume,createTradeGroup,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -250,4 +250,45 @@ test('une position unique entièrement clôturée peut être retirée du suivi e
  assert.equal(deleteClosedTradeGroup(group.id),true);
  assert.equal(loadTradeGroups().some(row=>row.id===group.id),false);
  assert.equal(loadLinkedJournal().filter(row=>row.groupId===group.id).length,journalBefore.length);delete globalThis.localStorage;
+});
+
+
+test('payload cloud canonique : position unique garde PENDING et journal reçoit OPEN',()=>{
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}],orderType:'BUY LIMIT'});
+ const payload=buildTradeGroupCloudRows(group,'user-1');
+ assert.equal(payload.groupRow.auto_journal,true);
+ assert.equal(payload.positions.length,3);
+ assert.ok(payload.positions.every(row=>row.status==='PENDING'));
+ assert.equal(payload.journalRows.length,1);
+ assert.equal(payload.journalRows[0].result,'OPEN');
+ assert.equal(payload.journalRows[0].mode,'unique');
+ assert.equal(payload.journalRows[0].volume_initial,0.03);
+ assert.equal(payload.journalRows[0].volume_remaining,0.03);
+});
+
+test('payload cloud canonique : trades séparés créent une fiche OPEN par enfant',()=>{
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'SELL',lot:0.1,entry:2000,stopLoss:2010,takeProfits:[{label:'TP1',price:1990},{label:'TP2',price:1980}],orderType:'SELL LIMIT'});
+ const payload=buildTradeGroupCloudRows(group,'user-1');
+ assert.equal(payload.positions.length,2);
+ assert.ok(payload.positions.every(row=>row.status==='PENDING'));
+ assert.equal(payload.journalRows.length,2);
+ assert.ok(payload.journalRows.every(row=>row.result==='OPEN'&&row.mode==='separate'));
+ assert.deepEqual(payload.journalRows.map(row=>row.position_id),group.children.map(child=>child.id));
+ assert.deepEqual(payload.journalRows.map(row=>row.volume_initial),[0.1,0.1]);
+});
+
+test('payload cloud : journal désactivé pour tous les modes ne crée aucune fiche',()=>{
+ for(const mode of ['unique','separate']){
+  const group=createTradeGroup({mode,instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020}],autoJournal:false,orderType:'BUY LIMIT'});
+  const payload=buildTradeGroupCloudRows(group,'user-1');
+  assert.equal(payload.groupRow.auto_journal,false);
+  assert.equal(payload.journalRows.length,0);
+ }
+});
+
+test('payload cloud : un ordre MARKET transmet OPEN au suivi et au journal',()=>{
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});
+ const payload=buildTradeGroupCloudRows(group,'user-1');
+ assert.equal(payload.positions[0].status,'OPEN');
+ assert.equal(payload.journalRows[0].result,'OPEN');
 });
