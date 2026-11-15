@@ -249,8 +249,8 @@ async function confirmTradeValidation(){
   if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un lot valide.');
   const rawSpec=await validationContractSpec(),checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
-  if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi est en dehors des limites de votre broker.');
-  if(Math.abs(volume/checked.spec.lotStep-Math.round(volume/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas le pas de volume du broker.');
+  if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi dépasse les limites indiquées dans les paramètres techniques.');
+  if(Math.abs(volume/checked.spec.lotStep-Math.round(volume/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas le pas de volume indiqué.');
   const count=(s.take_profits||[]).length;
   if(mode==='unique'&&Math.floor((volume/count)/checked.spec.lotStep)*checked.spec.lotStep<checked.spec.minLot)throw new Error('Le lot est trop faible pour être réparti entre les TP sélectionnés.');
   button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
