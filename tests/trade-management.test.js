@@ -356,8 +356,8 @@ test('valide les côtés de marché des six types d’ordres en attente',()=>{
  const cases=[
   ['BUY LIMIT','BUY',4000,null,4010,true],['BUY LIMIT','BUY',4000,null,3990,false],
   ['SELL LIMIT','SELL',4000,null,3990,true],['SELL LIMIT','SELL',4000,null,4010,false],
-  ['BUY STOP','BUY',4000,null,3990,true],['BUY STOP','BUY',4000,null,4010,false],
-  ['SELL STOP','SELL',4000,null,4010,true],['SELL STOP','SELL',4000,null,3990,false],
+  ['BUY STOP','BUY',4000,4000,3990,true],['BUY STOP','BUY',4000,4000,4010,false],
+  ['SELL STOP','SELL',4000,4000,4010,true],['SELL STOP','SELL',4000,4000,3990,false],
   ['BUY STOP LIMIT','BUY',3990,4000,3995,true],['BUY STOP LIMIT','BUY',3990,4000,4005,false],
   ['SELL STOP LIMIT','SELL',4010,4000,4005,true],['SELL STOP LIMIT','SELL',4010,4000,3995,false]
  ];
@@ -391,4 +391,12 @@ test('lot minimum technique de 0,01 accepté et volume inférieur refusé',()=>{
 test('position unique exige au moins 0,01 par TP',()=>{
  const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020},{price:2030}],lot:0.02,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}};
  assert.throws(()=>createTradeGroup(base),/volume est insuffisant|Volume insuffisant|minimum et maximum/);
+});
+
+test('BUY STOP et SELL STOP valident le cours contre le déclenchement, pas le prix indicatif',()=>{
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY STOP',direction:'BUY',entry:4050,triggerPrice:4000,marketPrice:3990}).ok,true);
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY STOP',direction:'BUY',entry:4050,triggerPrice:4000,marketPrice:4010}).ok,false);
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'SELL STOP',direction:'SELL',entry:3950,triggerPrice:4000,marketPrice:4010}).ok,true);
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'SELL STOP',direction:'SELL',entry:3950,triggerPrice:4000,marketPrice:3990}).ok,false);
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY STOP',direction:'BUY',entry:4050,triggerPrice:null,marketPrice:3990}).ok,false);
 });
