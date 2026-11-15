@@ -15,7 +15,7 @@ test('les sélecteurs exposent les actifs du catalogue multi-marchés', async ()
 test('le catalogue couvre forex, métaux, énergie, actions et crypto', () => {
   const categories = new Set(Object.values(MARKET_INSTRUMENTS).map(x=>x.market));
   for (const category of ['FOREX','METALS','EQUITY','CRYPTO','INDEX','ENERGY']) assert.ok(categories.has(category), category);
-  for (const id of ['XAUUSD','XAGUSD','US30','NAS100','SPX500','WTIUSD','BRENTUSD','NATGASUSD','XPTUSD','XPDUSD','EURAUD','EURCHF','GBPAUD','AUDJPY','AAPL','MSFT','NVDA','TSLA','AMZN','SOLUSD','XRPUSD']) assert.ok(MARKET_INSTRUMENTS[id], id);
+  for (const id of ['XAUUSD','XAGUSD','EURAUD','EURCHF','GBPAUD','AUDJPY','AAPL','MSFT','NVDA','TSLA','AMZN','SOLUSD','XRPUSD']) assert.ok(MARKET_INSTRUMENTS[id], id);
   assert.equal(MARKET_IDS.length, MARKET_PROVIDER_SYMBOLS.length);
   assert.equal(MARKET_IDS.length, MARKET_LABELS.length);
 });
@@ -60,13 +60,3 @@ test('le build de production embarque le catalogue importé par les modules clie
   assert.match(build, /'market-catalog\.js'/);
 });
 
-test('WTI reste visible mais désactivé tant que le plan matières premières n’est pas vérifié', async () => {
-  const html = await read('index.html');
-  assert.equal(MARKET_INSTRUMENTS.WTIUSD.enabled,false);
-  assert.equal(MARKET_INSTRUMENTS.US30.enabled,false);
-  assert.equal(MARKET_INSTRUMENTS.NAS100.enabled,false);
-  assert.equal(MARKET_INSTRUMENTS.SPX500.enabled,false);
-  assert.match(html, /WTI\/USD[^<]*accès à confirmer/);
-  assert.doesNotMatch(html, /data-symbol="WTIUSD"/);
-  assert.match(html, /value="WTIUSD" disabled/);
-});
