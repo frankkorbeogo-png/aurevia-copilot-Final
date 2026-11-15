@@ -51,6 +51,22 @@ export function createTradeGroup(input) {
   return group;
 }
 
+export function buildTradeGroupCloudRows(group,userId){
+  if(!group?.id||!userId||!['unique','separate'].includes(group.mode)||!Array.isArray(group.children)||!group.children.length)throw new Error('Groupe de trades invalide pour la synchronisation cloud.');
+  const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null};
+  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:child.createdAt}));
+  let journalRows=[];
+  if(group.autoJournal){
+    if(group.mode==='unique'){
+      const first=group.children[0],pending=group.children.every(child=>child.status==='PENDING');
+      journalRows=[{user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${pending?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,child)=>sum+Number(child.remainingLot||0),0),gross_pnl:0,fees:0,entry_price:first.entry,stop_loss:first.stopLoss,take_profit:first.takeProfit}];
+    }else{
+      journalRows=group.children.map(child=>({user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${child.tpLabel}${child.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:child.id,mode:'separate',volume_initial:child.initialLot,volume_remaining:child.remainingLot,tp_label:child.tpLabel,gross_pnl:0,fees:0,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit}));
+    }
+  }
+  return {groupRow,positions,journalRows};
+}
+
 export function calculateClosePnl({direction,entry,exit,volume,contractSize,quoteToAccount=1,fees=0,contractSpec=null}) {
   const result=calculateContractPnl({direction,entry,exit,volume,contractSpec,contractSize,quoteToAccount,fees});
   return result.currency?{gross:result.gross,fees:result.fees,net:result.net,currency:result.currency}:{gross:result.gross,fees:result.fees,net:result.net};
@@ -70,6 +86,19 @@ export function recordPartialClose(group, childId, {volume,exit,contractSize=gro
   if(child.remainingLot<=1e-8){child.remainingLot=0;child.status='CLOSED';child.closedAt=new Date().toISOString();}
   group.status=group.children.every(x=>x.status==='CLOSED')?'CLOSED':'OPEN';
   return {group,child,pnl};
+}
+
+export function resolveLinkedJournalStatus(row, group) {
+  if (row?.result && ['WIN','LOSS','BREAKEVEN'].includes(row.result)) return 'CLOSED';
+  if (row?.result === 'OPEN') {
+    const children = row.position_id
+      ? (group?.children || []).filter(child => child.id === row.position_id)
+      : (group?.children || []);
+    if (children.length && children.every(child => child.status === 'PENDING')) return 'PENDING';
+    if (children.length && children.every(child => child.status === 'CLOSED')) return 'CLOSED';
+    return 'OPEN';
+  }
+  return row?.result === 'PENDING' ? 'PENDING' : 'CLOSED';
 }
 
 export function groupSummary(group) {
@@ -104,6 +133,13 @@ export function persistTradeGroup(updated){
   return updated;
 }
 export function loadLinkedJournal(){return read(JOURNAL_KEY);}
+export function attachCloudJournalIds(groupId,mappings=[]){
+  const ids=new Map((mappings||[]).map(row=>[row.positionId||'parent',row.id]));
+  const rows=read(JOURNAL_KEY).map(row=>row.groupId===groupId&&ids.has(row.childId||'parent')?{...row,cloudId:ids.get(row.childId||'parent')}:row);
+  if(!write(JOURNAL_KEY,rows))throw new Error('Impossible d’associer les identifiants cloud aux fiches journal locales.');
+  return true;
+}
+
 
 export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
   const local=read(STORAGE_KEY),byId=new Map(local.map(g=>[g.id,g]));
@@ -118,18 +154,80 @@ export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
   return merged;
 }
 
-export function deleteClosedTradeGroup(groupId){
-  const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
-  if(!group)throw new Error('Groupe de positions introuvable.');
-  if(group.status!=='CLOSED'||group.children.some(c=>c.status!=='CLOSED'||c.remainingLot>1e-8))throw new Error('Seul un groupe entièrement clôturé peut être supprimé.');
-  if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
-  const journal=read(JOURNAL_KEY).filter(x=>x.groupId!==groupId);
-  if(!write(JOURNAL_KEY,journal))throw new Error('Position supprimée, mais la suppression de sa fiche journal locale a échoué.');
+export function deleteOpenTradeGroup(groupId){
+  const group=read(STORAGE_KEY).find(x=>x.id===groupId);
+  if(!group)throw new Error('Position introuvable.');
+  throw new Error('Une position doit être entièrement clôturée avant de pouvoir être retirée du suivi.');
+}
+
+export function deletePendingTradeGroup(groupId){
+  const rows=read(STORAGE_KEY),group=rows.find(item=>item.id===groupId);
+  if(!group||group.mode!=='unique')throw new Error('Cette action est réservée aux positions uniques.');
+  if(!group.children.length||group.children.some(child=>child.status!=='PENDING'||Number(child.remainingLot)!==Number(child.initialLot)||(child.closes||[]).length))throw new Error('Une position unique ne peut être supprimée que si tous ses trades sont encore en attente et sans clôture.');
+  const journal=read(JOURNAL_KEY),nextJournal=journal.filter(row=>row.groupId!==groupId);
+  if(!write(STORAGE_KEY,rows.filter(item=>item.id!==groupId)))throw new Error('Impossible de supprimer la position en attente.');
+  if(!write(JOURNAL_KEY,nextJournal)){write(STORAGE_KEY,rows);throw new Error('La fiche journal n’a pas pu être supprimée ; la position a été restaurée.');}
   return true;
 }
 
+export function deleteClosedTradeGroup(groupId){
+  const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
+  if(!group)throw new Error('Groupe de positions introuvable.');
+  if(group.status!=='CLOSED'||!group.children.length||group.children.some(c=>c.status!=='CLOSED'||Number(c.remainingLot)>1e-8||(c.closes||[]).length===0))throw new Error('Seul un groupe entièrement clôturé peut être supprimé du suivi.');
+  if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
+  return true;
+}
+
+export function deleteLinkedJournalEntry(journalId){
+  const rows=read(JOURNAL_KEY),next=rows.filter(row=>String(row.id)!==String(journalId)&&String(row.cloudId||'')!==String(journalId));
+  if(next.length===rows.length)throw new Error('Fiche journal introuvable.');
+  if(!write(JOURNAL_KEY,next))throw new Error('Impossible de supprimer cette fiche du journal local.');
+  return true;
+}
+
+export function editSeparateTradeChild(group, childId, {entry,stopLoss,takeProfit}){
+  if(!group||group.mode!=='separate')throw new Error('Cette action est réservée au mode Trades séparés.');
+  const child=group.children.find(item=>item.id===childId);
+  if(!child)throw new Error('Trade introuvable.');
+  if(!['OPEN','PENDING'].includes(child.status)||(child.closes||[]).length)throw new Error('Un trade déjà clôturé ou ayant une clôture enregistrée ne peut plus être modifié.');
+  if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0||!Number.isFinite(takeProfit)||takeProfit<=0)throw new Error('Entrée, Stop Loss et TP doivent être des prix positifs.');
+  if(group.direction==='BUY'&&(stopLoss>=entry||takeProfit<=entry))throw new Error('Pour un BUY, le SL doit être sous l’entrée et le TP au-dessus.');
+  if(group.direction==='SELL'&&(stopLoss<=entry||takeProfit>=entry))throw new Error('Pour un SELL, le SL doit être au-dessus de l’entrée et le TP sous l’entrée.');
+  child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfit;group.updatedAt=new Date().toISOString();return child;
+}
+
+export function deletePendingSeparateTradeChild(groupId,childId){
+  const rows=read(STORAGE_KEY),group=rows.find(item=>item.id===groupId);
+  if(!group||group.mode!=='separate')throw new Error('Cette action est réservée au mode Trades séparés.');
+  const child=group.children.find(item=>item.id===childId);
+  if(!child)throw new Error('Trade introuvable.');
+  if(child.status!=='PENDING'||Number(child.remainingLot)!==Number(child.initialLot)||(child.closes||[]).length)throw new Error('Seul un trade encore en attente, sans clôture, peut être supprimé.');
+  const nextJournal=read(JOURNAL_KEY).filter(row=>!(row.groupId===groupId&&row.childId===childId));
+  const nextChildren=group.children.filter(item=>item.id!==childId);
+  const nextGroups=nextChildren.length?rows.map(item=>item.id===groupId?{...group,children:nextChildren,requestedLot:nextChildren.reduce((sum,item)=>sum+Number(item.initialLot||0),0),updatedAt:new Date().toISOString()}:item):rows.filter(item=>item.id!==groupId);
+  if(!write(STORAGE_KEY,nextGroups))throw new Error('Impossible de supprimer le trade en attente.');
+  if(!write(JOURNAL_KEY,nextJournal)){write(STORAGE_KEY,rows);throw new Error('La fiche journal n’a pas pu être supprimée ; le trade a été restauré.');}
+  return {groupDeleted:!nextChildren.length};
+}
+
+export function deleteSeparateTradeChild(groupId, childId){
+  const rows=read(STORAGE_KEY),group=rows.find(item=>item.id===groupId);
+  if(!group||group.mode!=='separate')throw new Error('Cette action est réservée au mode Trades séparés.');
+  const child=group.children.find(item=>item.id===childId);
+  if(!child)throw new Error('Trade introuvable.');
+  if(child.status!=='CLOSED'||Number(child.remainingLot)>1e-8||!(child.closes||[]).length)throw new Error('Un trade séparé doit être entièrement clôturé avant de pouvoir être retiré du suivi.');
+  group.children=group.children.filter(item=>item.id!==childId);
+  if(!group.children.length){if(!write(STORAGE_KEY,rows.filter(item=>item.id!==groupId)))throw new Error('Impossible de supprimer le dernier trade du groupe.');return {groupDeleted:true,group};}
+  group.requestedLot=group.children.reduce((sum,item)=>sum+Number(item.initialLot||0),0);
+  group.status=group.children.every(item=>item.status==='CLOSED')?'CLOSED':'OPEN';
+  group.updatedAt=new Date().toISOString();
+  if(!write(STORAGE_KEY,rows))throw new Error('Impossible d’enregistrer la suppression du trade.');
+  return {groupDeleted:false,group};
+}
+
 export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
-  if(!group||group.status!=='OPEN'||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length))throw new Error('Seul un groupe ouvert sans clôture enregistrée peut être modifié.');
+  if(!group||group.mode!=='unique')throw new Error('Cette action est réservée au mode Position unique.');
+  if(group.status!=='OPEN'||!group.children.length||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length))throw new Error('Seul un groupe ouvert en mode Position unique, sans clôture enregistrée, peut être modifié.');
   if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0)throw new Error('Prix d’entrée et Stop Loss invalides.');
   if(group.direction==='BUY'&&stopLoss>=entry)throw new Error('Pour un BUY, le Stop Loss doit rester sous l’entrée.');
   if(group.direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le Stop Loss doit rester au-dessus de l’entrée.');

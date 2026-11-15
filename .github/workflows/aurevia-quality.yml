@@ -1,0 +1,25 @@
+name: AUREVIA quality checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - work/trade-validation-no-broker-2026-11-15
+      - work/multi-asset-support-2026-11-15
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run focused regression tests
+        run: node --test tests/scenario-direct-registration-v2394.test.js tests/telegram-spec-flow-v2380.test.js tests/global-news-telegram.test.js tests/macro-global-news-context.test.js tests/economic-release-reminders.test.js
+      - name: Run complete test suite
+        run: npm test
+      - name: Build production assets
+        if: always()
+        run: npm run build

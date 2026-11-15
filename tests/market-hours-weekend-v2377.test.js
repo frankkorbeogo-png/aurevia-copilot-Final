@@ -31,3 +31,16 @@ test('le client désactive le bouton analyse et affiche le statut marché fermé
   assert.match(app, /MARCHÉ FERMÉ/);
   assert.match(app, /analyzeButton\.disabled=!getMarketStatus/);
 });
+
+test('les actions US suivent la séance régulière de New York', () => {
+  assert.equal(getMarketStatus('AAPL', ny('2026-11-16T14:29:00.000Z')).tradable, false); // avant 09:30 EST
+  assert.equal(getMarketStatus('MSFT', ny('2026-11-16T14:30:00.000Z')).tradable, true); // ouverture
+  assert.equal(getMarketStatus('NVDA', ny('2026-11-16T20:59:00.000Z')).tradable, true); // avant 16:00 EST
+  assert.equal(getMarketStatus('TSLA', ny('2026-11-16T21:00:00.000Z')).tradable, false); // clôture
+});
+test('les actions US sont bloquées les jours fériés majeurs', () => {
+  const status=getMarketStatus('AMZN', ny('2026-11-26T16:00:00.000Z')); // Thanksgiving
+  assert.equal(status.tradable,false);
+  assert.equal(status.market,'EQUITY');
+  assert.match(status.closureLabel,/Thanksgiving/);
+});

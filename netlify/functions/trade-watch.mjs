@@ -1,10 +1,11 @@
 import { calculateContractPnl } from '../../contract-engine.js';
 import { getFxSnapshot, inferQuoteCurrency } from './_fx-rate.mjs';
+import {MARKET_LABELS} from '../../market-catalog.js';
 // Scheduled AUREVIA-only position monitor. It never connects to a broker or places orders.
 const BASE=()=>process.env.SUPABASE_URL, KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${BASE()}/rest/v1/${path}`,{method,headers:{apikey:KEY(),authorization:`Bearer ${KEY()}`,'content-type':'application/json',...(prefer?{prefer}:{})},...(body?{body:JSON.stringify(body)}:{})});const t=await r.text();if(!r.ok)throw new Error(`Supabase ${r.status}: ${t.slice(0,180)}`);return t?JSON.parse(t):null;}
-const SYMBOLS=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
+const SYMBOLS=new Set(MARKET_LABELS);
 async function quote(symbol){
  if(!SYMBOLS.has(symbol))throw new Error('Instrument non pris en charge par le suivi.');
  const rows=await rest(`aurevia_market_quotes?select=price,quote_at,source&symbol=eq.${encodeURIComponent(symbol)}`);

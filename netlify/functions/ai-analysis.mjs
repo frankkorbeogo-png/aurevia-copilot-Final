@@ -1,6 +1,7 @@
 import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
 import {getMarketStatus} from '../../market-hours.js';
 import {runAureviaCollaboration} from './ai-collaboration.mjs';
+import {MARKET_IDS} from '../../market-catalog.js';
 const finite=n=>Number.isFinite(Number(n));
 // Réduit les blocs de contexte facultatifs sans supprimer les données techniques utiles.
 function compactAIContext(value, depth=0) {
@@ -11,7 +12,7 @@ function compactAIContext(value, depth=0) {
  if (typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0,18).map(([k,v])=>[k,compactAIContext(v,depth+1)]));
  return String(value).slice(0,180);
 }
-const allowed=new Set(['XAUUSD','XAGUSD','EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','EURGBP','EURJPY','GBPJPY','BTCUSD','ETHUSD']);
+const allowed=new Set(MARKET_IDS);
 export function cleanScenario(x,side,price){
  if(!x||x.direction!==side||!['BUY','SELL'].includes(x.direction))return null;
  const low=Number(x.entryZone?.low),high=Number(x.entryZone?.high),entry=Number(x.entry),sl=Number(x.stopLoss),tps=(x.takeProfits||[]).slice(0,3).map(Number),prob=x.estimatedWinRate==null?null:Number(x.estimatedWinRate);

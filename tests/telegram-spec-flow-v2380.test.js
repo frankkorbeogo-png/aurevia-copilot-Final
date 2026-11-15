@@ -15,7 +15,7 @@ test('Telegram guide l’utilisateur par boutons et questions simples, puis tran
   for(const value of ['0.05','200']){r=await handler(message(value));assert.equal(r.statusCode,200);}
   r=await handler(callback('calc:ABCD1234:contract'));assert.equal(r.statusCode,200);
   for(const value of ['100','0.01','0.01','10','7','ignorer']){r=await handler(message(value));assert.equal(r.statusCode,200);}
-  assert.equal(prefs.telegram_trade_setup.step,'review');assert.ok(telegramMessages.some(x=>x.text?.includes('Vérifie tes paramètres')));
+  assert.equal(prefs.telegram_trade_setup.step,'review');assert.ok(telegramMessages.some(x=>x.text?.includes('Vérifie les informations avant enregistrement')));
   r=await handler(callback('confirm:ABCD1234'));assert.equal(r.statusCode,200);assert.equal(JSON.parse(r.body).callback,true);
   assert.equal(rpcBody.p_mode,'unique');assert.equal(rpcBody.p_volume,0.05);assert.equal(rpcBody.p_contract_spec.contractSize,100);assert.equal(rpcBody.p_contract_spec.accountCurrency,'USD');assert.equal(rpcBody.p_contract_spec.quoteToAccount,1);assert.equal(rpcBody.p_broker_snapshot.accountCurrency,'USD');assert.equal(prefs.telegram_trade_setup,undefined);assert.ok(telegramMessages.some(x=>x.text?.includes('POSITION ENREGISTRÉE')));
  }finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}

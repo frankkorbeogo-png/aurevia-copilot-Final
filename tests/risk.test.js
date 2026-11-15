@@ -23,7 +23,7 @@ test('arrondit toujours le volume vers le bas selon le pas broker', () => {
 });
 
 test('calcule gain potentiel, ratio R/R et marge seulement si la donnée existe', () => {
-  const r = calculatePositionRisk({ balance: 200, riskAmount: 10, stopDistance: 5, unitValuePerLot: 100, rewardDistance: 10, marginPerLot: 220 });
+  const r = calculatePositionRisk({ balance: 200, riskAmount: 10, stopDistance: 5, unitValuePerLot: 100, rewardDistance: 10, entryPrice: 2200, leverage: 1000 });
   assert.equal(r.gain, 20);
   assert.equal(r.rr, 2);
   assert.equal(r.margin, 4.4);
@@ -34,4 +34,45 @@ test('calcule gain potentiel, ratio R/R et marge seulement si la donnée existe'
 test('refuse les paramètres invalides et un risque inférieur au lot minimal', () => {
   assert.ok(calculatePositionRisk({ riskAmount: 0, stopDistance: 5, unitValuePerLot: 100 }).error);
   assert.ok(calculatePositionRisk({ riskAmount: 0.1, stopDistance: 5, unitValuePerLot: 100, lotStep: 0.01 }).error);
+});
+
+
+test('un risque USD et son équivalent XOF produisent le même lot après conversion', () => {
+  const usd = calculatePositionRisk({ riskAmount: 50, stopDistance: 10, unitValuePerLot: 100, quoteToAccount: 1, lotStep: 0.01 });
+  const xof = calculatePositionRisk({ riskAmount: 30000, stopDistance: 10, unitValuePerLot: 100, quoteToAccount: 600, lotStep: 0.01 });
+  assert.equal(usd.lots, 0.05);
+  assert.equal(xof.lots, usd.lots);
+  assert.equal(xof.riskMoney, 30000);
+});
+
+test('le taux de conversion invalide est refusé', () => {
+  const result = calculatePositionRisk({ riskAmount: 30000, stopDistance: 10, unitValuePerLot: 100, quoteToAccount: 0, lotStep: 0.01 });
+  assert.ok(result.error);
+});
+
+
+test('un même risque économique garde le même lot dans toutes les devises proposées par AUREVIA', () => {
+  const currencies = [
+    { code: 'USD', rate: 1 },
+    { code: 'EUR', rate: 0.92 },
+    { code: 'GBP', rate: 0.79 },
+    { code: 'JPY', rate: 150 },
+    { code: 'CHF', rate: 0.88 },
+    { code: 'AUD', rate: 1.52 },
+    { code: 'CAD', rate: 1.38 },
+    { code: 'NZD', rate: 1.66 },
+    { code: 'XOF', rate: 600 }
+  ];
+  const usd = calculatePositionRisk({
+    riskAmount: 50, stopDistance: 10, unitValuePerLot: 100,
+    quoteToAccount: 1, lotStep: 0.01
+  });
+  for (const currency of currencies) {
+    const equivalentRisk = 50 * currency.rate;
+    const result = calculatePositionRisk({
+      riskAmount: equivalentRisk, stopDistance: 10, unitValuePerLot: 100,
+      quoteToAccount: currency.rate, lotStep: 0.01
+    });
+    assert.equal(result.lots, usd.lots, `lot différent pour ${currency.code}`);
+  }
 });

@@ -1,11 +1,12 @@
 // Persistent Twelve Data WebSocket quote worker for AUREVIA COPILOT.
 import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mjs';
+import {MARKET_LABELS} from '../market-catalog.js';
 // Run as an always-on Node 22 service (not as a Netlify scheduled function).
 const required=['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','TWELVEDATA_API_KEY'];
 for(const key of required)if(!process.env[key])throw new Error(`Variable requise absente : ${key}`);
 if(typeof WebSocket==='undefined')throw new Error('Node 22+ avec WebSocket global est requis.');
 const base=process.env.SUPABASE_URL.replace(/\/$/,''),service=process.env.SUPABASE_SERVICE_ROLE_KEY,apiKey=process.env.TWELVEDATA_API_KEY;
-const allowed=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
+const allowed=new Set(MARKET_LABELS);
 const active=new Set(),pendingBySymbol=new Map(),lastPersistAt=new Map();let socket=null,reconnectDelay=2000,stopped=false;
 async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${base}/rest/v1/${path}`,{method,headers:{apikey:service,authorization:`Bearer ${service}`,'content-type':'application/json',...(prefer?{prefer}:{})},...(body?{body:JSON.stringify(body)}:{})});const t=await r.text();if(!r.ok)throw new Error(`Supabase ${r.status}: ${t.slice(0,200)}`);return t?JSON.parse(t):null;}
 async function loadActiveState(){const [groups,positions]=await Promise.all([rest('trading_position_groups?select=id,instrument,direction,order_type&status=eq.OPEN'),rest('trading_positions?select=id,user_id,group_id,entry_price,trigger_price,trigger_seen,status&status=eq.PENDING&volume_remaining=gt.0')]);const groupById=new Map((groups||[]).map(g=>[g.id,g]));pendingBySymbol.clear();for(const p of positions||[]){const g=groupById.get(p.group_id);if(!g||!allowed.has(g.instrument))continue;const list=pendingBySymbol.get(g.instrument)||[];list.push({...p,group:g});pendingBySymbol.set(g.instrument,list);}return [...new Set((groups||[]).map(x=>x.instrument).filter(x=>allowed.has(x)))];}

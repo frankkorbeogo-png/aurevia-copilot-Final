@@ -1,6 +1,7 @@
 import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 import {getMarketStatus} from '../../market-hours.js';
-const ALLOWED=new Set(['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','BTC/USD','ETH/USD']);
+import {MARKET_PROVIDER_SYMBOLS} from '../../market-catalog.js';
+const ALLOWED=new Set(MARKET_PROVIDER_SYMBOLS);
 const INTERVALS=new Set(['1min','5min','15min','30min','1h','4h','1day']);
 const cache=new Map();
 const CACHE_FRESH_MS=60000;
