@@ -359,11 +359,15 @@ export async function deleteTradePositionFromSupabase(groupId,positionId){
  if(position.status!=='CLOSED'||Number(position.volume_remaining)>1e-8)throw new Error('Un trade doit être entièrement clôturé avant de pouvoir être retiré du suivi.');
  const closes=await supabase.from('trading_position_closes').select('id').eq('position_id',positionId).eq('user_id',user.id).limit(1);
  if(closes.error)throw new Error(closes.error.message);if(!(closes.data||[]).length)throw new Error('La clôture de ce trade doit être enregistrée avant son retrait du suivi.');
- const removed=await supabase.from('trading_positions').delete().eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id);
- if(removed.error)throw new Error(removed.error.message);
- const remaining=await supabase.from('trading_positions').select('id').eq('group_id',groupId).eq('user_id',user.id).limit(1);
+ const remaining=await supabase.from('trading_positions').select('id').eq('group_id',groupId).eq('user_id',user.id).neq('id',positionId).limit(1);
  if(remaining.error)throw new Error(remaining.error.message);
- if(!(remaining.data||[]).length){const group=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');if(group.error)throw new Error(group.error.message);}
+ if(!(remaining.data||[]).length){
+  const removedGroup=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');
+  if(removedGroup.error)throw new Error(removedGroup.error.message);
+ }else{
+  const removed=await supabase.from('trading_positions').delete().eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id);
+  if(removed.error)throw new Error(removed.error.message);
+ }
  return {synced:true,journalPreserved:true};
 }
 
@@ -398,8 +402,6 @@ export async function deleteClosedTradeGroupFromSupabase(groupId){
  if(closesError)throw new Error(closesError.message);
  const closedIds=new Set((closes||[]).map(c=>c.position_id));
  if(ids.some(id=>!closedIds.has(id)))throw new Error('Chaque trade doit posséder au moins une clôture enregistrée.');
- const removedPositions=await supabase.from('trading_positions').delete().eq('group_id',groupId).eq('user_id',user.id).in('id',ids);
- if(removedPositions.error)throw new Error(removedPositions.error.message);
  const removedGroup=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');
  if(removedGroup.error)throw new Error(removedGroup.error.message);
  return {synced:true,journalPreserved:true};
