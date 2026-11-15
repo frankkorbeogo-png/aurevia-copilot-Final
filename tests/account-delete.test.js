@@ -9,9 +9,10 @@ const cleanup = await read('../netlify/functions/_account-deletion.mjs');
 const auth = await read('../auth.js');
 const sharedRevocationMigration = await read('../supabase/migrations/20261113100000_shared_account_deletion_session_revocation.sql');
 
-test('la suppression personnelle vérifie le jeton Supabase sans dépendre du heartbeat', () => {
+test('la suppression personnelle vérifie le jeton Supabase et la session AUREVIA active', () => {
   assert.ok(endpoint.includes('verifyBearerUser(event)'));
-  assert.ok(!endpoint.includes('assertActiveSession'));
+  assert.ok(endpoint.includes('assertActiveSession(context)'));
+  assert.ok(endpoint.indexOf('assertActiveSession(context)') < endpoint.indexOf('/auth/v1/admin/users/'));
   assert.ok(endpoint.includes('context.user.id'));
   assert.ok(endpoint.includes('/auth/v1/admin/users/'));
 });

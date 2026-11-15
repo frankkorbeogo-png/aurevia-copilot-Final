@@ -1,4 +1,4 @@
-import {verifyBearerUser,json} from './_session-auth.mjs';
+import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
 import {deleteUserApplicationData} from './_account-deletion.mjs';
 const headers=(key)=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
@@ -8,6 +8,7 @@ export async function handler(event){
  if(body.confirmation!=='SUPPRIMER')return json(400,{error:'Confirmation de suppression manquante.'});
  try{
   const context=await verifyBearerUser(event);
+  await assertActiveSession(context);
   // A final server-side identity check prevents deleting a different account.
   // Purge every AUREVIA-owned record before removing the Auth identity.
   // If cleanup fails, keep the Auth account so the operation can be retried.
