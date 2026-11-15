@@ -210,8 +210,7 @@ function openTradeValidation(scenario){
  $('validationScenarioStatus').textContent='Entrée confirmée M15';
  $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Entrée <b>${escapeText(scenario.last_price??scenario.entry)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
  $('validationLot').value='';
- $('validationCurrency').value=accountCurrency||'';
- $('validationTradeStatus').textContent='Vérifiez les niveaux, choisissez le mode et renseignez les paramètres de votre broker.';
+ $('validationTradeStatus').textContent=accountCurrency?`Devise du profil : ${accountCurrency}. Vérifiez les niveaux, choisissez le mode et renseignez les paramètres techniques du trade.`:'Devise du compte absente du profil. Configurez-la dans Paramètres avant de valider ce trade.';
  $('validationTradeNav').hidden=false;
  document.querySelector('[data-page="validation-trade"]')?.click();
 }
@@ -219,12 +218,20 @@ function updateValidationContractFields(){
  const type=$('validationCalcType')?.value||'contract';
  document.querySelectorAll('[data-validation-contract]').forEach(field=>{field.hidden=field.dataset.validationContract!==type;});
 }
-function validationContractSpec(){
+async function validationContractSpec(){
+ const quoteCurrency=inferQuoteCurrency(pendingValidationScenario?.instrument);
+ if(!accountCurrency)throw new Error('La devise du compte est absente du profil. Configurez-la dans Paramètres.');
+ let quoteToAccount=1,fxSnapshot=null;
+ if(quoteCurrency&&quoteCurrency!==accountCurrency){
+  const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
+  const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+  const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);
+  fxSnapshot=validateFxSnapshot(data,{from:quoteCurrency,to:accountCurrency});quoteToAccount=fxSnapshot.rate;
+ }
  return {
-  brokerName:$('validationBroker').value.trim(),accountType:$('validationAccountType').value.trim(),
-  accountCurrency:$('validationCurrency').value.trim().toUpperCase(),leverage:$('validationLeverage').value.trim()?Number($('validationLeverage').value):null,
+  accountCurrency,leverage:$('validationLeverage').value.trim()?Number($('validationLeverage').value):null,
   calculationType:$('validationCalcType').value,contractSize:$('validationContractSize').value.trim()?Number($('validationContractSize').value):null,
-  quoteToAccount:1,quoteCurrency:inferQuoteCurrency(pendingValidationScenario?.instrument),
+  quoteToAccount,quoteCurrency,fxSnapshot,
   pointSize:$('validationPointSize').value.trim()?Number($('validationPointSize').value):null,pointValue:$('validationPointValue').value.trim()?Number($('validationPointValue').value):null,
   tickSize:$('validationTickSize').value.trim()?Number($('validationTickSize').value):null,tickValue:$('validationTickValue').value.trim()?Number($('validationTickValue').value):null,
   minLot:Number($('validationMinLot').value),lotStep:Number($('validationLotStep').value),maxLot:$('validationMaxLot').value.trim()?Number($('validationMaxLot').value):null,
@@ -240,7 +247,7 @@ async function confirmTradeValidation(){
   const s=pendingValidationScenario;if(!s?.id)throw new Error('Aucun scénario confirmé n’est sélectionné.');
   const volume=Number($('validationLot').value),mode=$('validationMode').value;
   if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un lot valide.');
-  const rawSpec=validationContractSpec(),checked=validateContractSpec(rawSpec);
+  const rawSpec=await validationContractSpec(),checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
   if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi est en dehors des limites de votre broker.');
   if(Math.abs(volume/checked.spec.lotStep-Math.round(volume/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas le pas de volume du broker.');
@@ -248,7 +255,7 @@ async function confirmTradeValidation(){
   if(mode==='unique'&&Math.floor((volume/count)/checked.spec.lotStep)*checked.spec.lotStep<checked.spec.minLot)throw new Error('Le lot est trop faible pour être réparti entre les TP sélectionnés.');
   button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
   const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
-  const brokerSnapshot={brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
+  const brokerSnapshot={accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
   const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id:s.id,mode,volume,contract_spec:checked.spec,broker_snapshot:brokerSnapshot,auto_journal:$('validationAutoJournal').checked}),cache:'no-store'});
   const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
   status.textContent='Trade enregistré. Synchronisation du suivi des positions et du journal…';
