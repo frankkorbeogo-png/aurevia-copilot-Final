@@ -16,7 +16,7 @@ export async function handler(event){
  if(!userId)return json(401,{error:'Authenticated user is missing.'});
  const r=await fetch(`${base}/rest/v1/telegram_connections?select=chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements&user_id=eq.${encodeURIComponent(userId)}`,{headers:{apikey:key,authorization:`Bearer ${key}`}});
  if(!r.ok)return json(502,{error:'Unable to read Telegram connection.'});
- const rows=await r.json(),row=rows[0];if(!row?.chat_id)return json(404,{error:'No Telegram connection.'});
+ const rows=await r.json(),row=rows[0];if(!row?.chat_id)return json(200,{sent:false,reason:'Aucun compte Telegram n’est associé à ce compte AUREVIA.',code:'TELEGRAM_NOT_CONNECTED'});
  const ownersResponse=await fetch(`${base}/rest/v1/telegram_connections?select=user_id&chat_id=eq.${encodeURIComponent(row.chat_id)}`,{headers:{apikey:key,authorization:`Bearer ${key}`}});if(!ownersResponse.ok)return json(502,{error:'Unable to verify Telegram chat ownership.'});const owners=await ownersResponse.json();if(owners.length!==1||owners[0].user_id!==userId)return json(409,{error:'Telegram chat ownership is ambiguous; notification blocked.'});
  const allowed=type==='test'?true:type==='signal'?Boolean(row.notify_all_analyses||row.notify_validated_signals):['trade_open','trade_tp','trade_sl','trade_close'].includes(type)?Boolean(row.notify_validated_signals):type==='economic'?Boolean(row.notify_economic_announcements):Boolean(row.notify_all_analyses);
  if(!allowed)return json(200,{sent:false,reason:'disabled_by_user'});
