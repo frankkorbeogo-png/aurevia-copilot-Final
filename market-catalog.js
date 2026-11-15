@@ -20,7 +20,6 @@ export const MARKET_INSTRUMENTS = Object.freeze({
   ETHUSD:{label:'ETH/USD',provider:'ETH/USD',tv:'BITSTAMP:ETHUSD',category:'Crypto',market:'CRYPTO'},
   SOLUSD:{label:'SOL/USD',provider:'SOL/USD',tv:'COINBASE:SOLUSD',category:'Crypto',market:'CRYPTO'},
   XRPUSD:{label:'XRP/USD',provider:'XRP/USD',tv:'BITSTAMP:XRPUSD',category:'Crypto',market:'CRYPTO'},
-  WTIUSD:{label:'WTI/USD',provider:'WTI/USD',tv:'TVC:USOIL',category:'Énergie',market:'COMMODITY'},
   AAPL:{label:'AAPL',provider:'AAPL',tv:'NASDAQ:AAPL',category:'Actions US',market:'EQUITY'},
   MSFT:{label:'MSFT',provider:'MSFT',tv:'NASDAQ:MSFT',category:'Actions US',market:'EQUITY'},
   NVDA:{label:'NVDA',provider:'NVDA',tv:'NASDAQ:NVDA',category:'Actions US',market:'EQUITY'},
