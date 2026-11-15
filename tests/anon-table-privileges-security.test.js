@@ -15,7 +15,7 @@ test('anonymous role has no direct privileges on private trading and announcemen
   ]) {
     assert.match(migration, new RegExp('public\\.' + table + '\\b'));
   }
-  assert.match(migration, /revoke all privileges on table[\\s\\S]*from anon/i);
+  assert.match(migration, /revoke all privileges on table[\s\S]*from anon/i);
   assert.doesNotMatch(migration, /from authenticated/i);
   assert.doesNotMatch(migration, /from service_role/i);
 });
