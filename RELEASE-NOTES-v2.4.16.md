@@ -4,7 +4,7 @@
 - Catalogue central partagé entre l'interface, les fonctions Netlify, l'analyse et le suivi interne.
 - Forex : ajout de EUR/AUD, EUR/CHF, GBP/AUD et AUD/JPY.
 - Crypto : ajout de SOL/USD et XRP/USD.
-- Énergie : ajout du WTI/USD.
+- Énergie : WTI/USD conservé comme candidat mais désactivé tant que l’accès matières premières du plan Twelve Data n’est pas vérifié.
 - Actions américaines : ajout de AAPL, MSFT, NVDA, TSLA et AMZN.
 - Les cotations, l'historique OHLC, le moteur IA et le suivi interne utilisent le même catalogue.
 - Les graphiques TradingView utilisent les symboles de visualisation distincts des symboles Twelve Data.
