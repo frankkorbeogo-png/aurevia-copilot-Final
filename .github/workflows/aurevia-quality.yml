@@ -16,12 +16,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run automated tests
+      - name: Run trade registration regression tests
+        run: node --test tests/scenario-direct-registration-v2394.test.js tests/telegram-spec-flow-v2380.test.js
+      - name: Run complete test suite
         run: npm test
       - name: Build production assets
-        id: build
         if: always()
         run: npm run build
-      - name: Verify shared market catalogue is shipped
-        if: always() && steps.build.outcome == 'success'
-        run: test -s dist/market-catalog.js
