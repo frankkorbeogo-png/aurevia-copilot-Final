@@ -53,3 +53,8 @@ test('un seul cours est demandé pour la paire sélectionnée', async () => {
   assert.match(app,/api\/market-quote\?symbol=.*symbols\[selectedSymbol\]/);
   assert.match(app,/refreshSelectedQuote\(\)/);
 });
+
+test('le build de production embarque le catalogue importé par les modules client', async () => {
+  const build = await read('scripts/build.mjs');
+  assert.match(build, /'market-catalog\.js'/);
+});
