@@ -33,8 +33,6 @@ export function createTradeGroup(input) {
   const {mode='unique', instrument, direction, lot, lotStep=0.01, entry, stopLoss, takeProfits=[], autoJournal=true, contractSize=null, quoteToAccount=1, feesPerLot=0, contractSpec=null, brokerSnapshot=null, orderType='MARKET', triggerPrice=null, limitPrice=null, expiresAt=null} = input;
   if (!instrument?.trim() || !['BUY','SELL'].includes(direction) || !Number.isFinite(lot) || lot<=0 || !Number.isFinite(entry) || entry<=0 || !Number.isFinite(stopLoss) || stopLoss<=0) throw new Error('Paramètres de position incomplets ou invalides.');
   if(!['unique','separate'].includes(mode)) throw new Error('Mode de gestion invalide.');
-  if(!Number.isFinite(lotStep)||lotStep<=0) throw new Error('Le pas de volume broker doit être strictement positif.');
-  if(Math.abs(lot/lotStep-Math.round(lot/lotStep))>1e-7) throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');
   if(!Number.isFinite(quoteToAccount)||quoteToAccount<=0||!Number.isFinite(feesPerLot)||feesPerLot<0) throw new Error('Conversion ou frais broker invalides.');
   if(contractSize!==null&&(!Number.isFinite(contractSize)||contractSize<=0)) throw new Error('La taille du contrat doit être positive.');
   const lotStepFixed=0.01;
