@@ -399,27 +399,12 @@ export async function deleteOpenTradeGroupFromSupabase(groupId){
 
 export async function deletePendingTradeFromSupabase(groupId,positionId=null){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,mode').eq('id',groupId).eq('user_id',user.id).maybeSingle();
- if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};
- if(group.mode==='unique'&&positionId)throw new Error('Identifiant de trade inattendu pour une position unique.');
- if(group.mode==='separate'&&!positionId)throw new Error('Sélectionnez le trade séparé à supprimer.');
- let query=supabase.from('trading_positions').select('id,status,volume_initial,volume_remaining').eq('group_id',groupId).eq('user_id',user.id);
- if(positionId)query=query.eq('id',positionId);
- const {data:positions,error:positionsError}=await query;
- if(positionsError)throw new Error(positionsError.message);if(!positions?.length)throw new Error('Aucun trade en attente correspondant n’a été trouvé.');
- if(positions.some(p=>p.status!=='PENDING'||Number(p.volume_remaining)!==Number(p.volume_initial)))throw new Error('Seuls les trades encore en attente et sans clôture peuvent être supprimés.');
- const ids=positions.map(p=>p.id);
- const {data:closes,error:closesError}=await supabase.from('trading_position_closes').select('id').eq('user_id',user.id).in('position_id',ids).limit(1);
- if(closesError)throw new Error(closesError.message);if((closes||[]).length)throw new Error('Un trade possède déjà une clôture enregistrée et ne peut pas être supprimé.');
- let journalQuery=supabase.from('trading_journal').delete().eq('user_id',user.id).eq('group_id',groupId);
- journalQuery=positionId?journalQuery.eq('position_id',positionId):journalQuery.is('position_id',null);
- const {error:journalError}=await journalQuery;if(journalError)throw new Error(journalError.message);
- const {error:positionDeleteError}=await supabase.from('trading_positions').delete().eq('user_id',user.id).eq('group_id',groupId).in('id',ids);
- if(positionDeleteError)throw new Error(positionDeleteError.message);
- const {data:remaining,error:remainingError}=await supabase.from('trading_positions').select('id').eq('group_id',groupId).eq('user_id',user.id).limit(1);
- if(remainingError)throw new Error(remainingError.message);
- if(!(remaining||[]).length){const {error:groupDeleteError}=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id);if(groupDeleteError)throw new Error(groupDeleteError.message);}
- return {synced:true,journalDeleted:true,positionsDeleted:ids.length};
+ const {data,error}=await supabase.rpc('aurevia_delete_pending_trade',{
+  p_group_id:groupId,p_position_id:positionId
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'La suppression du trade en attente n’a pas été confirmée.');
+ return {synced:true,journalDeleted:true,positionsDeleted:data.positions_deleted||0,groupDeleted:Boolean(data.group_deleted)};
 }
 
 export async function deleteClosedTradeGroupFromSupabase(groupId){
