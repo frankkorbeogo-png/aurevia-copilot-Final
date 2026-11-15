@@ -20,7 +20,7 @@ export async function handler(event){
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux Twelve Data non configuré côté serveur.',code:'TWELVEDATA_NOT_CONFIGURED'});
  const cached=cache.get(symbol),age=cached?Date.now()-cached.at:Infinity;
  if(cached&&age<30000)return json(200,{...cached.value,cached:true,stale:false});
- const url=new URL('https://api.twelvedata.com/quote');url.searchParams.set('symbol',symbol);url.searchParams.set('apikey',key);url.searchParams.set('timezone','UTC');url.searchParams.set('format','JSON');
+ const url=new URL('https://api.twelvedata.com/quote');url.searchParams.set('symbol',symbol);url.searchParams.set('apikey',key);url.searchParams.set('interval','1min');url.searchParams.set('timezone','UTC');url.searchParams.set('format','JSON');
  let failure=null;
  for(let attempt=0;attempt<2;attempt++){
   try{
@@ -28,8 +28,10 @@ export async function handler(event){
    const data=await response.json().catch(()=>({}));
    const price=Number(data.close??data.price);
    if(response.ok&&data.status!=='error'&&!data.code&&Number.isFinite(price)&&price>0){
-    const stamp=Number(data.last_quote_at??data.timestamp);
-    const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():(data.datetime&&Number.isFinite(Date.parse(data.datetime))?new Date(data.datetime).toISOString():null);
+    // `timestamp` / `datetime` décrivent l'ouverture de la bougie de quote,
+    // pas l'instant de la dernière cotation. Seul last_quote_at certifie celle-ci.
+    const stamp=Number(data.last_quote_at);
+    const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():null;
     const ageSeconds=asOf?Math.floor((Date.now()-Date.parse(asOf))/1000):null;
     const freshness=ageSeconds===null?'unknown':ageSeconds < -300?'future':ageSeconds<=120?'recent':'stale';
     if(freshness==='future')return json(502,{error:'Horodatage Twelve Data situé dans le futur : cours refusé.',code:'TWELVEDATA_FUTURE_TIMESTAMP',retryable:false,asOf});
