@@ -349,15 +349,21 @@ export async function syncTradeGroupToSupabase(group){
 }
 
 export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=null,positionId=null){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(error)throw new Error(error.message);if(!user)return {synced:false,reason:'not_authenticated'};
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
  let removed=await supabase.from('trading_journal').delete().eq('id',journalId).eq('user_id',user.id).select('id');
  if(removed.error)throw new Error(removed.error.message);
  if(!(removed.data||[]).length&&groupId){
   let fallback=supabase.from('trading_journal').delete().eq('user_id',user.id).eq('group_id',groupId);
   fallback=positionId?fallback.eq('position_id',positionId):fallback.is('position_id',null);
-  removed=await fallback.select('id');if(removed.error)throw new Error(removed.error.message);
+  removed=await fallback.select('id');
+  if(removed.error)throw new Error(removed.error.message);
  }
- return {synced:true,deleted:(removed.data||[]).length};
+ const deleted=(removed.data||[]).length;
+ if(!deleted)throw new Error('Fiche introuvable ou suppression non autorisée. Vérifiez la session et les droits du compte.');
+ return {synced:true,deleted};
 }
 
 export async function deleteTradePositionFromSupabase(groupId,positionId){
