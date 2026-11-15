@@ -613,3 +613,17 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 @keyframes aurevia-feedback-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:600px){.aurevia-feedback-stack{top:calc(env(safe-area-inset-top,0px) + 10px);right:10px;width:calc(100vw - 20px)}.aurevia-feedback{padding:12px;border-radius:13px}}
 @media(prefers-reduced-motion:reduce){.aurevia-feedback{animation:none}.aurevia-feedback.is-leaving{transition:none}}
+
+
+/* V2.4.14 — interface dédiée de validation du trade confirmé */
+.validation-trade-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.8fr);gap:14px;align-items:start}
+.validation-trade-layout>.panel{min-width:0}
+.validation-trade-layout .risk-fields{margin:14px 0}
+.validation-trade-layout .field-section-title{display:grid;gap:4px;margin:18px 0 8px;padding-top:14px;border-top:1px solid rgba(171,132,226,.2)}
+.validation-trade-layout .field-section-title small{color:var(--muted,#a99bb8);font-size:11px}
+.validation-levels{margin:12px 0 18px}
+.validation-trade-layout .scenario-save-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}
+.validation-trade-layout .scenario-save-actions button{min-width:150px}
+#validationTradeStatus{margin-top:12px}
+@media(max-width:900px){.validation-trade-layout{grid-template-columns:1fr}}
+@media(max-width:600px){.validation-trade-layout .scenario-save-actions{display:grid;grid-template-columns:1fr}.validation-trade-layout .scenario-save-actions button{width:100%}}
