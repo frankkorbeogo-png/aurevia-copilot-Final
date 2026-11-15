@@ -1,5 +1,6 @@
 import { calculateContractPnl } from '../../contract-engine.js';
 import { getFxSnapshot, inferQuoteCurrency } from './_fx-rate.mjs';
+import {MARKET_LABELS} from '../../market-catalog.js';
 // Scheduled AUREVIA-only position monitor. It never connects to a broker or places orders.
 const BASE=()=>process.env.SUPABASE_URL, KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
