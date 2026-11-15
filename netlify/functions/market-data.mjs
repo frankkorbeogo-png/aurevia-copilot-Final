@@ -15,7 +15,7 @@ export async function handler(event){
  let context;try{context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Connexion requise.',code:error.code||null});}
  const params=new URLSearchParams(event.rawQuery||'');const symbol=(params.get('symbol')||'').toUpperCase();const interval=params.get('interval')||'5min';const requestedSize=Number(params.get('outputsize')||250);if(!Number.isInteger(requestedSize)||requestedSize<30)return json(400,{error:'Taille d’historique invalide.'});const outputsize=Math.min(500,Math.max(50,requestedSize));
  if(!ALLOWED.has(symbol)||!INTERVALS.has(interval))return json(400,{error:'Instrument ou intervalle non autorisé.'});
- const marketStatus=getMarketStatus(symbol);if(!marketStatus.tradable)return json(409,{error:'Marché fermé pour le week-end. Les nouvelles données et analyses sont suspendues jusqu’à la réouverture.',code:'MARKET_CLOSED',marketStatus});
+ const marketStatus=getMarketStatus(symbol);if(!marketStatus.tradable)return json(409,{error:marketStatus.reason||'Marché fermé. Les nouvelles données et analyses sont suspendues jusqu’à la réouverture.',code:'MARKET_CLOSED',marketStatus});
  const clientIp=context.user.id;if(!rateAllowed(`market:${clientIp}`))return json(429,{error:'Limite de requêtes marché atteinte. Réessayez dans une minute.'});
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux de marché non configuré côté serveur.'});
  const cacheKey=`${symbol}:${interval}:${outputsize}`,cached=cache.get(cacheKey),cacheAge=cached?Date.now()-cached.at:Infinity;
