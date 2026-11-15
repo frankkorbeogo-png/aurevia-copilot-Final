@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
+import {splitVolume,createTradeGroup,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deletePendingTradeGroup,deletePendingSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -321,4 +321,28 @@ test('un trade déjà clôturé automatiquement au TP/SL ne peut pas être clôt
  const before={remainingLot:child.remainingLot,closes:child.closes.length,realizedPnl:child.realizedPnl,status:child.status};
  assert.throws(()=>recordPartialClose(group,child.id,{volume:0.1,exit:2011,contractSize:100}),/déjà clôturée/);
  assert.deepEqual({remainingLot:child.remainingLot,closes:child.closes.length,realizedPnl:child.realizedPnl,status:child.status},before);
+});
+
+
+test('supprimer un trade séparé en attente supprime aussi sa fiche journal et conserve les autres trades',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}],orderType:'BUY LIMIT'});
+ saveTradeGroup(group);const child=group.children[0],other=group.children[1];const before=loadLinkedJournal().length;
+ deletePendingSeparateTradeChild(group.id,child.id);
+ assert.equal(loadTradeGroups()[0].children.length,1);assert.equal(loadTradeGroups()[0].children[0].id,other.id);
+ assert.equal(loadLinkedJournal().length,before-1);assert.equal(loadLinkedJournal().some(row=>row.childId===child.id),false);
+ delete globalThis.localStorage;
+});
+test('supprimer une position unique en attente supprime son groupe et son unique fiche journal',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020}],orderType:'BUY LIMIT'});
+ saveTradeGroup(group);assert.equal(loadLinkedJournal().filter(row=>row.groupId===group.id).length,1);deletePendingTradeGroup(group.id);
+ assert.equal(loadTradeGroups().some(row=>row.id===group.id),false);assert.equal(loadLinkedJournal().some(row=>row.groupId===group.id),false);
+ delete globalThis.localStorage;
+});
+test('la suppression en attente refuse un trade déjà ouvert ou clôturé',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT'});saveTradeGroup(group);
+ group.children[0].status='OPEN';assert.throws(()=>deletePendingSeparateTradeChild(group.id,group.children[0].id),/encore en attente/);
+ delete globalThis.localStorage;
 });
