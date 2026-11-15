@@ -48,3 +48,13 @@ test('invalid price/order is ignored',()=>{
  assert.equal(evaluateEntryTrigger(pos(),group('BUY LIMIT','BUY'),quote(0)),null);
  assert.equal(evaluateEntryTrigger(pos(),group('BUY LIMIT','SELL'),quote(100)),null);
 });
+
+test('SELL STOP LIMIT: stop and limit legs each require their own crossing',()=>{
+ let p=pos({entry_price:120,trigger_price:110,last_observed_price:111,entry_armed:true});
+ let s=evaluateEntryTrigger(p,group('SELL STOP LIMIT','SELL'),quote(110));
+ assert.equal(s.action,'TRIGGER_SEEN');
+ p={...p,...s,trigger_seen:true};
+ s=evaluateEntryTrigger(p,group('SELL STOP LIMIT','SELL'),quote(119));
+ assert.equal(s.action,'TRACK');assert.equal(s.entry_armed,true);
+ assert.equal(evaluateEntryTrigger({...p,...s,trigger_seen:true},group('SELL STOP LIMIT','SELL'),quote(120)).action,'ACTIVATE');
+});
