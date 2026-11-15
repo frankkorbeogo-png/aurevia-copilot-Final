@@ -27,7 +27,8 @@ test('l’interface dédiée est ouverte uniquement depuis un scénario confirm�
  assert.match(app,/value="unique"/);
  assert.match(app,/value="separate"/);
  assert.doesNotMatch(app,/validationBroker|validationAccountType/);
- assert.match(app,/validationContractSpec/);\n assert.match(app,/validationLeverage/);
+ assert.match(app,/validationContractSpec/);
+ assert.match(app,/validationLeverage/);
 });
 test('la case journal de l’interface est transmise à la base et respectée transactionnellement',()=>{
  const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
