@@ -66,6 +66,7 @@ Aucun déploiement n'est effectué depuis ce dossier : il faut un accès authent
 | `GROQ_API_KEY` | Moteur d'analyse IA |
 | `GROQ_MODEL` | Facultatif ; défaut `openai/gpt-oss-120b` |
 | `TWELVEDATA_API_KEY` | Historiques OHLC multi-unités |
+| `FRED_API_KEY` | Calendrier officiel des publications économiques américaines (clé gratuite FRED) |
 | `SUPABASE_URL` | Accès serveur Supabase |
 | `SUPABASE_PUBLISHABLE_KEY` | Vérification des sessions utilisateur côté serveur |
 | `SUPABASE_SERVICE_ROLE_KEY` | Fonctions serveur Telegram et administration ; secret strict |
@@ -86,13 +87,13 @@ Les annonces économiques sont visibles via le widget calendrier externe ; leur 
 
 ## Actualités macroéconomiques et géopolitiques
 
-La fonction planifiée `global-news-sync` interroge le GDELT DOC 2.0 toutes les 15 minutes, conserve uniquement les métadonnées des titres récents (titre, source, pays/langue, date et lien), et ajoute ces éléments au contexte macro transmis au moteur IA. Les articles complets ne sont pas recopiés. La source et le lien restent visibles pour vérification humaine.
+La fonction planifiée `global-news-sync` interroge le GDELT DOC 2.0 toutes les heures, conserve uniquement les métadonnées des titres récents (titre, source, pays/langue, date et lien), et ajoute ces éléments au contexte macro transmis au moteur IA. Les articles complets ne sont pas recopiés. La source et le lien restent visibles pour vérification humaine.
 
-Les utilisateurs ayant activé « Alertes macroéconomiques et actualités internationales » reçoivent une notification privée Telegram. Chaque notification précise qu’une actualité n’est pas, à elle seule, un signal BUY/SELL. Le flux GDELT est public et ne nécessite pas de clé ; il reste soumis aux limites d’utilisation de la source.
+Les utilisateurs ayant activé « Annonces économiques et alertes macro / géopolitiques » reçoivent une notification privée Telegram. Chaque notification précise qu’une actualité n’est pas, à elle seule, un signal BUY/SELL. Le flux GDELT est public et ne nécessite pas de clé ; il reste soumis aux limites d’utilisation de la source.
 
 **Migration à appliquer uniquement lors de la validation finale :** `supabase/migrations/20261115120000_global_macro_news_and_telegram.sql`. Sans cette migration, la synchronisation des titres et leur insertion dans le contexte IA ne sont pas actives.
 
-**Limite importante :** ce flux couvre les nouvelles macroéconomiques et géopolitiques publiées. Il ne remplace pas un calendrier de publications futures (CPI, NFP, décisions de taux avec heure prévue). L’envoi automatique de ces événements planifiés reste désactivé tant qu’une API calendrier serveur autorisée n’a pas été sélectionnée et validée. Le widget TradingView reste le calendrier visible dans l’interface. Aucun calendrier tiers n’est présenté comme une source officielle.
+Le même déclencheur horaire synchronise aussi les dates futures publiées par le calendrier FRED pour six publications américaines majeures (CPI, emploi/NFP, PPI, PIB, ventes au détail et communiqué FOMC). Les dates sont obtenues auprès de FRED ; l’heure est l’horaire habituel de publication de l’organisme (08:30 ou 14:00, heure de New York), et le bot envoie un rappel environ une heure avant. Le message précise que l’heure habituelle doit être confirmée sur la source officielle. Cette fonction nécessite la variable serveur `FRED_API_KEY` (clé gratuite FRED) et ne consomme aucun crédit Twelve Data. Elle ne prétend pas couvrir tous les pays ni tous les événements. Le widget TradingView reste le calendrier visible dans l’interface.
 
 ## Worker de cotations prix simple du marché
 
