@@ -24,8 +24,9 @@ test('l’interface dédiée est ouverte uniquement depuis un scénario confirm�
  assert.match(app,/function openTradeValidation\(scenario\)/);
  assert.match(app,/data-scenario-validate/);
  assert.match(app,/validationLot/);
- assert.match(app,/value="unique"/);
- assert.match(app,/value="separate"/);
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ assert.match(html,/value="unique"/);
+ assert.match(html,/value="separate"/);
  assert.doesNotMatch(app,/validationBroker|validationAccountType/);
  assert.match(app,/validationContractSpec/);
  assert.match(app,/brokerSnapshot=\{accountCurrency:checked\.spec\.accountCurrency,leverage:checked\.spec\.leverage\}/);
