@@ -1,49 +1,59 @@
-const FX = new Set(['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','EURGBP','EURJPY','GBPJPY']);
-const METALS = new Set(['XAUUSD','XAGUSD']);
-const CRYPTO = new Set(['BTCUSD','ETHUSD','SOLUSD','XRPUSD']);
+const FX=new Set(['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','EURGBP','EURJPY','GBPJPY']);
+const METALS=new Set(['XAUUSD','XAGUSD']);
+const CRYPTO=new Set(['BTCUSD','ETHUSD','SOLUSD','XRPUSD']);
+const NY='America/New_York', BF='Africa/Ouagadougou', CLOSE_MIN=1020;
+// Ajouter ici uniquement les fermetures exceptionnelles officiellement confirmées.
+const EXCEPTIONAL_CLOSURES=[];
 
-function zonedParts(date, timeZone) {
-  const parts = new Intl.DateTimeFormat('en-US', {timeZone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date);
-  return Object.fromEntries(parts.map(part => [part.type, part.value]));
+function parts(date,zone=NY){
+  return Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date).map(p=>[p.type,p.value]));
 }
-function newYorkParts(date) { return zonedParts(date, 'America/New_York'); }
-function wallClockInstant(year, month, day, hour, minute, timeZone) {
-  const target=Date.UTC(year,month-1,day,hour,minute); let guess=target;
-  for(let i=0;i<4;i++){const p=zonedParts(new Date(guess),timeZone);const represented=Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day),Number(p.hour),Number(p.minute));guess+=target-represented;}
+function instant(y,m,d,h,min){
+  const target=Date.UTC(y,m-1,d,h,min);let guess=target;
+  for(let i=0;i<4;i++){const p=parts(new Date(guess));guess+=target-Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute);}
   return new Date(guess);
 }
-function burkinaSessionSchedule(now) {
-  const ny=newYorkParts(now), index=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[ny.weekday];
-  const base=new Date(Date.UTC(Number(ny.year),Number(ny.month)-1,Number(ny.day)));
-  const sunday=new Date(base), friday=new Date(base);
-  sunday.setUTCDate(sunday.getUTCDate()+((7-index)%7)); friday.setUTCDate(friday.getUTCDate()+((5-index+7)%7));
-  const open=wallClockInstant(sunday.getUTCFullYear(),sunday.getUTCMonth()+1,sunday.getUTCDate(),17,0,'America/New_York');
-  const close=wallClockInstant(friday.getUTCFullYear(),friday.getUTCMonth()+1,friday.getUTCDate(),17,0,'America/New_York');
-  const fmt=d=>new Intl.DateTimeFormat('fr-FR',{timeZone:'Africa/Ouagadougou',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
-  return `Dimanche ${fmt(open)} – vendredi ${fmt(close)} (heure du Burkina Faso)`;
+function addDay(d,n){const x=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));x.setUTCDate(x.getUTCDate()+n);return x;}
+function easter(y){
+  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const mo=Math.floor((h+l-7*m+114)/31),day=(h+l-7*m+114)%31+1;return new Date(Date.UTC(y,mo-1,day));
 }
-
-/**
- * Standard weekly OTC FX/precious-metals session: Sunday 17:00 to Friday 17:00
- * America/New_York. Intl handles EST/EDT automatically. This is a weekend
- * schedule guard, not a holiday/early-close calendar.
- */
-export function getMarketStatus(symbol, now = new Date()) {
-  const code = String(symbol || '').toUpperCase().replace(/[^A-Z]/g, '');
-  if (CRYPTO.has(code)) return { tradable: true, status: 'OPEN', market: 'CRYPTO', checkedAt: now.toISOString() };
-  const market = FX.has(code) ? 'FOREX' : METALS.has(code) ? 'METALS' : 'UNKNOWN';
-  if (market === 'UNKNOWN') return { tradable: true, status: 'UNRESTRICTED', market, checkedAt: now.toISOString() };
-  const p = newYorkParts(now);
-  const minute = Number(p.hour) * 60 + Number(p.minute);
-  const weekday = p.weekday;
-  const closed = weekday === 'Sat' || (weekday === 'Sun' && minute < 17 * 60) || (weekday === 'Fri' && minute >= 17 * 60);
-  return {
-    tradable: !closed,
-    status: closed ? 'CLOSED' : 'OPEN',
-    market,
-    timezone: 'Africa/Ouagadougou',
-    schedule: burkinaSessionSchedule(now),
-    reason: closed ? 'Marché fermé pour le week-end. Aucune nouvelle analyse ni directive ne peut être générée avant la réouverture.' : null,
-    checkedAt: now.toISOString()
-  };
+function observed(y,m,d){const x=new Date(Date.UTC(y,m-1,d)),w=x.getUTCDay();return w===6?addDay(x,-1):w===0?addDay(x,1):x;}
+function holidayWindows(y){
+  const out=[];
+  for(const h of [{date:observed(y,1,1),label:'Nouvel An'},{date:observed(y,12,25),label:'Noël'}]){
+    const before=addDay(h.date,-1),after=addDay(h.date,1);
+    out.push({start:instant(before.getUTCFullYear(),before.getUTCMonth()+1,before.getUTCDate(),17,0),end:instant(after.getUTCFullYear(),after.getUTCMonth()+1,after.getUTCDate(),17,0),label:h.label});
+  }
+  const gf=addDay(easter(y),-2),before=addDay(gf,-1),sun=addDay(gf,2);
+  out.push({start:instant(before.getUTCFullYear(),before.getUTCMonth()+1,before.getUTCDate(),17,0),end:instant(sun.getUTCFullYear(),sun.getUTCMonth()+1,sun.getUTCDate(),17,0),label:'Vendredi saint'});
+  for(const x of EXCEPTIONAL_CLOSURES){const start=new Date(x.start),end=new Date(x.end);if(Number.isFinite(+start)&&Number.isFinite(+end)&&end>start)out.push({start,end,label:x.label||'Fermeture exceptionnelle'});}
+  return out;
+}
+function holidayClosure(now){
+  const y=+parts(now).year;
+  return [...holidayWindows(y-1),...holidayWindows(y),...holidayWindows(y+1)].find(x=>now>=x.start&&now<x.end)||null;
+}
+function addDaysFromParts(p,n){return addDay(new Date(Date.UTC(+p.year,+p.month-1,+p.day)),n);}
+function fmtBF(date,withDate=false){return new Intl.DateTimeFormat('fr-FR',{timeZone:BF,...(withDate?{weekday:'long',day:'2-digit',month:'long'}:{}),hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date);}
+function weeklySchedule(now){
+  const p=parts(now),dow=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[p.weekday];
+  const daysToSunday=(7-dow)%7,base=addDaysFromParts(p,daysToSunday);
+  const sunday=instant(base.getUTCFullYear(),base.getUTCMonth()+1,base.getUTCDate(),17,0);
+  const fridayDay=addDay(base,5),friday=instant(fridayDay.getUTCFullYear(),fridayDay.getUTCMonth()+1,fridayDay.getUTCDate(),17,0);
+  return `Ouverture dimanche ${fmtBF(sunday)} – fermeture vendredi ${fmtBF(friday)} (heure du Burkina Faso)`;
+}
+function weekendClosure(now){
+  const p=parts(now),mins=+p.hour*60 + +p.minute,dow=p.weekday;
+  if(dow!=='Sat'&&!(dow==='Sun'&&mins<CLOSE_MIN)&&!(dow==='Fri'&&mins>=CLOSE_MIN))return null;
+  const day=addDaysFromParts(p,dow==='Fri'?2:dow==='Sat'?1:0);
+  return {label:'week-end',reopen:instant(day.getUTCFullYear(),day.getUTCMonth()+1,day.getUTCDate(),17,0)};
+}
+export function getMarketStatus(symbol,now=new Date()){
+  const code=String(symbol||'').toUpperCase().replace(/[^A-Z]/g,'');
+  if(CRYPTO.has(code))return {tradable:true,status:'OPEN',market:'CRYPTO',checkedAt:now.toISOString()};
+  const market=FX.has(code)?'FOREX':METALS.has(code)?'METALS':'UNKNOWN';
+  if(market==='UNKNOWN')return {tradable:true,status:'UNRESTRICTED',market,checkedAt:now.toISOString()};
+  const holiday=holidayClosure(now),weekend=weekendClosure(now),closed=!!(holiday||weekend),reopen=holiday?.end||weekend?.reopen||null,label=holiday?.label||weekend?.label||null;
+  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now),closureType:holiday?'HOLIDAY':weekend?'WEEKEND':null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
 }
