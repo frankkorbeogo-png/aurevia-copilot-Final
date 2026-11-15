@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary} from '../trade-management.js';
+import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -99,4 +99,21 @@ test('snapshot contractuel conservé sur le groupe et utilisé pour les clôture
  assert.equal(group.contractSpec.contractSize,10);assert.equal(group.brokerSnapshot.brokerName,'Broker A');
  const closed=recordPartialClose(group,group.children[0].id,{volume:0.1,exit:1.11});
  assert.equal(closed.pnl.gross,0.01);assert.equal(closed.pnl.fees,0.2);assert.equal(closed.pnl.net,-0.19);
+});
+
+test('statut journal cloud : un ordre en attente reste PENDING sans envoyer PENDING en result SQL',()=>{
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010}],orderType:'BUY LIMIT'});
+ const row={result:'OPEN',position_id:group.children[0].id};
+ assert.equal(resolveLinkedJournalStatus(row,group),'PENDING');
+ group.children[0].status='OPEN';
+ assert.equal(resolveLinkedJournalStatus(row,group),'OPEN');
+ group.children[0].status='CLOSED';
+ assert.equal(resolveLinkedJournalStatus(row,group),'CLOSED');
+});
+test('statut journal parent suit les enfants en attente et ouverts',()=>{
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020}],orderType:'BUY LIMIT'});
+ const row={result:'OPEN',position_id:null};
+ assert.equal(resolveLinkedJournalStatus(row,group),'PENDING');
+ group.children[0].status='OPEN';
+ assert.equal(resolveLinkedJournalStatus(row,group),'OPEN');
 });
