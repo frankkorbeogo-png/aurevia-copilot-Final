@@ -14,7 +14,7 @@ test('le routeur respecte l’ordre Gemini, Cloudflare puis Groq, sans SambaNova
  const positions=['Gemini','Cloudflare','Groq'].map(name=>router.indexOf(`name: '${name}'`));
  assert.ok(positions.every((v)=>v>=0));
  assert.deepEqual([...positions].sort((a,b)=>a-b),positions);
- assert.match(ai,/runAureviaAI/); assert.doesNotMatch(router,/SAMBANOVA_API_KEY|api\\.sambanova\\.ai/);
+ assert.match(ai,/runAureviaCollaboration/); assert.doesNotMatch(router,/SAMBANOVA_API_KEY|api\\.sambanova\\.ai/);
 });
 test('les erreurs et diagnostics fournisseur ne révèlent jamais les clés API',()=>{
  assert.match(router,/status: response\.status/);
