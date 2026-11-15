@@ -29,7 +29,7 @@ function normalizeArticle(article){
  let parsed;try{parsed=new URL(url);}catch{return null;}
  if(!['https:','http:'].includes(parsed.protocol)||!title||title.length>500)return null;
  const publishedAt=parseDate(article.seendate||article.datetime||article.date);
- if(!publishedAt||Date.now()-Date.parse(publishedAt)>45*60*1000||Date.parse(publishedAt)>Date.now()+5*60*1000)return null;
+ if(!publishedAt||Date.now()-Date.parse(publishedAt)>100*60*1000||Date.parse(publishedAt)>Date.now()+5*60*1000)return null;
  const externalId=crypto.createHash('sha256').update(url).digest('hex');
  const tone=Number(article.tone);
  return {external_id:externalId,title,source_url:url,source_domain:parsed.hostname.replace(/^www\./,''),source_country:String(article.sourcecountry||'').slice(0,80),source_language:String(article.language||'').slice(0,40),published_at:publishedAt,category:'macro_geopolitics',tone:Number.isFinite(tone)?tone:null,source_provider:SOURCE};
@@ -37,7 +37,7 @@ function normalizeArticle(article){
 async function fetchArticles(){
  const url=new URL('https://api.gdeltproject.org/api/v2/doc/doc');
  url.searchParams.set('query',QUERY);url.searchParams.set('mode','ArtList');url.searchParams.set('format','json');
- url.searchParams.set('maxrecords','75');url.searchParams.set('timespan','30min');url.searchParams.set('sort','DateDesc');
+ url.searchParams.set('maxrecords','75');url.searchParams.set('timespan','90min');url.searchParams.set('sort','DateDesc');
  const response=await fetch(url,{headers:{accept:'application/json','user-agent':'AUREVIA-COPILOT/1.0 (global macro news; https://github.com/frankkorbeogo-png/aurevia-copilot-Final)'},signal:AbortSignal.timeout(15000)});
  if(!response.ok)throw new Error('GDELT HTTP '+response.status);
  const type=response.headers.get('content-type')||'';if(!type.includes('json'))throw new Error('GDELT a retourné un contenu non JSON.');
@@ -56,7 +56,7 @@ function zonedTimeToUtc(date,hour,minute,zone='America/New_York'){
 async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
- if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<12*60*60*1000)return {status:'fresh_cache',synced:0};
+ if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000)return {status:'fresh_cache',synced:0};
  const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
  const results=await Promise.all(RELEASES.map(async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
@@ -73,66 +73,72 @@ async function syncEconomicCalendar(){
   }).filter(Boolean);
  }));
  const events=results.flat();
- if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events});
+ if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
+ const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(new Date().toISOString())+'&is_active=eq.true&release_id=in.('+RELEASES.map(x=>x.id).join(',')+')&limit=500');
+ const live=new Set(events.map(x=>x.external_id));let deactivated=0;
+ for(const row of (Array.isArray(current)?current:[])){
+  if(!live.has(row.external_id)&&!row.telegram_broadcast_started_at){
+   await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});
+   deactivated++;
+  }
+ }
  await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
- return {status:'synced',synced:events.length,source:'FRED release calendar'};
+ return {status:'synced',synced:events.length,deactivated,source:'FRED release calendar'};
 }
-async function broadcastEconomicRelease(event){
+async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
- const claimed=await rest('economic_release_events?id=eq.'+encodeURIComponent(event.id)+'&telegram_broadcast_started_at=is.null&select=id',{
-  method:'PATCH',prefer:'return=representation',body:{telegram_broadcast_started_at:new Date().toISOString()}
- });
- if(!Array.isArray(claimed)||!claimed.length)return {status:'already_claimed',sent:0,failed:0};
  const recipients=await rest('telegram_connections?select=user_id,chat_id&notify_economic_announcements=eq.true&chat_id=not.is.null&limit=5000');
  const chats=[...new Set((Array.isArray(recipients)?recipients:[]).filter(x=>x.user_id&&x.chat_id).map(x=>String(x.chat_id)))];
+ const deliveries=chats.map(chat_id=>({event_type:eventType,event_id:event.id,chat_id,status:'pending'}));
+ if(deliveries.length)await rest('telegram_event_deliveries?on_conflict=event_type,event_id,chat_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:deliveries});
+ const pending=await rest('telegram_event_deliveries?select=id,chat_id,attempts,status,claimed_at&event_type=eq.'+eventType+'&event_id=eq.'+encodeURIComponent(event.id)+'&or=(status.in.(pending,failed),and(status.eq.sending,claimed_at.lt.'+encodeURIComponent(new Date(Date.now()-10*60*1000).toISOString())+'))&attempts=lt.5&limit=5000');
+ let sent=0,failed=0;const errors=[];
+ for(const item of (Array.isArray(pending)?pending:[])){
+  const claimed=await rest('telegram_event_deliveries?id=eq.'+encodeURIComponent(item.id)+'&or=(status.in.(pending,failed),and(status.eq.sending,claimed_at.lt.'+encodeURIComponent(new Date(Date.now()-10*60*1000).toISOString())+'))&attempts=lt.5&select=id,attempts',{
+   method:'PATCH',prefer:'return=representation',body:{status:'sending',attempts:Number(item.attempts||0)+1,claimed_at:new Date().toISOString()}
+  });
+  if(!Array.isArray(claimed)||!claimed.length)continue;
+  try{
+   const r=await fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:item.chat_id,text:message,disable_web_page_preview:true}),signal:AbortSignal.timeout(9000)});
+   const result=await r.json().catch(()=>null);if(!r.ok||!result?.ok)throw new Error(result?.description||'Telegram HTTP '+r.status);
+   await rest('telegram_event_deliveries?id=eq.'+encodeURIComponent(item.id),{method:'PATCH',body:{status:'sent',sent_at:new Date().toISOString(),last_error:null}});
+   sent++;
+  }catch(error){
+   const attempts=Number(claimed[0].attempts||0),terminal=attempts>=5;
+   await rest('telegram_event_deliveries?id=eq.'+encodeURIComponent(item.id),{method:'PATCH',body:{status:terminal?'failed':'pending',last_error:String(error.message||error).slice(0,240)}});
+   failed++;if(errors.length<5)errors.push(String(error.message||error).slice(0,160));
+  }
+ }
+ const all=await rest('telegram_event_deliveries?select=status,attempts&event_type=eq.'+eventType+'&event_id=eq.'+encodeURIComponent(event.id)+'&limit=5000');
+ const rows=Array.isArray(all)?all:[],done=rows.every(x=>x.status==='sent'||(x.status==='failed'&&Number(x.attempts)>=5));
+ const result={status:done?(failed?'completed_with_failures':'sent'):(failed?'retry_pending':'in_progress'),sent,failed,pending:rows.filter(x=>x.status!=='sent'&&!(x.status==='failed'&&Number(x.attempts)>=5)).length,errors};
+ await rest(eventTable+'?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_started_at:event.telegram_broadcast_started_at||new Date().toISOString(),...(done?{telegram_broadcast_completed_at:new Date().toISOString()}:{}),telegram_broadcast_result:result}});
+ return result;
+}
+function economicReleaseMessage(event){
  const utc=new Date(event.scheduled_at);
  const burkina=new Intl.DateTimeFormat('fr-FR',{timeZone:'Africa/Ouagadougou',dateStyle:'full',timeStyle:'short'}).format(utc);
  const eastern=new Intl.DateTimeFormat('fr-FR',{timeZone:'America/New_York',dateStyle:'short',timeStyle:'short'}).format(utc);
- const message='⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\n\n'+event.event_name+'\nDevise : '+event.currency+' · Impact : élevé\nHeure prévue (New York) : '+eastern+'\nHeure Burkina Faso (UTC+0) : '+burkina+'\n\nRappel envoyé environ une heure avant la publication. La date vient du calendrier FRED ; l’heure est l’horaire habituel de publication de l’organisme et doit être vérifiée sur la source officielle.\nSource : '+event.source_url+'\n\nCette alerte n’est pas un signal BUY/SELL.';
- let sent=0,failed=0;const errors=[];
- for(const chatId of chats){
-  try{
-   const r=await fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId,text:message,disable_web_page_preview:true}),signal:AbortSignal.timeout(9000)});
-   const result=await r.json().catch(()=>null);if(!r.ok||!result?.ok)throw new Error(result?.description||'Telegram HTTP '+r.status);sent++;
-  }catch(error){failed++;if(errors.length<5)errors.push(String(error.message||error).slice(0,160));}
- }
- const result={status:failed?(sent?'partial':'failed'):'sent',sent,failed,errors};
- await rest('economic_release_events?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_completed_at:new Date().toISOString(),telegram_broadcast_result:result}});
- return result;
+ return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\\n\\n'+event.event_name+'\\nDevise : '+event.currency+' · Impact : élevé\\nHeure prévue (New York) : '+eastern+'\\nHeure Burkina Faso (UTC+0) : '+burkina+'\\n\\nRappel programmé environ 60 minutes avant la publication. La date vient du calendrier FRED ; l’heure est un horaire habituel de publication, à vérifier sur la source officielle.\\nSource : '+event.source_url+'\\n\\nCette alerte n’est pas un signal BUY/SELL.';
 }
 async function broadcastDueReleases(){
  if(!env('TELEGRAM_BOT_TOKEN'))return {processed:0,notice:'TELEGRAM_BOT_TOKEN absent.'};
- const start=new Date().toISOString(),end=new Date(Date.now()+65*60*1000).toISOString();
- const pending=await rest('economic_release_events?select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact&telegram_broadcast_started_at=is.null&scheduled_at=gte.'+encodeURIComponent(start)+'&scheduled_at=lte.'+encodeURIComponent(end)+'&order=scheduled_at.asc&limit=30');
- const results=[];for(const event of (Array.isArray(pending)?pending:[]))results.push({id:event.id,...await broadcastEconomicRelease(event)});
+ const now=new Date(),start=new Date(now.getTime()+50*60*1000),end=new Date(now.getTime()+70*60*1000);
+ const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
+ const pending=await rest('economic_release_events?'+filter);
+ const results=[];for(const event of (Array.isArray(pending)?pending:[]))results.push({id:event.id,...await broadcastToSubscribers('economic',event,economicReleaseMessage(event),'economic_release_events')});
  return {processed:results.length,results};
 }
-async function broadcastGlobalNews(event){
- const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
- const claimed=await rest('global_news_events?id=eq.'+encodeURIComponent(event.id)+'&telegram_broadcast_started_at=is.null&select=id',{
-  method:'PATCH',prefer:'return=representation',body:{telegram_broadcast_started_at:new Date().toISOString()}
- });
- if(!Array.isArray(claimed)||!claimed.length)return {status:'already_claimed',sent:0,failed:0};
- const recipients=await rest('telegram_connections?select=user_id,chat_id&notify_economic_announcements=eq.true&chat_id=not.is.null&limit=5000');
- const chats=[...new Set((Array.isArray(recipients)?recipients:[]).filter(x=>x.user_id&&x.chat_id).map(x=>String(x.chat_id)))];
+function globalNewsMessage(event){
  const safeTitle=String(event.title||'').replace(/[<>]/g,'').slice(0,400),safeDomain=String(event.source_domain||'').replace(/[<>]/g,'').slice(0,120);
- const message='🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\nPublié : '+new Date(event.published_at).toISOString()+'\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
- let sent=0,failed=0;const errors=[];
- for(const chatId of chats){
-  try{
-   const r=await fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId,text:message,disable_web_page_preview:true}),signal:AbortSignal.timeout(9000)});
-   const result=await r.json().catch(()=>null);if(!r.ok||!result?.ok)throw new Error(result?.description||'Telegram HTTP '+r.status);sent++;
-  }catch(error){failed++;if(errors.length<5)errors.push(String(error.message||error).slice(0,160));}
- }
- const result={status:failed?(sent?'partial':'failed'):'sent',sent,failed,errors};
- await rest('global_news_events?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_completed_at:new Date().toISOString(),telegram_broadcast_result:result}});
- return result;
+ return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\\n\\n'+safeTitle+'\\n\\nSource : '+safeDomain+'\\nPublié : '+new Date(event.published_at).toISOString()+'\\n\\nLecture et vérification : '+event.source_url+'\\n\\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
 }
 async function syncGlobalNews(){
  const articles=await fetchArticles();
  if(articles.length)await rest('global_news_events?on_conflict=external_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:articles});
- const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at&telegram_broadcast_started_at=is.null&published_at=gte.'+encodeURIComponent(new Date(Date.now()-45*60*1000).toISOString())+'&order=published_at.desc&limit=20');
- const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastGlobalNews(item)});
+ const cutoff=new Date(Date.now()-100*60*1000).toISOString();
+ const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&published_at=gte.'+encodeURIComponent(cutoff)+'&order=published_at.desc&limit=40');
+ const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastToSubscribers('global_news',item,globalNewsMessage(item),'global_news_events')});
  return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
 }
 export async function handler(event){
