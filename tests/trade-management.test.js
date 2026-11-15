@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup} from '../trade-management.js';
+import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -8,7 +8,6 @@ test('position unique crée une seule fiche parent et les enfants partagent le g
 test('calcule le PnL BUY/SELL à partir du volume réellement clôturé',()=>{assert.deepEqual(calculateClosePnl({direction:'BUY',entry:4000,exit:4010,volume:.1,contractSize:100}),{gross:100,fees:0,net:100});assert.deepEqual(calculateClosePnl({direction:'SELL',entry:4000,exit:4010,volume:.1,contractSize:100}),{gross:-100,fees:0,net:-100});});
 test('clôture partielle conserve le volume restant et cumule le résultat',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4020}]});recordPartialClose(g,g.children[0].id,{volume:.04,exit:4010,contractSize:100});assert.equal(g.children[0].remainingLot,.06);assert.equal(g.children[0].realizedPnl,40);assert.equal(groupSummary(g).status,'OPEN');});
 test('refuse de clôturer plus que le volume restant',()=>{const g=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4020}]});assert.throws(()=>recordPartialClose(g,g.children[0].id,{volume:.11,exit:4010,contractSize:100}));});
-import {saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
 test('journal lié : une fiche pour position unique, une par trade séparé',()=>{
   const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
   const unique=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});saveTradeGroup(unique);
