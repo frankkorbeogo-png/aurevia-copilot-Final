@@ -14,6 +14,10 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
    return response({articles:[{url:'https://news.example.com/central-bank-rates',title:'Central bank announces a rate decision',seendate:new Date().toISOString(),sourcecountry:'US',language:'English',tone:'-1.2'}]});
   }
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
+  if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id')){calls.insert=JSON.parse(options.body);return response([],201);}
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:null,seen_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
@@ -62,6 +66,9 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
  globalThis.fetch=async(input,options={})=>{
   const url=String(input),method=options.method||'GET',body=options.body?JSON.parse(options.body):{};
   if(url.includes('api.gdeltproject.org'))return response({articles:[]});
+  if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
+  if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url')){
