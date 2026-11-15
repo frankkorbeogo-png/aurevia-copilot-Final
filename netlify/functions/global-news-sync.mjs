@@ -145,7 +145,6 @@ async function syncGlobalNews(){
  return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
 }
 export async function handler(event){
- if(event.httpMethod&&event.httpMethod!=='GET')return json(405,{ok:false,error:'Method not allowed.'});
  if(!env('SUPABASE_URL')||!env('SUPABASE_SERVICE_ROLE_KEY'))return json(503,{ok:false,error:'Supabase service credentials are missing.'});
  const result={ok:true,source:SOURCE};
  try{result.economicCalendar=await syncEconomicCalendar();result.economicReminders=await broadcastDueReleases();}
