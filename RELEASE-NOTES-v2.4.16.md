@@ -20,3 +20,11 @@
 ## Tests
 - Ajout d'un test de cohérence du catalogue partagé, des sélecteurs et des listes d'autorisation.
 - Les tests automatisés complets et les tests réels avec la clé Twelve Data restent à exécuter avant le déploiement final.
+
+## Contrôles supplémentaires
+- Le fichier `market-catalog.js` est inclus dans le build web : les imports des modules client ne seront pas absents du dossier de production.
+- Les cinq actions US ont des horaires de séance NYSE/Nasdaq (09:30–16:00 America/New_York) et un blocage des week-ends et principaux jours fériés US.
+- Vérifications syntaxiques effectuées sur les modules client, fonctions serveur et worker.
+- Tests ciblés des horaires exécutés sur les fonctions pures : ouverture/clôture actions US, Thanksgiving, week-end Forex et fonctionnement crypto 24/7.
+- Un workflow GitHub Actions exécute désormais `npm test` et `npm run build`. Aucune exécution CI n'a encore été remontée pour ce commit.
+- La variable secrète `TWELVEDATA_API_KEY` est présente dans la configuration Netlify (valeurs masquées). Les requêtes réelles de prix/OHLC n'ont pas encore été exécutées avec une session utilisateur authentifiée ; l'accès effectif au plan et à chaque symbole reste à confirmer avant activation finale.
