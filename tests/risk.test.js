@@ -16,10 +16,12 @@ test('le solde du compte reste informatif et ne modifie pas le lot', () => {
   assert.notEqual(a.riskPercentActual, b.riskPercentActual);
 });
 
-test('arrondit toujours le volume vers le bas selon le pas broker', () => {
-  const r = calculatePositionRisk({ riskAmount: 9.9, stopDistance: 5, unitValuePerLot: 100, lotStep: 0.01 });
+test('arrondit toujours le volume vers le bas avec un incrément technique fixe de 0,01', () => {
+  const r = calculatePositionRisk({ riskAmount: 9.9, stopDistance: 5, unitValuePerLot: 100 });
   assert.equal(r.lots, 0.01);
   assert.ok(r.riskMoney <= 9.9);
+  const tooSmall = calculatePositionRisk({ riskAmount: 4.9, stopDistance: 5, unitValuePerLot: 100 });
+  assert.match(tooSmall.error, /lot minimum de 0,01/);
 });
 
 test('calcule gain potentiel, ratio R/R et marge seulement si la donnée existe', () => {
