@@ -340,11 +340,14 @@ export async function syncTradeGroupToSupabase(group){
  return {synced:true,journalMappings:[...existingRows,...created].map(row=>({id:row.id,positionId:row.position_id||null}))};
 }
 export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=null,positionId=null){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- let query=supabase.from('trading_journal').delete().eq('user_id',user.id);
- if(groupId){query=query.eq('group_id',groupId);query=positionId?query.eq('position_id',positionId):query.is('position_id',null);}
- else query=query.eq('id',journalId);
- const removed=await query.select('id');if(removed.error)throw new Error(removed.error.message);
+ await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(error)throw new Error(error.message);if(!user)return {synced:false,reason:'not_authenticated'};
+ let removed=await supabase.from('trading_journal').delete().eq('id',journalId).eq('user_id',user.id).select('id');
+ if(removed.error)throw new Error(removed.error.message);
+ if(!(removed.data||[]).length&&groupId){
+  let fallback=supabase.from('trading_journal').delete().eq('user_id',user.id).eq('group_id',groupId);
+  fallback=positionId?fallback.eq('position_id',positionId):fallback.is('position_id',null);
+  removed=await fallback.select('id');if(removed.error)throw new Error(removed.error.message);
+ }
  return {synced:true,deleted:(removed.data||[]).length};
 }
 
