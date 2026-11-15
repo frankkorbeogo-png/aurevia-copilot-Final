@@ -5,7 +5,7 @@ import { MARKET_INSTRUMENTS, MARKET_IDS, MARKET_LABELS, MARKET_PROVIDER_SYMBOLS 
 const read = f => readFile(new URL('../'+f, import.meta.url), 'utf8');
 test('les sélecteurs exposent les actifs du catalogue multi-marchés', async () => {
   const html = await read('index.html');
-  for (const id of MARKET_IDS) {
+  for (const id of Object.keys(MARKET_INSTRUMENTS)) {
     assert.match(html, new RegExp('value="'+id+'"'));
   }
   assert.match(html, /id="analysisInstrumentSelect"/);
@@ -37,7 +37,8 @@ test('le suivi interne et le worker WebSocket acceptent les mêmes symboles affi
 });
 test('les symboles TradingView et les symboles fournisseur restent distincts dans le catalogue',()=>{
   for (const item of Object.values(MARKET_INSTRUMENTS)) {
-    assert.ok(item.label && item.tv && item.category && item.market);\n    if(item.enabled===false)assert.equal(item.provider,null);else assert.ok(item.provider);
+    assert.ok(item.label && item.tv && item.category && item.market);
+    if(item.enabled===false)assert.equal(item.provider,null);else assert.ok(item.provider);
   }
 });
 test('les sélecteurs et les cartes de marché sont synchronisés', async () => {
@@ -61,7 +62,10 @@ test('le build de production embarque le catalogue importé par les modules clie
 
 test('WTI reste visible mais désactivé tant que le plan matières premières n’est pas vérifié', async () => {
   const html = await read('index.html');
-  assert.equal(MARKET_INSTRUMENTS.WTIUSD.enabled,false);\n  assert.equal(MARKET_INSTRUMENTS.US30.enabled,false);\n  assert.equal(MARKET_INSTRUMENTS.NAS100.enabled,false);\n  assert.equal(MARKET_INSTRUMENTS.SPX500.enabled,false);
+  assert.equal(MARKET_INSTRUMENTS.WTIUSD.enabled,false);
+  assert.equal(MARKET_INSTRUMENTS.US30.enabled,false);
+  assert.equal(MARKET_INSTRUMENTS.NAS100.enabled,false);
+  assert.equal(MARKET_INSTRUMENTS.SPX500.enabled,false);
   assert.match(html, /WTI\/USD[^<]*accès matières premières à confirmer/);
   assert.doesNotMatch(html, /data-symbol="WTIUSD"/);
   assert.match(html, /value="WTIUSD" disabled/);
