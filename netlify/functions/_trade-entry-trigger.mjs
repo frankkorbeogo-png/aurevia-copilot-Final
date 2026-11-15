@@ -4,7 +4,7 @@ export function evaluateEntryTrigger(position,group,prices){
  const observed=Number(prices?.price),entry=Number(position?.entry_price),trigger=Number(position?.trigger_price);
  if(!Number.isFinite(observed)||observed<=0||!Number.isFinite(entry)||entry<=0)return null;
  const direction=group?.direction,order=group?.order_type||group?.orderType;
- if(!['BUY','SELL'].includes(direction)||!['BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'].includes(order))return null;
+ if(!['BUY','SELL'].includes(direction)||!['BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'].includes(order)||((order.startsWith('BUY')&&direction!=='BUY')||(order.startsWith('SELL')&&direction!=='SELL')))return null;
  const buy=direction==='BUY',stopLimit=order.endsWith('STOP LIMIT');
  const threshold=stopLimit&&!position.trigger_seen?trigger:entry;
  if(!Number.isFinite(threshold)||threshold<=0)return null;
