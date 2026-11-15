@@ -116,23 +116,28 @@ test('surveillance ignore les cotations, niveaux ou directions invalides au lieu
 });
 
 
-test('BUY LIMIT et BUY STOP utilisent le prix simple du marché',()=>{
- const q={price:2000};
- assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'BUY',order_type:'BUY LIMIT'},q),'ACTIVATE');
- assert.equal(evaluateEntryTrigger({entry_price:1999},{direction:'BUY',order_type:'BUY STOP'},q),'ACTIVATE');
- assert.equal(evaluateEntryTrigger({entry_price:1999},{direction:'BUY',order_type:'BUY LIMIT'},q),null);
+test('BUY LIMIT et BUY STOP exigent un franchissement observé',()=>{
+ const limit={entry_price:2000,last_observed_price:2001,entry_armed:true};
+ assert.equal(evaluateEntryTrigger(limit,{direction:'BUY',order_type:'BUY LIMIT'},{price:2000}).action,'ACTIVATE');
+ const stop={entry_price:1999,last_observed_price:1998,entry_armed:true};
+ assert.equal(evaluateEntryTrigger(stop,{direction:'BUY',order_type:'BUY STOP'},{price:1999}).action,'ACTIVATE');
+ assert.equal(evaluateEntryTrigger({entry_price:1999,last_observed_price:1999,entry_armed:false},{direction:'BUY',order_type:'BUY LIMIT'},{price:1998}).action,'TRACK');
 });
-test('SELL LIMIT et SELL STOP utilisent le même prix simple du marché',()=>{
- const q={price:2000};
- assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'SELL',order_type:'SELL LIMIT'},q),'ACTIVATE');
- assert.equal(evaluateEntryTrigger({entry_price:2001},{direction:'SELL',order_type:'SELL STOP'},q),'ACTIVATE');
- assert.equal(evaluateEntryTrigger({entry_price:2001},{direction:'SELL',order_type:'SELL LIMIT'},q),null);
+test('SELL LIMIT et SELL STOP exigent un franchissement observé',()=>{
+ const limit={entry_price:2000,last_observed_price:1999,entry_armed:true};
+ assert.equal(evaluateEntryTrigger(limit,{direction:'SELL',order_type:'SELL LIMIT'},{price:2000}).action,'ACTIVATE');
+ const stop={entry_price:2001,last_observed_price:2002,entry_armed:true};
+ assert.equal(evaluateEntryTrigger(stop,{direction:'SELL',order_type:'SELL STOP'},{price:2001}).action,'ACTIVATE');
 });
-test('STOP LIMIT utilise le prix simple pour le déclenchement puis le retour',()=>{
+test('STOP LIMIT exige le franchissement du stop puis le retour vers le prix limite',()=>{
  const group={direction:'BUY',order_type:'BUY STOP LIMIT'};
- assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2001,trigger_seen:false},group,{price:2001}),'TRIGGER_SEEN');
- assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2001,trigger_seen:true},group,{price:1999}),'ACTIVATE');
- assert.equal(evaluateEntryTrigger({entry_price:1999,trigger_price:2001,trigger_seen:false},group,{price:1999}),null);
+ const stop={entry_price:1999,trigger_price:2001,trigger_seen:false,last_observed_price:2000,entry_armed:true};
+ const stage=evaluateEntryTrigger(stop,group,{price:2001});
+ assert.equal(stage.action,'TRIGGER_SEEN');
+ const limit={...stop,...stage,trigger_seen:true};
+ assert.equal(evaluateEntryTrigger(limit,group,{price:2000}).action,'TRACK');
+ const armed={...limit,...evaluateEntryTrigger(limit,group,{price:2000})};
+ assert.equal(evaluateEntryTrigger(armed,group,{price:1999}).action,'ACTIVATE');
 });
 test('un prix absent ne déclenche aucune entrée',()=>{
  assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'BUY',order_type:'BUY LIMIT'},{bid:2000,ask:2000.2}),null);

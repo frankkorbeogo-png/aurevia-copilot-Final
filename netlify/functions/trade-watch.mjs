@@ -56,7 +56,7 @@ async function deliverPending(){
 export async function handler(event){
  if(!BASE()||!KEY())return json(503,{error:'Surveillance non configurée côté serveur.'});
  try{
-  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,trigger_seen,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
+  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
   const groups=await rest('trading_position_groups?select=id,user_id,instrument,direction,order_type,mode,status,contract_spec&status=eq.OPEN');const byId=new Map(groups.map(g=>[g.id,g]));
   let checked=0,activated=0,triggerStages=0,triggered=0,errors=[];const priceCache=new Map();
   for(const p of positions||[]){const g=byId.get(p.group_id);if(!g)continue;try{
@@ -64,9 +64,16 @@ export async function handler(event){
     const observedPrice=prices.price;
     if(p.status==='PENDING'){
       const state=evaluateEntryTrigger(p,g,prices);if(!state)continue;
-      if(state==='TRIGGER_SEEN'){
-        const changed=await rest(`trading_positions?id=eq.${p.id}&status=eq.PENDING&trigger_seen=eq.false`,{method:'PATCH',body:{trigger_seen:true,updated_at:new Date().toISOString()},prefer:'return=representation'});if(changed?.length)triggerStages++;continue;
+      if(state.action==='TRACK'){
+        await rest(`trading_positions?id=eq.${p.id}&status=eq.PENDING`,{method:'PATCH',body:{last_observed_price:state.last_observed_price,entry_armed:state.entry_armed,updated_at:new Date().toISOString()},prefer:'return=minimal'});
+        continue;
       }
+      if(state.action==='TRIGGER_SEEN'){
+        const changed=await rest(`trading_positions?id=eq.${p.id}&status=eq.PENDING&trigger_seen=eq.false`,{method:'PATCH',body:{trigger_seen:true,last_observed_price:state.last_observed_price,entry_armed:state.entry_armed,updated_at:new Date().toISOString()},prefer:'return=representation'});
+        if(changed?.length)triggerStages++;
+        continue;
+      }
+      if(state.action!=='ACTIVATE')continue;
       const activationPrice=observedPrice;
       await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:new Date().toISOString()}});activated++;continue;
     }

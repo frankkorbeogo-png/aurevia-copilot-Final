@@ -36,3 +36,19 @@ test('la création atomique est réservée au service_role et valide les paramè
 });
 
 test('V2.3.80 stocke le snapshot de calcul et prend en charge contrat, point et tick',async()=>{const sql=await read('../supabase/migrations/20261113142328_universal_contract_snapshot_v2380.sql');assert.match(sql,/add column if not exists contract_spec jsonb/i);assert.match(sql,/add column if not exists broker_snapshot jsonb/i);assert.match(sql,/p_contract_spec jsonb/i);assert.match(sql,/v_calc='point'/i);assert.match(sql,/v_calc='tick'/i);assert.match(sql,/grant execute .* to service_role/i);});
+
+
+test('Telegram ne demande plus minLot, lotStep ni maxLot et applique 0,01 en interne',async()=>{
+ const source=await read('../netlify/functions/telegram-webhook.mjs');
+ assert.match(source,/minLot:0\.01,lotStep:0\.01,maxLot:null/);
+ assert.match(source,/volume<0\.01/);
+ assert.match(source,/multiples? de 0,01/);
+ assert.doesNotMatch(source,/minLot:'Quel est le lot minimum/);
+ assert.doesNotMatch(source,/lotStep:'Quel est le pas de volume/);
+ assert.doesNotMatch(source,/maxLot:'Quel est le lot maximum/);
+});
+test('API de création depuis scénario force aussi le minimum et l’incrément à 0,01',async()=>{
+ const source=await read('../netlify/functions/scenario-api.mjs');
+ assert.match(source,/minLot:0\.01,lotStep:0\.01,maxLot:null/);
+ assert.match(source,/volume<0\.01/);
+});

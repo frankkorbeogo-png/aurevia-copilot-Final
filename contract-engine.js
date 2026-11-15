@@ -87,13 +87,12 @@ export function calculateContractPnl({ direction, entry, exit, volume, contractS
 
 export function calculateLotsFromRisk({ riskAmount, stopDistance, contractSpec, balance = 0, rewardDistance = null }) {
   if (!finite(riskAmount) || Number(riskAmount) <= 0 || !finite(stopDistance) || Number(stopDistance) <= 0) return { error: 'Le montant à risquer et la distance du stop doivent être positifs.' };
-  let unitValue; try { unitValue = getPriceUnitValuePerLot(contractSpec); } catch (error) { return { error: error.message }; }
-  const spec = normalizeContractSpec(contractSpec);
+  const spec = normalizeContractSpec({...contractSpec,minLot:0.01,lotStep:0.01,maxLot:null});
+  let unitValue; try { unitValue = getPriceUnitValuePerLot(spec); } catch (error) { return { error: error.message }; }
   const rawLots = Number(riskAmount) / (Number(stopDistance) * unitValue);
-  const precision = Math.max(0, Math.min(8, (String(spec.lotStep).split('.')[1] || '').length));
-  const lots = Number((Math.floor((rawLots + 1e-10) / spec.lotStep) * spec.lotStep).toFixed(precision));
-  if (lots < spec.minLot) return { error: 'Le risque saisi est trop faible pour atteindre le lot minimum du broker.' };
-  if (spec.maxLot !== null && lots > spec.maxLot) return { error: 'Le lot calculé dépasse le maximum autorisé par le broker.' };
+  const precision = 2;
+  const lots = Number((Math.floor((rawLots + 1e-10) / 0.01) * 0.01).toFixed(precision));
+  if (lots < 0.01) return { error: 'Le risque saisi est trop faible pour atteindre le lot minimum de 0,01.' };
   const riskMoney = lots * Number(stopDistance) * unitValue;
   const gain = finite(rewardDistance) && Number(rewardDistance) > 0 ? lots * Number(rewardDistance) * unitValue : null;
   return { lots, riskMoney: Number(riskMoney.toFixed(2)), lossPerLot: Number((Number(stopDistance) * unitValue).toFixed(2)), gain: gain === null ? null : Number(gain.toFixed(2)), rr: gain === null ? null : gain / riskMoney, riskPercentActual: finite(balance) && Number(balance) > 0 ? riskMoney / Number(balance) * 100 : null, margin: spec.marginPerLot !== null ? lots * spec.marginPerLot : null, unusedRisk: Math.max(0, Number(riskAmount) - riskMoney), currency: spec.accountCurrency || null };

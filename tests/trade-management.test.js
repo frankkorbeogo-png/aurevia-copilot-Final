@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deletePendingTradeGroup,deletePendingSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
+import {splitVolume,createTradeGroup,validatePendingOrderAgainstQuote,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deletePendingTradeGroup,deletePendingSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -36,7 +36,7 @@ test('un ordre STOP exige un prix de déclenchement', () => {
   assert.throws(() => createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY STOP'}), /prix de déclenchement/);
 });
 
-test('refuse un lot qui ne respecte pas le pas broker',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.105,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]}),/pas de volume/));
+test('refuse un lot qui ne respecte pas le pas broker',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.105,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]}),/multiple de 0,01/));
 test('refuse une clôture partielle hors pas broker',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.throws(()=>recordPartialClose(g,g.children[0].id,{volume:.015,exit:2005,contractSize:100}),/pas broker/);});
 
 test('les identifiants de position restent au format UUID compatible Supabase',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.match(g.id,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);assert.match(g.children[0].id,/^[0-9a-f-]{36}$/i);});
@@ -345,4 +345,50 @@ test('la suppression en attente refuse un trade déjà ouvert ou clôturé',()=>
  const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT'});saveTradeGroup(group);
  const stored=loadTradeGroups()[0];stored.children[0].status='OPEN';persistTradeGroup(stored);assert.throws(()=>deletePendingSeparateTradeChild(group.id,group.children[0].id),/encore en attente/);
  delete globalThis.localStorage;
+});
+
+test('rejette un BUY LIMIT si le cours est déjà sous ou au niveau de l’entrée',()=>{
+ const result=validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:3990});
+ assert.equal(result.ok,false);assert.match(result.error,/BUY LIMIT invalide/);
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:4010}).ok,true);
+});
+test('valide les côtés de marché des six types d’ordres en attente',()=>{
+ const cases=[
+  ['BUY LIMIT','BUY',4000,null,4010,true],['BUY LIMIT','BUY',4000,null,3990,false],
+  ['SELL LIMIT','SELL',4000,null,3990,true],['SELL LIMIT','SELL',4000,null,4010,false],
+  ['BUY STOP','BUY',4000,null,3990,true],['BUY STOP','BUY',4000,null,4010,false],
+  ['SELL STOP','SELL',4000,null,4010,true],['SELL STOP','SELL',4000,null,3990,false],
+  ['BUY STOP LIMIT','BUY',3990,4000,3995,true],['BUY STOP LIMIT','BUY',3990,4000,4005,false],
+  ['SELL STOP LIMIT','SELL',4010,4000,4005,true],['SELL STOP LIMIT','SELL',4010,4000,3995,false]
+ ];
+ for(const [orderType,direction,entry,triggerPrice,marketPrice,ok] of cases){
+  assert.equal(validatePendingOrderAgainstQuote({orderType,direction,entry,triggerPrice,marketPrice}).ok,ok,orderType+' at '+marketPrice);
+ }
+});
+test('refuse de créer un ordre en attente sans cours de marché vérifiable',()=>{
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:null}).ok,false);
+});
+
+
+test('un horodatage unique est partagé par le groupe, tous les TP, le journal local et le cloud',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}]});
+ assert.ok(group.createdAt);assert.ok(group.children.every(child=>child.createdAt===group.createdAt));
+ saveTradeGroup(group);assert.ok(loadLinkedJournal().every(row=>row.createdAt===group.createdAt));
+ const cloud=buildTradeGroupCloudRows(group,'00000000-0000-4000-8000-000000000001');
+ assert.equal(cloud.groupRow.created_at,group.createdAt);assert.ok(cloud.positions.every(row=>row.opened_at===group.createdAt));assert.ok(cloud.journalRows.every(row=>row.created_at===group.createdAt));
+ delete globalThis.localStorage;
+});
+
+
+test('lot minimum technique de 0,01 accepté et volume inférieur refusé',()=>{
+ const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010}]};
+ const group=createTradeGroup({...base,lot:0.01,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}});
+ assert.equal(group.children[0].lot,0.01);
+ assert.throws(()=>createTradeGroup({...base,lot:0.009,lotStep:0.01}),/lot minimum autorisé/);
+});
+
+test('position unique exige au moins 0,01 par TP',()=>{
+ const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020},{price:2030}],lot:0.02,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}};
+ assert.throws(()=>createTradeGroup(base),/volume est insuffisant|Volume insuffisant|minimum et maximum/);
 });

@@ -4,6 +4,20 @@ const JOURNAL_KEY = 'aurevia-linked-journal-v2';
 const id = () => globalThis.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});
 const round = (n, p=2) => Number(n.toFixed(p));
 
+
+export function validatePendingOrderAgainstQuote({orderType,direction,entry,triggerPrice=null,marketPrice}){
+  if(orderType==='MARKET')return {ok:true};
+  const price=Number(marketPrice),level=Number(entry),trigger=Number(triggerPrice);
+  if(!Number.isFinite(price)||price<=0||!Number.isFinite(level)||level<=0)return {ok:false,error:'Cours de marché indisponible : impossible de vérifier le placement de cet ordre en attente.'};
+  if(orderType==='BUY LIMIT'&&price<=level)return {ok:false,error:`BUY LIMIT invalide : le cours actuel (${price}) doit être au-dessus de ton entrée (${level}).`};
+  if(orderType==='SELL LIMIT'&&price>=level)return {ok:false,error:`SELL LIMIT invalide : le cours actuel (${price}) doit être sous ton entrée (${level}).`};
+  if(orderType==='BUY STOP'&&price>=level)return {ok:false,error:`BUY STOP invalide : le cours actuel (${price}) doit être sous ton déclenchement (${level}).`};
+  if(orderType==='SELL STOP'&&price<=level)return {ok:false,error:`SELL STOP invalide : le cours actuel (${price}) doit être au-dessus de ton déclenchement (${level}).`};
+  if(orderType==='BUY STOP LIMIT'&&(!Number.isFinite(trigger)||trigger<=0||price>=trigger))return {ok:false,error:`BUY STOP LIMIT invalide : le cours actuel (${price}) doit être sous le déclenchement (${trigger}).`};
+  if(orderType==='SELL STOP LIMIT'&&(!Number.isFinite(trigger)||trigger<=0||price<=trigger))return {ok:false,error:`SELL STOP LIMIT invalide : le cours actuel (${price}) doit être au-dessus du déclenchement (${trigger}).`};
+  return {ok:true};
+}
+
 export function splitVolume(total, count, step=0.01) {
   if (![total,count,step].every(Number.isFinite) || total<=0 || count<1 || step<=0) throw new Error('Volume, nombre de TP et pas broker invalides.');
   const scaled=total/step;
@@ -19,12 +33,13 @@ export function createTradeGroup(input) {
   const {mode='unique', instrument, direction, lot, lotStep=0.01, entry, stopLoss, takeProfits=[], autoJournal=true, contractSize=null, quoteToAccount=1, feesPerLot=0, contractSpec=null, brokerSnapshot=null, orderType='MARKET', triggerPrice=null, limitPrice=null, expiresAt=null} = input;
   if (!instrument?.trim() || !['BUY','SELL'].includes(direction) || !Number.isFinite(lot) || lot<=0 || !Number.isFinite(entry) || entry<=0 || !Number.isFinite(stopLoss) || stopLoss<=0) throw new Error('Paramètres de position incomplets ou invalides.');
   if(!['unique','separate'].includes(mode)) throw new Error('Mode de gestion invalide.');
-  if(!Number.isFinite(lotStep)||lotStep<=0) throw new Error('Le pas de volume broker doit être strictement positif.');
-  if(Math.abs(lot/lotStep-Math.round(lot/lotStep))>1e-7) throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');
   if(!Number.isFinite(quoteToAccount)||quoteToAccount<=0||!Number.isFinite(feesPerLot)||feesPerLot<0) throw new Error('Conversion ou frais broker invalides.');
   if(contractSize!==null&&(!Number.isFinite(contractSize)||contractSize<=0)) throw new Error('La taille du contrat doit être positive.');
-  let snapshot = contractSpec ? normalizeContractSpec(contractSpec) : null;
-  if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);if(Math.abs(lot/checked.spec.lotStep-Math.round(lot/checked.spec.lotStep))>1e-7)throw new Error('Le lot saisi ne respecte pas le pas de volume du broker.');if(lot<checked.spec.minLot||(checked.spec.maxLot!==null&&lot>checked.spec.maxLot))throw new Error('Le lot est en dehors des limites du broker.');}
+  const lotStepFixed=0.01;
+  if(lot<0.01)throw new Error('Le lot minimum autorisé est de 0,01.');
+  if(Math.abs(lot/lotStepFixed-Math.round(lot/lotStepFixed))>1e-7)throw new Error('Le lot doit être un multiple de 0,01.');
+  let snapshot = contractSpec ? normalizeContractSpec({...contractSpec,minLot:0.01,lotStep:lotStepFixed,maxLot:null}) : null;
+  if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);}
   const allowedOrders=['MARKET','BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'];
   if(!allowedOrders.includes(orderType))throw new Error('Type d’ordre non reconnu.');
   if(orderType!=='MARKET'&&((orderType.startsWith('BUY')&&direction!=='BUY')||(orderType.startsWith('SELL')&&direction!=='SELL')))throw new Error('Le type d’ordre ne correspond pas à la direction BUY/SELL.');
@@ -40,28 +55,29 @@ export function createTradeGroup(input) {
   if(direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le stop-loss doit être au-dessus du prix d’entrée.');
   if(tps.some(tp=>direction==='BUY'?tp.price<=entry:tp.price>=entry))throw new Error('Les take-profits doivent être du côté favorable de l’entrée.');
   if (!tps.length) throw new Error('Sélectionnez au moins un take-profit.');
-  const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStep) : tps.map(()=>lot);
-  if(snapshot&&volumes.some(volume=>volume<snapshot.minLot||(snapshot.maxLot!==null&&volume>snapshot.maxLot)))throw new Error('Chaque volume enfant doit respecter les limites minimum et maximum du broker.');
+  const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStepFixed) : tps.map(()=>lot);
+  if(volumes.some(volume=>volume<0.01))throw new Error('Chaque TP doit recevoir au moins 0,01 lot.');
   const groupId=id();
+  const createdAt=new Date().toISOString();
   const initialStatus=orderType==='MARKET'?'OPEN':'PENDING';
-  const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:initialStatus,triggerSeen:false,activatedAt:orderType==='MARKET'?new Date().toISOString():null,activationPrice:orderType==='MARKET'?entry:null,realizedPnl:0,fees:0,closes:[],createdAt:new Date().toISOString()}));
+  const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:initialStatus,triggerSeen:false,activatedAt:orderType==='MARKET'?createdAt:null,activationPrice:orderType==='MARKET'?entry:null,realizedPnl:0,fees:0,closes:[],createdAt}));
   const effectiveLimitPrice = orderType.endsWith('LIMIT') && !orderType.includes('STOP LIMIT') ? (limitPrice ?? entry) : limitPrice;
   if(expiresAt){const expiry=new Date(expiresAt);if(Number.isNaN(expiry.getTime())||expiry.getTime()<=Date.now())throw new Error('La date d’expiration doit être valide et située dans le futur.');if(orderType==='MARKET')throw new Error('Une position au marché ne possède pas de date d’expiration d’ordre en attente.');}
-  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep: snapshot?.lotStep ?? lotStep,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt:new Date().toISOString()};
+  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep:lotStepFixed,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt};
   return group;
 }
 
 export function buildTradeGroupCloudRows(group,userId){
   if(!group?.id||!userId||!['unique','separate'].includes(group.mode)||!Array.isArray(group.children)||!group.children.length)throw new Error('Groupe de trades invalide pour la synchronisation cloud.');
-  const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null};
-  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:child.createdAt}));
+  const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null,created_at:group.createdAt};
+  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:group.createdAt||child.createdAt}));
   let journalRows=[];
   if(group.autoJournal){
     if(group.mode==='unique'){
       const first=group.children[0],pending=group.children.every(child=>child.status==='PENDING');
-      journalRows=[{user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${pending?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,child)=>sum+Number(child.remainingLot||0),0),gross_pnl:0,fees:0,entry_price:first.entry,stop_loss:first.stopLoss,take_profit:first.takeProfit}];
+      journalRows=[{user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${pending?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,child)=>sum+Number(child.remainingLot||0),0),gross_pnl:0,fees:0,entry_price:first.entry,stop_loss:first.stopLoss,take_profit:first.takeProfit,created_at:group.createdAt}];
     }else{
-      journalRows=group.children.map(child=>({user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${child.tpLabel}${child.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:child.id,mode:'separate',volume_initial:child.initialLot,volume_remaining:child.remainingLot,tp_label:child.tpLabel,gross_pnl:0,fees:0,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit}));
+      journalRows=group.children.map(child=>({user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${child.tpLabel}${child.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:child.id,mode:'separate',volume_initial:child.initialLot,volume_remaining:child.remainingLot,tp_label:child.tpLabel,gross_pnl:0,fees:0,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,created_at:group.createdAt}));
     }
   }
   return {groupRow,positions,journalRows};
