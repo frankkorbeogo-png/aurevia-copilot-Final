@@ -8,7 +8,6 @@ const RELEASES=[
  {id:46,name:'US Producer Price Index (PPI)',hour:8,minute:30,url:'https://www.bls.gov/ppi/'},
  {id:53,name:'US Gross Domestic Product (GDP)',hour:8,minute:30,url:'https://www.bea.gov/data/gdp/gross-domestic-product'},
  {id:9,name:'US Advance Retail Sales',hour:8,minute:30,url:'https://www.census.gov/retail/index.html'},
- {id:101,name:'FOMC monetary policy statement',hour:14,minute:0,url:'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm'}
 ];
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const env=name=>(process.env[name]||'').trim();
@@ -53,6 +52,21 @@ function zonedTimeToUtc(date,hour,minute,zone='America/New_York'){
  }
  return new Date(guess).toISOString();
 }
+
+const FOMC_DECISION_DATES=[
+ '2026-12-09',
+ '2027-01-27','2027-03-17','2027-04-28','2027-06-09','2027-07-28','2027-09-15','2027-11-17',
+ '2028-01-26'
+];
+const FOMC_SOURCE='https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm';
+export function buildFomcReleaseEvents(now=new Date(),horizonDays=15){
+ const start=now.getTime(),end=start+horizonDays*86400000;
+ return FOMC_DECISION_DATES.map(date=>{
+  const scheduledAt=zonedTimeToUtc(date,14,0);
+  return {external_id:'FRED-101-'+date,release_id:101,event_name:'FOMC · décision de politique monétaire',release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:FOMC_SOURCE,source_provider:'Federal Reserve FOMC calendar',time_basis:'official_decision_day_standard_release_time'};
+ }).filter(event=>Date.parse(event.scheduled_at)>=start-60*60*1000&&Date.parse(event.scheduled_at)<=end);
+}
+
 async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
@@ -72,9 +86,9 @@ async function syncEconomicCalendar(){
    return {external_id:'FRED-'+release.id+'-'+date,release_id:release.id,event_name:release.name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:release.url,source_provider:'FRED release calendar',time_basis:'standard_release_time'};
   }).filter(Boolean);
  }));
- const events=results.flat();
+ const events=[...results.flat(),...buildFomcReleaseEvents(new Date(),15)];
  if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
- const now=new Date(),horizon=new Date(now.getTime()+15*86400000);const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+RELEASES.map(x=>x.id).join(',')+')&limit=500');
+ const now=new Date(),horizon=new Date(now.getTime()+15*86400000);const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+[...RELEASES.map(x=>x.id),101].join(',')+')&limit=500');
  const live=new Set(events.map(x=>x.external_id));let deactivated=0;
  for(const row of (Array.isArray(current)?current:[])){
   if(!live.has(row.external_id)){
