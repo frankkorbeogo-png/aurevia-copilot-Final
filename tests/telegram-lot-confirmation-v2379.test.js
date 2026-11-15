@@ -42,7 +42,7 @@ test('Telegram ne demande plus minLot, lotStep ni maxLot et applique 0,01 en int
  const source=await read('../netlify/functions/telegram-webhook.mjs');
  assert.match(source,/minLot:0\.01,lotStep:0\.01,maxLot:null/);
  assert.match(source,/volume<0\.01/);
- assert.match(source,/multiple de 0,01/);
+ assert.match(source,/multiples? de 0,01/);
  assert.doesNotMatch(source,/minLot:'Quel est le lot minimum/);
  assert.doesNotMatch(source,/lotStep:'Quel est le pas de volume/);
  assert.doesNotMatch(source,/maxLot:'Quel est le lot maximum/);
