@@ -72,7 +72,7 @@ async function fetchFrame(symbol,interval){
 }
 export async function loadInstrumentAnalysis(symbol){
  const marketStatus=getMarketStatus(symbol);
- if(!marketStatus.tradable){latest={message:'Marché fermé',tableMessage:'Analyse indisponible pendant la fermeture hebdomadaire.',signalReason:`MARCHÉ FERMÉ — ${marketStatus.reason} Réouverture selon l’horaire standard : ${marketStatus.schedule}.`,decision:'CLOSED',marketStatus,probability:null,score:null,scenarios:{buy:null,sell:null}};return null;}
+ if(!marketStatus.tradable){latest={message:'Marché fermé',tableMessage:'Analyse indisponible pendant la fermeture du marché.',signalReason:`MARCHÉ FERMÉ — ${marketStatus.reason} Réouverture selon l’horaire de référence : ${marketStatus.schedule}.`,decision:'CLOSED',marketStatus,probability:null,score:null,scenarios:{buy:null,sell:null}};return null;}
  const pending=inFlight.get(symbol);if(pending)return pending;
  const retryAt=retryAfter.get(symbol)||0;if(Date.now()<retryAt){latest={...latest,message:'Temporisation du fournisseur',signalReason:`WAIT : trop de requêtes récentes. Nouvelle tentative possible dans ${Math.ceil((retryAt-Date.now())/1000)} s.`};return null;}
  const task=runInstrumentAnalysis(symbol);inFlight.set(symbol,task);try{return await task;}finally{inFlight.delete(symbol);}
