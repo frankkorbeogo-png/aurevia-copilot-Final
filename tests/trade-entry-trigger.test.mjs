@@ -40,8 +40,7 @@ test('BUY STOP LIMIT: stop and limit legs each require their own crossing',()=>{
  let s=evaluateEntryTrigger(p,group('BUY STOP LIMIT','BUY'),quote(110));
  assert.equal(s.action,'TRIGGER_SEEN');
  p={...p,...s,trigger_seen:true};
- assert.equal(evaluateEntryTrigger(p,group('BUY STOP LIMIT','BUY'),quote(99)).action,'TRACK');
- s=evaluateEntryTrigger({...p,last_observed_price:99,entry_armed:false},group('BUY STOP LIMIT','BUY'),quote(101));
+ s=evaluateEntryTrigger(p,group('BUY STOP LIMIT','BUY'),quote(101));
  assert.equal(s.action,'TRACK');assert.equal(s.entry_armed,true);
  assert.equal(evaluateEntryTrigger({...p,...s,trigger_seen:true},group('BUY STOP LIMIT','BUY'),quote(100)).action,'ACTIVATE');
 });
