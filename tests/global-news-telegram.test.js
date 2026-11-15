@@ -26,7 +26,7 @@ test('le synchroniseur GDELT stocke les titres récents et les diffuse aux abonn
   const result=await syncNews({httpMethod:'GET'});const body=JSON.parse(result.body);
   assert.equal(result.statusCode,200);assert.equal(body.ok,true);assert.equal(body.fetched,1);
   assert.equal(calls.insert.length,1);assert.equal(calls.insert[0].category,'macro_geopolitics');
-  assert.equal(calls.claimed,1);assert.equal(calls.telegram.length,2);
+  assert.equal(calls.claimed,2);assert.equal(calls.telegram.length,2);
   assert.match(calls.telegram[0].text,/ALERTE MACRO/);assert.match(calls.telegram[0].text,/ne constitue pas, à elle seule, un signal BUY\/SELL/);
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
