@@ -217,7 +217,7 @@ test('position unique partiellement clôturée : retrait du suivi refusé',async
  const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
  const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
  saveTradeGroup(group);recordPartialClose(group,group.children[0].id,{volume:0.01,exit:2010,contractSize:100});persistTradeGroup(group);
- assert.throws(()=>deleteClosedTradeGroup(group.id),/entièrement clôturado/);
+ assert.throws(()=>deleteClosedTradeGroup(group.id),/entièrement clôturé/);
  assert.equal(loadTradeGroups().some(row=>row.id===group.id),true);delete globalThis.localStorage;
 });
 
