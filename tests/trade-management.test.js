@@ -149,3 +149,49 @@ test('suppression d’une fiche journal liée conserve le groupe de positions',(
  assert.equal(loadLinkedJournal().length,0);assert.equal(loadTradeGroups().length,1);
  delete globalThis.localStorage;
 });
+
+
+test('position unique : modification groupée de l’entrée, du SL et de tous les TP',async()=>{
+ const {editOpenTradeGroup}=await import('../trade-management.js');
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ const ids=group.children.map(child=>child.id);
+ editOpenTradeGroup(group,{entry:2002,stopLoss:1992,takeProfits:[2012,2022,2032]});
+ assert.deepEqual(group.children.map(child=>child.id),ids);
+ assert.deepEqual(group.children.map(child=>child.entry),[2002,2002,2002]);
+ assert.deepEqual(group.children.map(child=>child.stopLoss),[1992,1992,1992]);
+ assert.deepEqual(group.children.map(child=>child.takeProfit),[2012,2022,2032]);
+ assert.deepEqual(group.children.map(child=>child.initialLot),[0.01,0.01,0.01]);
+});
+
+test('position unique en attente : modification autorisée ; après une clôture : modification bloquée',async()=>{
+ const {editOpenTradeGroup}=await import('../trade-management.js');
+ const pending=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'SELL',lot:0.02,entry:2000,stopLoss:2010,takeProfits:[{label:'TP1',price:1990},{label:'TP2',price:1980}],orderType:'SELL LIMIT'});
+ assert.ok(pending.children.every(child=>child.status==='PENDING'));
+ editOpenTradeGroup(pending,{entry:2001,stopLoss:2011,takeProfits:[1991,1981]});
+ assert.equal(pending.children[0].entry,2001);
+ const active=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.02,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}]});
+ recordPartialClose(active,active.children[0].id,{volume:0.01,exit:2010,contractSize:100});
+ assert.throws(()=>editOpenTradeGroup(active,{entry:2001,stopLoss:1991,takeProfits:[2011,2021]}),/sans clôture enregistrée/);
+});
+
+test('la modification d’une position unique met à jour son unique fiche journal',async()=>{
+ const {editOpenTradeGroup}=await import('../trade-management.js');
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ saveTradeGroup(group);
+ editOpenTradeGroup(group,{entry:2003,stopLoss:1993,takeProfits:[2013,2023,2033]});
+ persistTradeGroup(group);
+ const rows=loadLinkedJournal().filter(row=>row.groupId===group.id);
+ assert.equal(rows.length,1);
+ assert.equal(rows[0].entry,2003);
+ assert.equal(rows[0].stopLoss,1993);
+ assert.deepEqual(rows[0].takeProfits.map(tp=>tp.price),[2013,2023,2033]);
+ assert.equal(rows[0].remainingLot,group.requestedLot);
+ delete globalThis.localStorage;
+});
+
+test('la modification groupée refuse le mode Trades séparés',async()=>{
+ const {editOpenTradeGroup}=await import('../trade-management.js');
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});
+ assert.throws(()=>editOpenTradeGroup(group,{entry:2001,stopLoss:1991,takeProfits:[2011]}),/Position unique/);
+});
