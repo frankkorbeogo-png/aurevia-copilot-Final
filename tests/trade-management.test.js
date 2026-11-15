@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups} from '../trade-management.js';
+import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
