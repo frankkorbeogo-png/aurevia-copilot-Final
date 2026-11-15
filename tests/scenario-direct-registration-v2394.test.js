@@ -42,7 +42,7 @@ test('la case journal de l’interface est transmise à la base et respectée tr
  assert.match(migration,/coalesce\(p_auto_journal,true\) and p_mode='separate'/);
 });
 test('la migration SQL valide la devise du profil sans exiger de broker ni de type de compte',()=>{
- const migration=readFileSync(new URL('../supabase/migrations/20261115080000_trade_validation_profile_currency_no_broker_fields.sql',import.meta.url),'utf8');
+ const migration=readFileSync(new URL('../supabase/migrations/20261115030047_trade_validation_profile_currency_no_broker_fields.sql',import.meta.url),'utf8');
  assert.match(migration,/PROFILE_ACCOUNT_CURRENCY_REQUIRED/);
  assert.match(migration,/PROFILE_ACCOUNT_CURRENCY_MISMATCH/);
  assert.doesNotMatch(migration,/brokerName|accountType|BROKER_ACCOUNT_SETTINGS_REQUIRED/);
