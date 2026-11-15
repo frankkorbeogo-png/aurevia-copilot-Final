@@ -5,10 +5,6 @@ const SOURCE_KEY = 'cme-globex-holiday-calendar';
 const MAX_EXCERPT = 60000;
 
 export async function handler(event) {
-  if (event.httpMethod && event.httpMethod !== 'GET') {
-    return { statusCode: 405, body: 'Method not allowed' };
-  }
-
   const base = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
   const service = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   if (!base || !service) {
