@@ -6,8 +6,8 @@ import {calculateFibonacciRetracements} from './fibonacci.js';
 import {getAnalysisAccessToken} from './auth.js';
 import {generateOpportunityScenarios} from './opportunity-engine.js';
 import {getMarketStatus} from './market-hours.js';
-import {MARKET_INSTRUMENTS} from './market-catalog.js';
-const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
+import {MARKET_IDS,MARKET_INSTRUMENTS} from './market-catalog.js';
+const SYMBOLS=Object.fromEntries(MARKET_IDS.map(id=>[id,MARKET_INSTRUMENTS[id].provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
 // H4/H1/M30 restent des contextes optionnels ; M5/M1 sont consultés sur TradingView
 // pour affiner l'entrée, sans ajouter quatre appels OHLC à chaque analyse.
