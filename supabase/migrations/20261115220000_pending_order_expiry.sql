@@ -8,6 +8,12 @@ comment on column public.trading_positions.expires_at is
 comment on column public.trading_positions.expired_at is
   'Timestamp when AUREVIA automatically expired a pending order.';
 
+alter table public.trading_journal
+  drop constraint if exists trading_journal_result_check;
+alter table public.trading_journal
+  add constraint trading_journal_result_check
+  check (result = any (array['WIN','LOSS','BREAKEVEN','OPEN','EXPIRED']::text[]));
+
 create or replace function public.aurevia_expire_pending_position_worker(
   p_position_id uuid,
   p_user_id uuid,
