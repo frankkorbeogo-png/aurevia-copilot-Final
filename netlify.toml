@@ -99,3 +99,6 @@ schedule = "* * * * *"
   from = "/api/economic-calendar"
   to = "/.netlify/functions/economic-calendar"
   status = 200
+
+[functions."global-news-sync"]
+  schedule = "*/15 * * * *"
