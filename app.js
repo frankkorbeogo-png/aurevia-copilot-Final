@@ -23,7 +23,7 @@ async function refreshSelectedQuote(){
   try{
     const token=await getAnalysisAccessToken();
     if(!token)throw new Error('Connectez-vous pour consulter le cours.');
-    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].label)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].provider)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
     const data=await response.json().catch(()=>({}));
     if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
     const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
