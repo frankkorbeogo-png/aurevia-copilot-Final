@@ -309,3 +309,16 @@ test('une position unique en attente ne propose aucune clôture et ses enfants r
  for(const child of group.children)assert.throws(()=>recordPartialClose(group,child.id,{volume:child.remainingLot,exit:2005,contractSize:100}),/encore en attente/);
  assert.equal(group.children.every(child=>child.status==='PENDING'&&child.closes.length===0),true);
 });
+
+
+test('un trade déjà clôturé automatiquement au TP/SL ne peut pas être clôturé une seconde fois manuellement',()=>{
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010}]});
+ const child=group.children[0];
+ recordPartialClose(group,child.id,{volume:child.remainingLot,exit:2010,contractSize:100});
+ assert.equal(child.status,'CLOSED');
+ assert.equal(child.remainingLot,0);
+ assert.equal(child.closes.length,1);
+ const before={remainingLot:child.remainingLot,closes:child.closes.length,realizedPnl:child.realizedPnl,status:child.status};
+ assert.throws(()=>recordPartialClose(group,child.id,{volume:0.1,exit:2011,contractSize:100}),/déjà clôturée/);
+ assert.deepEqual({remainingLot:child.remainingLot,closes:child.closes.length,realizedPnl:child.realizedPnl,status:child.status},before);
+});
