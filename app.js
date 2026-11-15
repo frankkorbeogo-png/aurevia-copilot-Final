@@ -1,4 +1,5 @@
 import { loadInstrumentAnalysis, getAnalysisState } from './analysis.js';
+import { MARKET_INSTRUMENTS } from './market-catalog.js';
 import { getMarketStatus } from './market-hours.js';
 import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
