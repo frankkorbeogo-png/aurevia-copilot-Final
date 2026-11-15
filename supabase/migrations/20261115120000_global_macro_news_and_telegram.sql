@@ -15,6 +15,7 @@ create table if not exists public.global_news_events (
   telegram_broadcast_started_at timestamptz,
   telegram_broadcast_completed_at timestamptz,
   telegram_broadcast_result jsonb,
+  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
 create index if not exists global_news_events_published_idx
@@ -59,3 +60,23 @@ create table if not exists public.economic_release_sync_state (
 alter table public.economic_release_sync_state enable row level security;
 revoke all on public.economic_release_sync_state from anon, authenticated;
 grant select, insert, update on public.economic_release_sync_state to service_role;
+
+-- Per-recipient delivery ledger: retries never resend to users already acknowledged by Telegram.
+create table if not exists public.telegram_event_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null check (event_type in ('economic','global_news')),
+  event_id uuid not null,
+  chat_id text not null,
+  status text not null default 'pending' check (status in ('pending','sending','sent','failed')),
+  attempts integer not null default 0 check (attempts >= 0 and attempts <= 5),
+  claimed_at timestamptz,
+  sent_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now(),
+  unique(event_type,event_id,chat_id)
+);
+create index if not exists telegram_event_deliveries_pending_idx
+  on public.telegram_event_deliveries(event_type,event_id,status,attempts);
+alter table public.telegram_event_deliveries enable row level security;
+revoke all on public.telegram_event_deliveries from anon, authenticated;
+grant select, insert, update on public.telegram_event_deliveries to service_role;
