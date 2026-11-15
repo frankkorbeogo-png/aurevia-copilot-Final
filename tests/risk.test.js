@@ -23,7 +23,7 @@ test('arrondit toujours le volume vers le bas selon le pas broker', () => {
 });
 
 test('calcule gain potentiel, ratio R/R et marge seulement si la donnée existe', () => {
-  const r = calculatePositionRisk({ balance: 200, riskAmount: 10, stopDistance: 5, unitValuePerLot: 100, rewardDistance: 10, marginPerLot: 220 });
+  const r = calculatePositionRisk({ balance: 200, riskAmount: 10, stopDistance: 5, unitValuePerLot: 100, rewardDistance: 10, entryPrice: 2200, leverage: 1000 });
   assert.equal(r.gain, 20);
   assert.equal(r.rr, 2);
   assert.equal(r.margin, 4.4);
