@@ -10,7 +10,7 @@ export function evaluateEntryTrigger(position,group,prices){
  if(!Number.isFinite(threshold)||threshold<=0)return null;
  // For LIMIT entries, the safe side is above entry for BUY and below for SELL.
  // For STOP entries, it is below entry for BUY and above for SELL.
- const isLimit=stopLimit?Boolean(position.trigger_seen)||true:order.endsWith('LIMIT');
+ const isLimit=stopLimit?Boolean(position.trigger_seen):order.endsWith('LIMIT');
  const safe=isLimit?(buy?observed>threshold:observed<threshold):(buy?observed<threshold:observed>threshold);
  const previous=Number(position.last_observed_price);
  const hasPrevious=Number.isFinite(previous)&&previous>0;
