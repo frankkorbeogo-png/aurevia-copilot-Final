@@ -16,6 +16,7 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
+  if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id'))return response([]);
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
