@@ -10,14 +10,14 @@ test('le synchroniseur GDELT stocke les titres récents et les diffuse aux abonn
  globalThis.fetch=async(input,options={})=>{
   const url=String(input);
   if(url.includes('api.gdeltproject.org')){
-   assert.match(url,/mode=ArtList/);assert.match(url,/timespan=30min/);
+   assert.match(url,/mode=ArtList/);assert.match(url,/timespan=90min/);
    return response({articles:[{url:'https://news.example.com/central-bank-rates',title:'Central bank announces a rate decision',seendate:new Date(Date.now()-5*60*1000).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'').replace('T','T').replace('Z','Z'),sourcecountry:'US',language:'English',tone:'-1.2'}]});
   }
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id')){calls.insert=JSON.parse(options.body);return response({},201);}
-  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:new Date().toISOString()}]);
-  if(url.includes('/rest/v1/global_news_events?id=eq.event-1')){if(JSON.parse(options.body||'{}').telegram_broadcast_started_at)calls.claimed++;return response([{id:'event-1'}]);}
+  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
+  if(url.includes('/rest/v1/telegram_event_deliveries?on_conflict='))return response({},201);\n  if(url.includes('/rest/v1/telegram_event_deliveries?select=id,chat_id,attempts,status,claimed_at'))return response([{id:'delivery-1',chat_id:'123',attempts:0,status:'pending'},{id:'delivery-2',chat_id:'456',attempts:0,status:'pending'}]);\n  if(url.includes('/rest/v1/telegram_event_deliveries?id=eq.delivery-1')||url.includes('/rest/v1/telegram_event_deliveries?id=eq.delivery-2')){if(options.method==='PATCH'&&JSON.parse(options.body||'{}').status==='sending')calls.claimed++;return response([{id:'delivery-1',attempts:1}]);}\n  if(url.includes('/rest/v1/telegram_event_deliveries?select=status,attempts'))return response([{status:'sent',attempts:1},{status:'sent',attempts:1}]);\n  if(url.includes('/rest/v1/global_news_events?id=eq.event-1'))return response([{id:'event-1'}]);
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'},{user_id:'u2',chat_id:'456'}]);
   if(url.includes('api.telegram.org/botbot/sendMessage')){calls.telegram.push(JSON.parse(options.body));return response({ok:true,result:{message_id:calls.telegram.length}});}
   throw new Error('Unexpected URL '+url);
