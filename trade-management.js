@@ -139,18 +139,15 @@ export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
 }
 
 export function deleteOpenTradeGroup(groupId){
-  const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
-  if(!group||group.mode!=='unique')throw new Error('Position unique introuvable.');
-  if(group.status!=='OPEN'||!group.children.length||group.children.some(c=>!['OPEN','PENDING'].includes(c.status)||(c.closes||[]).length||c.remainingLot!==c.initialLot))throw new Error('Une position unique ne peut être supprimée du suivi qu’avant toute clôture.');
-  if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
-  return true;
+  const group=read(STORAGE_KEY).find(x=>x.id===groupId);
+  if(!group)throw new Error('Position introuvable.');
+  throw new Error('Une position doit être entièrement clôturée avant de pouvoir être retirée du suivi.');
 }
 
 export function deleteClosedTradeGroup(groupId){
   const rows=read(STORAGE_KEY),group=rows.find(x=>x.id===groupId);
   if(!group)throw new Error('Groupe de positions introuvable.');
-  if(group.mode==='unique')throw new Error('Une position unique ayant atteint une clôture ne peut plus être supprimée du suivi.');
-  if(group.status!=='CLOSED'||group.children.some(c=>c.status!=='CLOSED'||c.remainingLot>1e-8))throw new Error('Seul un groupe entièrement clôturé peut être supprimé.');
+  if(group.status!=='CLOSED'||!group.children.length||group.children.some(c=>c.status!=='CLOSED'||Number(c.remainingLot)>1e-8||(c.closes||[]).length===0))throw new Error('Seul un groupe entièrement clôturé peut être supprimé du suivi.');
   if(!write(STORAGE_KEY,rows.filter(x=>x.id!==groupId)))throw new Error('Impossible de supprimer la position locale.');
   return true;
 }
@@ -178,7 +175,7 @@ export function deleteSeparateTradeChild(groupId, childId){
   if(!group||group.mode!=='separate')throw new Error('Cette action est réservée au mode Trades séparés.');
   const child=group.children.find(item=>item.id===childId);
   if(!child)throw new Error('Trade introuvable.');
-  if((child.closes||[]).length||child.status==='CLOSED')throw new Error('Un trade ayant des clôtures enregistrées ne peut pas être supprimé du suivi.');
+  if(child.status!=='CLOSED'||Number(child.remainingLot)>1e-8||!(child.closes||[]).length)throw new Error('Un trade séparé doit être entièrement clôturé avant de pouvoir être retiré du suivi.');
   group.children=group.children.filter(item=>item.id!==childId);
   if(!group.children.length){if(!write(STORAGE_KEY,rows.filter(item=>item.id!==groupId)))throw new Error('Impossible de supprimer le dernier trade du groupe.');return {groupDeleted:true,group};}
   group.requestedLot=group.children.reduce((sum,item)=>sum+Number(item.initialLot||0),0);
