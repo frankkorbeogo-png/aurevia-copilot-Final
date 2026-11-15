@@ -63,5 +63,6 @@ test('WTI reste visible mais désactivé tant que le plan matières premières n
   const html = await read('index.html');
   assert.equal(MARKET_INSTRUMENTS.WTIUSD, undefined);
   assert.match(html, /WTI\/USD[^<]*accès matières premières à confirmer/);
-  assert.doesNotMatch(html, /data-symbol="WTIUSD"/);\n  assert.match(html, /value="WTIUSD" disabled/);
+  assert.doesNotMatch(html, /data-symbol="WTIUSD"/);
+  assert.match(html, /value="WTIUSD" disabled/);
 });
