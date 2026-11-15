@@ -26,5 +26,6 @@
 - Les cinq actions US ont des horaires de séance NYSE/Nasdaq (09:30–16:00 America/New_York) et un blocage des week-ends et principaux jours fériés US.
 - Vérifications syntaxiques effectuées sur les modules client, fonctions serveur et worker.
 - Tests ciblés des horaires exécutés sur les fonctions pures : ouverture/clôture actions US, Thanksgiving, week-end Forex et fonctionnement crypto 24/7.
-- Un workflow GitHub Actions exécute désormais `npm test` et `npm run build`. Aucune exécution CI n'a encore été remontée pour ce commit.
+- Un workflow GitHub Actions exécute désormais `npm test` et `npm run build`. Le build de production et la présence de `dist/market-catalog.js` ont réussi. Les 13 échecs du jeu complet sont identiques à ceux observés sur la branche de référence issue de `main` (302/315 sur la référence, 308/321 sur la branche multi-actifs).
+- La documentation Twelve Data indique que les matières premières nécessitent un plan Grow/Venture ; le niveau exact de la clé configurée n'est pas visible. WTI/USD reste donc désactivé jusqu'à vérification de l'accès réel.
 - La variable secrète `TWELVEDATA_API_KEY` est présente dans la configuration Netlify (valeurs masquées). Les requêtes réelles de prix/OHLC n'ont pas encore été exécutées avec une session utilisateur authentifiée ; l'accès effectif au plan et à chaque symbole reste à confirmer avant activation finale.
