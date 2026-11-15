@@ -249,7 +249,7 @@ async function confirmTradeValidation(){
   button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
   const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const brokerSnapshot={brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
-  const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id:s.id,mode,volume,contract_spec:checked.spec,broker_snapshot:brokerSnapshot,auto_journal:$('validationAutoJournal').checked}),cache:'no-store'});
+  const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id:s.id,mode,volume,contract_spec:checked.spec,broker_snapshot:brokerSnapshot}),cache:'no-store'});
   const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
   status.textContent='Trade enregistré. Synchronisation du suivi des positions et du journal…';
   const restored=await restoreTradeGroupsFromSupabase();
