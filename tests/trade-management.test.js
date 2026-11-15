@@ -238,3 +238,14 @@ test('clôtures partielles en position unique conservent le lot initial et recal
  assert.equal(groupSummary(group).remaining,0.02);
  assert.equal(group.children.reduce((sum,child)=>sum+child.initialLot,0),initial);
 });
+
+
+test('une position unique avec clôture complète ne peut plus être supprimée du suivi',async()=>{
+ const {deleteClosedTradeGroup}=await import('../trade-management.js');
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.01,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010}]});
+ saveTradeGroup(group);recordPartialClose(group,group.children[0].id,{volume:0.01,exit:2010,contractSize:100});persistTradeGroup(group);
+ assert.throws(()=>deleteClosedTradeGroup(group.id),/position unique ayant atteint une clôture/);
+ assert.equal(loadTradeGroups().some(row=>row.id===group.id),true);
+ delete globalThis.localStorage;
+});
