@@ -43,7 +43,8 @@ async function fetchArticles(){
  if(!response.ok)throw new Error('GDELT HTTP '+response.status);
  const type=response.headers.get('content-type')||'';if(!type.includes('json'))throw new Error('GDELT a retourné un contenu non JSON.');
  const data=await response.json();const articles=Array.isArray(data.articles)?data.articles:[];
- return articles.map(normalizeArticle).filter(Boolean);
+ const normalized=articles.map(normalizeArticle),accepted=normalized.filter(Boolean);
+ return {articles:accepted,rawCount:articles.length,rejectedCount:articles.length-accepted.length};
 }
 function zonedTimeToUtc(date,hour,minute,zone='America/New_York'){
  const [year,month,day]=date.split('-').map(Number);const target=Date.UTC(year,month-1,day,hour,minute);let guess=target;
@@ -72,9 +73,9 @@ export function buildFomcReleaseEvents(now=new Date(),horizonDays=15){
 async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
- if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000)return {status:'fresh_cache',synced:0};
+ const cacheFresh=Boolean(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000);
  const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
- const results=await Promise.all(RELEASES.map(async release=>{
+ const results=cacheFresh?[]:await Promise.all(RELEASES.map(async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
   url.searchParams.set('release_id',String(release.id));url.searchParams.set('api_key',key);url.searchParams.set('file_type','json');
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
@@ -98,8 +99,8 @@ async function syncEconomicCalendar(){
    deactivated++;
   }
  }
- await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
- return {status:'synced',synced:events.length,deactivated,source:'FRED release calendar'};
+ if(!cacheFresh)await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
+ return {status:cacheFresh?'fresh_fred_cache_official_fomc_refreshed':'synced',synced:events.length,deactivated,source:'FRED release calendar'};
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
@@ -153,12 +154,12 @@ function globalNewsMessage(event){
  return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\nRepéré par GDELT : '+new Date(event.seen_at).toISOString()+' (UTC)\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
 }
 async function syncGlobalNews(){
- const articles=await fetchArticles();
+ const fetched=await fetchArticles(),articles=fetched.articles;
  if(articles.length)await rest('global_news_events?on_conflict=external_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:articles});
  const cutoff=new Date(Date.now()-100*60*1000).toISOString();
  const pending=await rest('global_news_events?select=id,title,source_url,source_domain,seen_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(seen_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=seen_at.desc&limit=75');
  const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastToSubscribers('global_news',item,globalNewsMessage(item),'global_news_events')});
- return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
+ return {fetched:articles.length,rawReceived:fetched.rawCount,rejected:fetched.rejectedCount,window:'90min',telegramProcessed:results.length,telegram:results};
 }
 export async function handler(event){
  if(!env('SUPABASE_URL')||!env('SUPABASE_SERVICE_ROLE_KEY'))return json(503,{ok:false,error:'Supabase service credentials are missing.'});
