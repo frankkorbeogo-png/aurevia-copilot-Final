@@ -184,3 +184,26 @@ test('la migration d’expiration synchronise expires_at et expose un worker ser
  assert.match(sql,/revoke all .*authenticated/i);
  assert.match(sql,/EXPIRED/);
 });
+
+
+test('la RPC de clôture transmet le fx_snapshot dans la même transaction SQL',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261115233000_atomic_close_fx_and_expiry_guard.sql',import.meta.url),'utf8');
+ assert.match(source,/p_user_id:p\.user_id,p_fx_snapshot:fxSnapshot/);
+ assert.match(sql,/p_fx_snapshot jsonb default null/);
+ assert.match(sql,/closed_at, fx_snapshot/);
+ assert.match(sql,/p_closed_at, p_fx_snapshot/);
+ assert.match(sql,/grant execute .*uuid,jsonb\) to service_role/i);
+});
+
+test('la fonction SQL refuse une activation après expiration même si le worker d’expiration est en retard',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const sql=await readFile(new URL('../supabase/migrations/20261115233000_atomic_close_fx_and_expiry_guard.sql',import.meta.url),'utf8');
+ const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(sql,/for update/i);
+ assert.match(sql,/v_position\.expires_at <= p_activated_at/);
+ assert.match(sql,/status', 'EXPIRED'/);
+ assert.match(source,/activation\?\.status==='EXPIRED'/);
+ assert.match(source,/rpc\/aurevia_expire_pending_position_worker/);
+});
