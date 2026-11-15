@@ -218,3 +218,23 @@ test('position unique avec clôture partielle : suppression du suivi refusée',a
  assert.equal(loadTradeGroups().some(row=>row.id===group.id),true);
  delete globalThis.localStorage;
 });
+
+
+test('position unique : suppression de la fiche journal seule conserve tous les trades',async()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ saveTradeGroup(group);const entry=loadLinkedJournal().find(row=>row.groupId===group.id);
+ deleteLinkedJournalEntry(entry.id);
+ assert.equal(loadLinkedJournal().some(row=>row.groupId===group.id),false);
+ assert.equal(loadTradeGroups().find(row=>row.id===group.id).children.length,3);
+ delete globalThis.localStorage;
+});
+
+test('clôtures partielles en position unique conservent le lot initial et recalculent le restant',()=>{
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020},{label:'TP3',price:2030}]});
+ const initial=group.requestedLot;
+ recordPartialClose(group,group.children[0].id,{volume:0.01,exit:2010,contractSize:100});
+ assert.equal(group.requestedLot,initial);
+ assert.equal(groupSummary(group).remaining,0.02);
+ assert.equal(group.children.reduce((sum,child)=>sum+child.initialLot,0),initial);
+});
