@@ -24,6 +24,7 @@ declare
   v_position_id uuid;
   v_journal_id uuid;
   v_position_ids uuid[] := array[]::uuid[];
+  v_journal_position_ids uuid[] := array[]::uuid[];
   v_mappings jsonb := '[]'::jsonb;
 begin
   if v_user_id is null then
@@ -140,6 +141,10 @@ begin
     v_position_count := 0;
   end loop;
 
+  if not v_auto_journal and jsonb_array_length(coalesce(p_journal,'[]'::jsonb)) <> 0 then
+    raise exception 'JOURNAL_NOT_ENABLED_FOR_GROUP';
+  end if;
+
   if v_auto_journal then
     if jsonb_array_length(coalesce(p_journal,'[]'::jsonb)) <>
        case when v_mode='unique' then 1 else cardinality(v_position_ids) end then
@@ -149,7 +154,9 @@ begin
     for v_journal in select value from jsonb_array_elements(coalesce(p_journal,'[]'::jsonb))
     loop
       if nullif(v_journal->>'group_id','')::uuid is distinct from v_group_id
-         or v_journal->>'mode' is distinct from v_mode then
+         or v_journal->>'mode' is distinct from v_mode
+         or v_journal->>'instrument' is distinct from p_group->>'instrument'
+         or v_journal->>'direction' is distinct from p_group->>'direction' then
         raise exception 'INVALID_TRADE_JOURNAL_ROW';
       end if;
 
@@ -184,9 +191,11 @@ begin
         v_mappings := v_mappings || jsonb_build_array(jsonb_build_object('id',v_journal_id,'positionId',null));
       else
         v_position_id := nullif(v_journal->>'position_id','')::uuid;
-        if v_position_id is null or not (v_position_id=any(v_position_ids)) then
+        if v_position_id is null or not (v_position_id=any(v_position_ids))
+           or v_position_id=any(v_journal_position_ids) then
           raise exception 'INVALID_SEPARATE_JOURNAL_MAPPING';
         end if;
+        v_journal_position_ids := array_append(v_journal_position_ids,v_position_id);
         insert into public.trading_journal(
           user_id,instrument,direction,result,pnl,notes,group_id,position_id,mode,
           volume_initial,volume_remaining,tp_label,gross_pnl,fees,
@@ -215,6 +224,9 @@ begin
       end if;
       v_journal_count := v_journal_count + 1;
     end loop;
+    if v_mode='separate' and cardinality(v_journal_position_ids) <> cardinality(v_position_ids) then
+      raise exception 'INCOMPLETE_SEPARATE_JOURNAL_MAPPING';
+    end if;
   end if;
 
   return jsonb_build_object(
