@@ -127,5 +127,5 @@ export function getMarketStatus(symbol,now=new Date()){
   const market=FX.has(code)?'FOREX':METALS.has(code)?'METALS':'UNKNOWN';
   if(market==='UNKNOWN')return {tradable:true,status:'UNRESTRICTED',market,checkedAt:now.toISOString()};
   const holiday=holidayClosure(now),session=sessionClosure(now,market),closed=!!(holiday||session),reopen=holiday?.end||session?.reopen||null,label=holiday?.label||session?.label||null;
-  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now,market),closureType:holiday?'HOLIDAY':session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
+  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now,market),closureType:holiday?'HOLIDAY':session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
 }
