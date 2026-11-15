@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deletePendingTradeGroup,deletePendingSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
+import {splitVolume,createTradeGroup,validatePendingOrderAgainstQuote,buildTradeGroupCloudRows,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deletePendingTradeGroup,deletePendingSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry,persistTradeGroup,loadTradeGroups,saveTradeGroup,loadLinkedJournal} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -345,4 +345,26 @@ test('la suppression en attente refuse un trade déjà ouvert ou clôturé',()=>
  const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY LIMIT'});saveTradeGroup(group);
  const stored=loadTradeGroups()[0];stored.children[0].status='OPEN';persistTradeGroup(stored);assert.throws(()=>deletePendingSeparateTradeChild(group.id,group.children[0].id),/encore en attente/);
  delete globalThis.localStorage;
+});
+
+test('rejette un BUY LIMIT si le cours est déjà sous ou au niveau de l’entrée',()=>{
+ const result=validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:3990});
+ assert.equal(result.ok,false);assert.match(result.error,/BUY LIMIT invalide/);
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:4010}).ok,true);
+});
+test('valide les côtés de marché des six types d’ordres en attente',()=>{
+ const cases=[
+  ['BUY LIMIT','BUY',4000,null,4010,true],['BUY LIMIT','BUY',4000,null,3990,false],
+  ['SELL LIMIT','SELL',4000,null,3990,true],['SELL LIMIT','SELL',4000,null,4010,false],
+  ['BUY STOP','BUY',4000,null,3990,true],['BUY STOP','BUY',4000,null,4010,false],
+  ['SELL STOP','SELL',4000,null,4010,true],['SELL STOP','SELL',4000,null,3990,false],
+  ['BUY STOP LIMIT','BUY',3990,4000,3995,true],['BUY STOP LIMIT','BUY',3990,4000,4005,false],
+  ['SELL STOP LIMIT','SELL',4010,4000,4005,true],['SELL STOP LIMIT','SELL',4010,4000,3995,false]
+ ];
+ for(const [orderType,direction,entry,triggerPrice,marketPrice,ok] of cases){
+  assert.equal(validatePendingOrderAgainstQuote({orderType,direction,entry,triggerPrice,marketPrice}).ok,ok,orderType+' at '+marketPrice);
+ }
+});
+test('refuse de créer un ordre en attente sans cours de marché vérifiable',()=>{
+ assert.equal(validatePendingOrderAgainstQuote({orderType:'BUY LIMIT',direction:'BUY',entry:4000,marketPrice:null}).ok,false);
 });
