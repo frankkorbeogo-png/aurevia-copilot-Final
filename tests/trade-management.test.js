@@ -36,7 +36,7 @@ test('un ordre STOP exige un prix de déclenchement', () => {
   assert.throws(() => createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}],orderType:'BUY STOP'}), /prix de déclenchement/);
 });
 
-test('refuse un lot qui ne respecte pas le pas broker',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.105,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]}),/pas de volume/));
+test('refuse un lot qui ne respecte pas le pas broker',()=>assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.105,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]}),/multiple de 0,01/));
 test('refuse une clôture partielle hors pas broker',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,lotStep:.01,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.throws(()=>recordPartialClose(g,g.children[0].id,{volume:.015,exit:2005,contractSize:100}),/pas broker/);});
 
 test('les identifiants de position restent au format UUID compatible Supabase',()=>{const g=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});assert.match(g.id,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);assert.match(g.children[0].id,/^[0-9a-f-]{36}$/i);});
@@ -385,7 +385,7 @@ test('lot minimum technique de 0,01 accepté et volume inférieur refusé',()=>{
  const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010}]};
  const group=createTradeGroup({...base,lot:0.01,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}});
  assert.equal(group.children[0].lot,0.01);
- assert.throws(()=>createTradeGroup({...base,lot:0.009,lotStep:0.01}),/pas de volume/);
+ assert.throws(()=>createTradeGroup({...base,lot:0.009,lotStep:0.01}),/lot minimum autorisé/);
 });
 
 test('position unique exige au moins 0,01 par TP',()=>{
