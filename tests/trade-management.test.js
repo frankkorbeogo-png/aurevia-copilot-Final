@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus} from '../trade-management.js';
+import {splitVolume,createTradeGroup,calculateClosePnl,recordPartialClose,groupSummary,resolveLinkedJournalStatus,editSeparateTradeChild,deleteSeparateTradeChild,deleteClosedTradeGroup,deleteLinkedJournalEntry} from '../trade-management.js';
 
 test('position unique répartit le volume total en respectant le pas',()=>assert.deepEqual(splitVolume(.10,3,.01),[.03,.03,.04]));
 test('trades séparés appliquent le lot complet à chaque TP',()=>{const g=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020},{price:4030}]});assert.deepEqual(g.children.map(x=>x.lot),[.1,.1,.1]);});
@@ -116,4 +116,36 @@ test('statut journal parent suit les enfants en attente et ouverts',()=>{
  assert.equal(resolveLinkedJournalStatus(row,group),'PENDING');
  group.children[0].status='OPEN';
  assert.equal(resolveLinkedJournalStatus(row,group),'OPEN');
+});
+
+test('les trades séparés se modifient indépendamment',()=>{
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}]});
+ editSeparateTradeChild(group,group.children[0].id,{entry:2001,stopLoss:1991,takeProfit:2011});
+ assert.equal(group.children[0].entry,2001);assert.equal(group.children[0].takeProfit,2011);
+ assert.equal(group.children[1].entry,2000);assert.equal(group.children[1].takeProfit,2020);
+ assert.throws(()=>editSeparateTradeChild(group,group.children[0].id,{entry:2001,stopLoss:2011,takeProfit:2010}),/BUY/);
+});
+test('suppression d’un trade séparé ne supprime pas la fiche journal associée',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}]});
+ saveTradeGroup(group);const journalBefore=loadLinkedJournal().length;
+ deleteSeparateTradeChild(group.id,group.children[0].id);
+ assert.equal(loadTradeGroups().length,1);assert.equal(loadTradeGroups()[0].children.length,1);
+ assert.equal(loadLinkedJournal().length,journalBefore);
+ delete globalThis.localStorage;
+});
+test('suppression du suivi d’une position clôturée conserve son journal',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010}]});
+ saveTradeGroup(group);recordPartialClose(group,group.children[0].id,{volume:.1,exit:2010,contractSize:100});persistTradeGroup(group);
+ const journalBefore=loadLinkedJournal().length;deleteClosedTradeGroup(group.id);
+ assert.equal(loadTradeGroups().length,0);assert.equal(loadLinkedJournal().length,journalBefore);
+ delete globalThis.localStorage;
+});
+test('suppression d’une fiche journal liée conserve le groupe de positions',()=>{
+ const memory=new Map();globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:.1,entry:2000,stopLoss:1990,takeProfits:[{price:2010}]});
+ saveTradeGroup(group);const entry=loadLinkedJournal()[0];deleteLinkedJournalEntry(entry.id);
+ assert.equal(loadLinkedJournal().length,0);assert.equal(loadTradeGroups().length,1);
+ delete globalThis.localStorage;
 });
