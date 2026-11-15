@@ -28,7 +28,7 @@ async function refreshSelectedQuote(){
     if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
     const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
     if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-    if(status)status.textContent=`Twelve Data · ${new Date(data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
+    if(status)status.textContent=data.stale?`Cours ancien · cache ${data.staleAgeSeconds||0}s · ${data.providerWarning||'fournisseur indisponible'}`:data.freshness==='stale'?'Dernière cotation ancienne · prudence':`Twelve Data · ${data.asOf?new Date(data.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'horodatage non fourni'}`;
   }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
 }
 function initAppInstallation(){
