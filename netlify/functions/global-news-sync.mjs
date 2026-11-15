@@ -87,7 +87,7 @@ async function syncEconomicCalendar(){
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
- const recipients=await rest('telegram_connections?select=user_id,chat_id&notify_economic_announcements=eq.true&chat_id=not.is.null&limit=5000');
+ await rest(eventTable+'?id=eq.'+encodeURIComponent(event.id),{method:'PATCH',body:{telegram_broadcast_started_at:event.telegram_broadcast_started_at||new Date().toISOString()}});\n const recipients=await rest('telegram_connections?select=user_id,chat_id&notify_economic_announcements=eq.true&chat_id=not.is.null&limit=5000');
  const chats=[...new Set((Array.isArray(recipients)?recipients:[]).filter(x=>x.user_id&&x.chat_id).map(x=>String(x.chat_id)))];
  const deliveries=chats.map(chat_id=>({event_type:eventType,event_id:event.id,chat_id,status:'pending'}));
  if(deliveries.length)await rest('telegram_event_deliveries?on_conflict=event_type,event_id,chat_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:deliveries});
@@ -124,7 +124,7 @@ function economicReleaseMessage(event){
 async function broadcastDueReleases(){
  if(!env('TELEGRAM_BOT_TOKEN'))return {processed:0,notice:'TELEGRAM_BOT_TOKEN absent.'};
  const now=new Date(),start=new Date(now.getTime()+50*60*1000),end=new Date(now.getTime()+70*60*1000);
- const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
+ const cutoff=new Date(now.getTime()-24*60*60*1000);\n const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(cutoff.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
  const pending=await rest('economic_release_events?'+filter);
  const results=[];for(const event of (Array.isArray(pending)?pending:[]))results.push({id:event.id,...await broadcastToSubscribers('economic',event,economicReleaseMessage(event),'economic_release_events')});
  return {processed:results.length,results};
@@ -137,7 +137,7 @@ async function syncGlobalNews(){
  const articles=await fetchArticles();
  if(articles.length)await rest('global_news_events?on_conflict=external_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:articles});
  const cutoff=new Date(Date.now()-100*60*1000).toISOString();
- const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&published_at=gte.'+encodeURIComponent(cutoff)+'&order=published_at.desc&limit=40');
+ const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(published_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=published_at.desc&limit=75');
  const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastToSubscribers('global_news',item,globalNewsMessage(item),'global_news_events')});
  return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
 }
