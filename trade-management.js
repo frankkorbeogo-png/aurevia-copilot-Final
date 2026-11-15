@@ -11,8 +11,8 @@ export function validatePendingOrderAgainstQuote({orderType,direction,entry,trig
   if(!Number.isFinite(price)||price<=0||!Number.isFinite(level)||level<=0)return {ok:false,error:'Cours de marché indisponible : impossible de vérifier le placement de cet ordre en attente.'};
   if(orderType==='BUY LIMIT'&&price<=level)return {ok:false,error:`BUY LIMIT invalide : le cours actuel (${price}) doit être au-dessus de ton entrée (${level}).`};
   if(orderType==='SELL LIMIT'&&price>=level)return {ok:false,error:`SELL LIMIT invalide : le cours actuel (${price}) doit être sous ton entrée (${level}).`};
-  if(orderType==='BUY STOP'&&price>=level)return {ok:false,error:`BUY STOP invalide : le cours actuel (${price}) doit être sous ton déclenchement (${level}).`};
-  if(orderType==='SELL STOP'&&price<=level)return {ok:false,error:`SELL STOP invalide : le cours actuel (${price}) doit être au-dessus de ton déclenchement (${level}).`};
+  if(orderType==='BUY STOP'&&(!Number.isFinite(trigger)||trigger<=0||price>=trigger))return {ok:false,error:`BUY STOP invalide : le cours actuel (${price}) doit être sous ton déclenchement (${trigger}).`};
+  if(orderType==='SELL STOP'&&(!Number.isFinite(trigger)||trigger<=0||price<=trigger))return {ok:false,error:`SELL STOP invalide : le cours actuel (${price}) doit être au-dessus de ton déclenchement (${trigger}).`};
   if(orderType==='BUY STOP LIMIT'&&(!Number.isFinite(trigger)||trigger<=0||price>=trigger))return {ok:false,error:`BUY STOP LIMIT invalide : le cours actuel (${price}) doit être sous le déclenchement (${trigger}).`};
   if(orderType==='SELL STOP LIMIT'&&(!Number.isFinite(trigger)||trigger<=0||price<=trigger))return {ok:false,error:`SELL STOP LIMIT invalide : le cours actuel (${price}) doit être au-dessus du déclenchement (${trigger}).`};
   return {ok:true};
@@ -70,7 +70,7 @@ export function createTradeGroup(input) {
 export function buildTradeGroupCloudRows(group,userId){
   if(!group?.id||!userId||!['unique','separate'].includes(group.mode)||!Array.isArray(group.children)||!group.children.length)throw new Error('Groupe de trades invalide pour la synchronisation cloud.');
   const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null,created_at:group.createdAt};
-  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:group.createdAt||child.createdAt}));
+  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,expires_at:group.expiresAt||null,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:group.createdAt||child.createdAt}));
   let journalRows=[];
   if(group.autoJournal){
     if(group.mode==='unique'){
@@ -105,6 +105,7 @@ export function recordPartialClose(group, childId, {volume,exit,contractSize=gro
 }
 
 export function resolveLinkedJournalStatus(row, group) {
+  if (row?.result === 'EXPIRED') return 'EXPIRED';
   if (row?.result && ['WIN','LOSS','BREAKEVEN'].includes(row.result)) return 'CLOSED';
   if (row?.result === 'OPEN') {
     const children = row.position_id
