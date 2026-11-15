@@ -155,3 +155,16 @@ export async function handler(event){
  const failed=Boolean(result.economicCalendarError||result.globalNewsError);
  return json(failed?502:200,result);
 }
+
+
+// Native Netlify Request/Response entrypoint for the hourly scheduled function.
+export default async function scheduledGlobalNewsSync(request) {
+ const result=await handler({
+  httpMethod:request?.method||'POST',
+  headers:Object.fromEntries(request?.headers||[])
+ });
+ return new Response(result.body||'',{
+  status:result.statusCode||200,
+  headers:result.headers||{'content-type':'application/json','cache-control':'no-store'}
+ });
+}
