@@ -640,15 +640,28 @@ function bindEvents(){
 
   document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-page="${b.dataset.goto}"]`)?.click()));
   document.querySelectorAll('.home-asset').forEach(b=>b.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(b.dataset.symbol);}));
-  $('calculateRisk').addEventListener('click',()=>{
-    if(!accountCurrency){$('riskResult').textContent='Renseignez la devise du compte dans Paramètres avant de calculer.';return;}
-    const entry=Number($('entryPrice').value),stop=Number($('stopPrice').value),tp=Number($('takeProfit').value);
-    const enteredDistance=Number($('slDistance').value);const distance=enteredDistance>0?enteredDistance:(entry>0&&stop>0?Math.abs(entry-stop):NaN);
-    const reward=entry>0&&tp>0?Math.abs(tp-entry):null;
-    const leverageValue=$('riskLeverage').value.trim()?Number($('riskLeverage').value):null;
-    const result=calculatePositionRisk({balance:Number($('accountBalance').value),riskAmount:Number($('riskAmount').value),stopDistance:distance,unitValuePerLot:Number($('unitValue').value),lotStep:Number($('lotStep').value),rewardDistance:reward,entryPrice:entry>0?entry:null,leverage:leverageValue});
-    $('riskResult').textContent=result.error||`Calcul estimatif pour ${$('riskInstrument').value} · ${result.lots.toFixed(2)} lot(s) · risque réellement engagé : ${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;
-    $('riskMoneyOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('lotsOut').textContent=result.error?'—':result.lots.toFixed(2);$('lossOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${$('accountCurrency').value}`;$('gainOut').textContent=result.error||result.gain===null?'—':`${result.gain.toFixed(2)} ${$('accountCurrency').value}`;$('rrOut').textContent=result.error||result.rr===null?'—':`1:${result.rr.toFixed(2)}`;$('riskPctOut').textContent=result.error||result.riskPercentActual===null?'—':`${result.riskPercentActual.toFixed(2)} %`;$('marginOut').textContent=result.error||result.margin===null?'—':`${result.margin.toFixed(2)} ${$('accountCurrency').value}`;
+  $('calculateRisk').addEventListener('click',async()=>{
+    const button=$('calculateRisk');if(button)button.disabled=true;
+    try{
+      if(!accountCurrency)throw new Error('Renseignez la devise du compte dans Paramètres avant de calculer.');
+      const instrument=$('riskInstrument').value,quoteCurrency=inferQuoteCurrency(instrument);
+      if(!quoteCurrency)throw new Error('Devise de cotation inconnue pour cet instrument : conversion du risque impossible.');
+      let quoteToAccount=1;
+      if(quoteCurrency!==accountCurrency){
+        const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous pour récupérer le taux de conversion.');
+        const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+        const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);
+        quoteToAccount=validateFxSnapshot(data,{from:quoteCurrency,to:accountCurrency}).rate;
+      }
+      const entry=Number($('entryPrice').value),stop=Number($('stopPrice').value),tp=Number($('takeProfit').value);
+      const enteredDistance=Number($('slDistance').value);const distance=enteredDistance>0?enteredDistance:(entry>0&&stop>0?Math.abs(entry-stop):NaN);
+      const reward=entry>0&&tp>0?Math.abs(tp-entry):null;
+      const leverageValue=$('riskLeverage').value.trim()?Number($('riskLeverage').value):null;
+      const result=calculatePositionRisk({balance:Number($('accountBalance').value),riskAmount:Number($('riskAmount').value),stopDistance:distance,unitValuePerLot:Number($('unitValue').value),quoteToAccount,lotStep:Number($('lotStep').value),rewardDistance:reward,entryPrice:entry>0?entry:null,leverage:leverageValue});
+      $('riskResult').textContent=result.error||`Calcul estimatif pour ${instrument} · ${result.lots.toFixed(2)} lot(s) · risque réellement engagé : ${result.riskMoney.toFixed(2)} ${accountCurrency}`;
+      $('riskMoneyOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${accountCurrency}`;$('lotsOut').textContent=result.error?'—':result.lots.toFixed(2);$('lossOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${accountCurrency}`;$('gainOut').textContent=result.error||result.gain===null?'—':`${result.gain.toFixed(2)} ${accountCurrency}`;$('rrOut').textContent=result.error||result.rr===null?'—':`1:${result.rr.toFixed(2)}`;$('riskPctOut').textContent=result.error||result.riskPercentActual===null?'—':`${result.riskPercentActual.toFixed(2)} %`;$('marginOut').textContent=result.error||result.margin===null?'—':`${result.margin.toFixed(2)} ${accountCurrency}`;
+    }catch(error){$('riskResult').textContent=error.message;for(const id of ['riskMoneyOut','lotsOut','lossOut','gainOut','rrOut','riskPctOut','marginOut'])$(id).textContent='—';}
+    finally{if(button)button.disabled=false;}
   });
   $('savePositionEdit')?.addEventListener('click',async()=>{try{const group=loadTradeGroups().find(g=>g.id===$('editGroupId').value);if(!group)throw new Error('Position introuvable.');const tps=group.children.map((_,i)=>Number($(`editTP${i+1}`).value));if(!await confirmInApp({title:'Confirmer la modification de cette position ?',message:group.instrument+'\nNouvelle entrée : '+$('editEntry').value+'\nNouveau Stop Loss : '+$('editSL').value+'\nNouveaux objectifs : '+tps.join(' · ')+'\n\nLes changements seront appliqués au suivi AUREVIA.',confirmLabel:'Enregistrer les modifications'}))return;editOpenTradeGroup(group,{entry:Number($('editEntry').value),stopLoss:Number($('editSL').value),takeProfits:tps});persistTradeGroup(group);$('editPositionDialog').close();renderPositions();showInAppNotice('Position modifiée localement. Synchronisation cloud en cours…',{type:'info'});try{const result=await syncTradeGroupToSupabase(group);if(result.synced)showInAppNotice('Modification de la position synchronisée.',{type:'success'});else showInAppNotice('Modification enregistrée localement ; synchronisation cloud non confirmée.',{type:'info'});}catch(error){showInAppNotice(`Modification locale enregistrée, mais synchronisation cloud impossible : ${error.message}`,{type:'error'});}}catch(error){showInAppNotice(error.message,{type:'error'});}});
   $('addTradeBtn').addEventListener('click',()=>{const dialog=$('tradeDialog');$('tradeForm').reset();if(!dialog.open)dialog.showModal();});
