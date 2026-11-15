@@ -25,7 +25,8 @@ async function fetchDxy(){
  const stamp=Number(d.last_quote_at??d.timestamp);const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():(d.datetime?new Date(`${d.datetime.replace(' ','T')}Z`).toISOString():null);
  const ageMinutes=asOf?Math.floor((Date.now()-Date.parse(asOf))/60000):null;
  const freshness=ageMinutes===null?'unknown':ageMinutes < -5?'future':ageMinutes<=20?'recent':'stale';
- return {configured:true,symbol:'DXY',price,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,notice:freshness==='future'?'Horodatage DXY situé dans le futur : donnée rejetée comme référence actuelle.':freshness==='stale'?'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.':freshness==='unknown'?'Horodatage de cotation non fourni : fraîcheur non vérifiable.':'Dernière cotation horodatée fournie par Twelve Data; ce flux REST n’est pas un flux tick temps réel.'};
+ if(freshness==='future')return {configured:false,symbol:'DXY',price:null,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,notice:'Horodatage DXY situé dans le futur : la valeur est exclue du contexte transmis à l’IA.'};
+ return {configured:true,symbol:'DXY',price,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,notice:freshness==='stale'?'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.':freshness==='unknown'?'Horodatage de cotation non fourni : fraîcheur non vérifiable.':'Dernière cotation horodatée fournie par Twelve Data; ce flux REST n’est pas un flux tick temps réel.'};
 }
 async function fetchGlobalNews(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
@@ -80,13 +81,16 @@ export async function handler(event){if(event.httpMethod!=='GET')return json(405
  const key=process.env.FRED_API_KEY;let series={},fredConfigured=Boolean(key),fredNotice='';
  if(key&&usdRelevant){
   const entries=await Promise.all(Object.entries(SERIES).map(async([name,id])=>{
-   try{return [name,{seriesId:id,...await latestSeries(key,id),available:true}];}
-   catch(error){return [name,{seriesId:id,available:false,error:error.message||'Série indisponible.'}];}
+   try{
+    const result=await latestSeries(key,id),future=result.freshness==='future';
+    return [name,{seriesId:id,...result,available:!future,...(future?{error:'Observation FRED datée dans le futur : valeur exclue du contexte IA.'}:{})}];
+   }catch(error){return [name,{seriesId:id,available:false,error:error.message||'Série indisponible.'}];}
   }));
   series=Object.fromEntries(entries);fredConfigured=Object.values(series).some(x=>x.available);
   const failed=Object.values(series).filter(x=>!x.available).length;
-  if(failed)fredNotice=`${failed} série(s) FRED indisponible(s); les autres données restent utilisables.`;
+  const futureSeries=Object.values(series).filter(x=>x.freshness==='future').length;
+  if(failed||futureSeries)fredNotice=`${failed} série(s) FRED indisponible(s), dont ${futureSeries} datée(s) dans le futur; ces valeurs sont exclues du contexte IA.`;
  } else fredNotice=key?'Séries macroéconomiques américaines non sollicitées : aucune devise USD dans cet instrument.':'FRED_API_KEY absent.';
  const dates=Object.values(series).filter(x=>x.available).map(x=>x.latest.date).sort();
  const stale=Object.values(series).filter(x=>x.available&&x.freshness==='stale').length;
- return json(200,{configured:fredConfigured||dxy.configured||calendar.configured||globalNews.configured||economicReleaseSchedule.configured,instrument,currencies,source:'AUREVIA macro aggregator',asOf:new Date().toISOString(),dxy,globalNews,economicReleaseSchedule,broadUsdIndex:series.BROAD_USD_INDEX||null,series,calendar,fred:{configured:fredConfigured,source:'FRED',asOf:dates.at(-1)||null,availableSeries:Object.values(series).filter(x=>x.available).length,totalSeries:Object.keys(SERIES).length,staleSeries:stale,notice:fredNotice||'Séries historiques à fréquences et délais différents.'},notice:'Sources fondamentales internes, jamais affichées comme calendrier dans l’interface. Le DXY n’est jamais remplacé par le dollar large FRED. Les événements à venir servent d’avertissement ; après publication, les chiffres réels, prévisions et précédents sont confrontés à la réaction effective des prix. Une donnée absente ou périmée ne bloque jamais l’analyse technique et ne doit pas être inventée.'});}
+ return json(200,{configured:fredConfigured||dxy.configured||calendar.configured||globalNews.configured||economicReleaseSchedule.configured,instrument,currencies,source:'AUREVIA macro aggregator',asOf:new Date().toISOString(),dxy,globalNews,economicReleaseSchedule,broadUsdIndex:series.BROAD_USD_INDEX||null,series,calendar,fred:{configured:fredConfigured,source:'FRED',asOf:dates.at(-1)||null,availableSeries:Object.values(series).filter(x=>x.available).length,totalSeries:Object.keys(SERIES).length,staleSeries:stale,futureSeries:Object.values(series).filter(x=>x.freshness==='future').length,notice:fredNotice||'Séries historiques à fréquences et délais différents.'},notice:'Sources fondamentales internes, jamais affichées comme calendrier dans l’interface. Le DXY n’est jamais remplacé par le dollar large FRED. Les événements à venir servent d’avertissement ; après publication, les chiffres réels, prévisions et précédents sont confrontés à la réaction effective des prix. Une donnée absente ou périmée ne bloque jamais l’analyse technique et ne doit pas être inventée.'});}
