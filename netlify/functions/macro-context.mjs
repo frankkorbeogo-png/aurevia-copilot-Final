@@ -2,7 +2,7 @@ import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 // DTWEXBGS est l'indice large du dollar (pas le DXY). Il reste séparé du DXY.
 const SERIES={BROAD_USD_INDEX:'DTWEXBGS',NOMINAL_YIELD_10Y:'DGS10',REAL_YIELD_10Y:'DFII10',FED_FUNDS:'FEDFUNDS',CPI:'CPIAUCSL',UNEMPLOYMENT:'UNRATE'};
-const INSTRUMENT_CURRENCIES={XAUUSD:['USD'],XAGUSD:['USD'],EURUSD:['EUR','USD'],GBPUSD:['GBP','USD'],USDJPY:['USD','JPY'],AUDUSD:['AUD','USD'],USDCAD:['USD','CAD'],USDCHF:['USD','CHF'],NZDUSD:['NZD','USD'],EURGBP:['EUR','GBP'],EURJPY:['EUR','JPY'],GBPJPY:['GBP','JPY'],BTCUSD:['USD'],ETHUSD:['USD']};
+const INSTRUMENT_CURRENCIES={XAUUSD:['USD'],XAGUSD:['USD'],EURUSD:['EUR','USD'],GBPUSD:['GBP','USD'],USDJPY:['USD','JPY'],AUDUSD:['AUD','USD'],USDCAD:['USD','CAD'],USDCHF:['USD','CHF'],NZDUSD:['NZD','USD'],EURGBP:['EUR','GBP'],EURJPY:['EUR','JPY'],GBPJPY:['GBP','JPY'],EURAUD:['EUR','AUD'],EURCHF:['EUR','CHF'],GBPAUD:['GBP','AUD'],AUDJPY:['AUD','JPY'],BTCUSD:['USD'],ETHUSD:['USD'],SOLUSD:['USD'],XRPUSD:['USD'],AAPL:['USD'],MSFT:['USD'],NVDA:['USD'],TSLA:['USD'],AMZN:['USD']};
 async function latestSeries(apiKey,id){
  const u=new URL('https://api.stlouisfed.org/fred/series/observations');
  u.searchParams.set('series_id',id);u.searchParams.set('api_key',apiKey);u.searchParams.set('file_type','json');u.searchParams.set('sort_order','desc');u.searchParams.set('limit','2');
