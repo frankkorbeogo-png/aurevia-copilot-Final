@@ -1,6 +1,5 @@
 import { calculateLotsFromRisk } from './contract-engine.js';
-export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitValuePerLot,lotStep=0.01,rewardDistance=null,marginPerLot=null,contractSpec=null}){
-  if(contractSpec)return calculateLotsFromRisk({balance,riskAmount,stopDistance,contractSpec,rewardDistance});
+export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitValuePerLot,lotStep=0.01,rewardDistance=null,entryPrice=null,leverage=null}){
   const nums=[riskAmount,stopDistance,unitValuePerLot,lotStep];
   if(!nums.every(Number.isFinite)||riskAmount<=0||stopDistance<=0||unitValuePerLot<=0||lotStep<=0)
     return {error:'Vérifiez le montant à risquer, la distance du stop, la valeur par lot et le pas de volume.'};
@@ -12,6 +11,8 @@ export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitVal
   const gain=Number.isFinite(rewardDistance)&&rewardDistance>0?lots*rewardDistance*unitValuePerLot:null;
   const rr=gain===null?null:gain/riskMoney;
   const riskPercentActual=Number.isFinite(balance)&&balance>0?riskMoney/balance*100:null;
-  const margin=Number.isFinite(marginPerLot)&&marginPerLot>0?lots*marginPerLot:null;
+  // Estimation indicative : valeur par lot/unité de prix × prix d'entrée = notionnel estimé.
+  const margin=Number.isFinite(entryPrice)&&entryPrice>0&&Number.isFinite(leverage)&&leverage>0
+    ?lots*unitValuePerLot*entryPrice/leverage:null;
   return {riskMoney,lots,lossPerLot:stopDistance*unitValuePerLot,gain,rr,riskPercentActual,margin,unusedRisk:Math.max(0,riskAmount-riskMoney)};
 }
