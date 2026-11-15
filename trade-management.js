@@ -51,6 +51,22 @@ export function createTradeGroup(input) {
   return group;
 }
 
+export function buildTradeGroupCloudRows(group,userId){
+  if(!group?.id||!userId||!['unique','separate'].includes(group.mode)||!Array.isArray(group.children)||!group.children.length)throw new Error('Groupe de trades invalide pour la synchronisation cloud.');
+  const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null};
+  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,activation_notified:group.orderType==='MARKET',opened_at:child.createdAt}));
+  let journalRows=[];
+  if(group.autoJournal){
+    if(group.mode==='unique'){
+      const first=group.children[0],pending=group.children.every(child=>child.status==='PENDING');
+      journalRows=[{user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${pending?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,child)=>sum+Number(child.remainingLot||0),0),gross_pnl:0,fees:0,entry_price:first.entry,stop_loss:first.stopLoss,take_profit:first.takeProfit}];
+    }else{
+      journalRows=group.children.map(child=>({user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${child.tpLabel}${child.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:child.id,mode:'separate',volume_initial:child.initialLot,volume_remaining:child.remainingLot,tp_label:child.tpLabel,gross_pnl:0,fees:0,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit}));
+    }
+  }
+  return {groupRow,positions,journalRows};
+}
+
 export function calculateClosePnl({direction,entry,exit,volume,contractSize,quoteToAccount=1,fees=0,contractSpec=null}) {
   const result=calculateContractPnl({direction,entry,exit,volume,contractSpec,contractSize,quoteToAccount,fees});
   return result.currency?{gross:result.gross,fees:result.fees,net:result.net,currency:result.currency}:{gross:result.gross,fees:result.fees,net:result.net};
