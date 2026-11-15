@@ -1,4 +1,4 @@
-import { resolveLinkedJournalStatus } from './trade-management.js';
+import { resolveLinkedJournalStatus, buildTradeGroupCloudRows } from './trade-management.js';
 const SUPABASE_URL='https://imkwbizyblzuevkodzqc.supabase.co';
 // Publishable key: designed for browser use. Row access is still controlled by Supabase RLS.
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_DSlEiHcRGUKc5XjGeHz7jQ_n8EUMw6v';
@@ -323,23 +323,31 @@ export async function restoreTradeGroupsFromSupabase(){
 
 export async function syncTradeGroupToSupabase(group){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- const groupRow={id:group.id,user_id:user.id,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:group.autoJournal,status:group.status,contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null};
+ const {groupRow,positions,journalRows}=buildTradeGroupCloudRows(group,user.id);
+ // Position status (including PENDING) stays unchanged. Journal rows use OPEN
+ // because the SQL journal constraint does not accept PENDING.
  const g=await supabase.from('trading_position_groups').upsert(groupRow,{onConflict:'id'});if(g.error)throw new Error(g.error.message);
- const positions=group.children.map(c=>({id:c.id,group_id:group.id,user_id:user.id,tp_label:c.tpLabel,entry_price:c.entry,stop_loss:c.stopLoss,take_profit:c.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:c.initialLot,volume_remaining:c.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:c.status,trigger_seen:Boolean(c.triggerSeen),activated_at:c.activatedAt||null,activation_price:c.activationPrice??null,activation_notified:group.orderType==='MARKET',opened_at:c.createdAt}));
  const p=await supabase.from('trading_positions').upsert(positions,{onConflict:'id'});if(p.error)throw new Error(p.error.message);
  let existingRows=[],created=[];
  if(group.autoJournal){
-  let journalRows=[];
-  if(group.mode==='unique'){journalRows=[{user_id:user.id,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${group.children.every(c=>c.status==='PENDING')?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.requestedLot,gross_pnl:0,fees:0,entry_price:group.children[0].entry,stop_loss:group.children[0].stopLoss,take_profit:group.children[0].takeProfit}];}
-  else journalRows=group.children.map(c=>({user_id:user.id,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${c.tpLabel}${c.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:c.id,mode:'separate',volume_initial:c.initialLot,volume_remaining:c.remainingLot,tp_label:c.tpLabel,gross_pnl:0,fees:0,entry_price:c.entry,stop_loss:c.stopLoss,take_profit:c.takeProfit}));
   const existing=await supabase.from('trading_journal').select('id,position_id').eq('user_id',user.id).eq('group_id',group.id);if(existing.error)throw new Error(existing.error.message);
   existingRows=existing.data||[];
-  const missing=journalRows.filter(row=>row.position_id? !existingRows.some(x=>x.position_id===row.position_id) : !existingRows.some(x=>!x.position_id));
+  const missing=journalRows.filter(row=>row.position_id?!existingRows.some(x=>x.position_id===row.position_id):!existingRows.some(x=>!x.position_id));
   if(missing.length){const j=await supabase.from('trading_journal').insert(missing).select('id,position_id');if(j.error)throw new Error(j.error.message);created=j.data||[];}
-  for(const row of [...existingRows,...created]){const target=row.position_id||null;const q=target?supabase.from('trading_positions').update({journal_id:row.id}).eq('id',target):supabase.from('trading_positions').update({journal_id:row.id}).eq('group_id',group.id);const result=await q;if(result.error)throw new Error(result.error.message);const child=target?group.children.find(c=>c.id===target):group.children[0];if(child){const journalUpdate=target?{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:child.initialLot,volume_remaining:child.remainingLot}:{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:group.requestedLot,volume_remaining:groupSummary(group).remaining};const updatedJournal=await supabase.from('trading_journal').update(journalUpdate).eq('id',row.id).eq('user_id',user.id);if(updatedJournal.error)throw new Error(updatedJournal.error.message);}}
+  for(const row of [...existingRows,...created]){
+   const target=row.position_id||null;
+   const q=target?supabase.from('trading_positions').update({journal_id:row.id}).eq('id',target):supabase.from('trading_positions').update({journal_id:row.id}).eq('group_id',group.id);
+   const result=await q;if(result.error)throw new Error(result.error.message);
+   const child=target?group.children.find(item=>item.id===target):group.children[0];
+   if(child){
+    const journalUpdate=target?{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:child.initialLot,volume_remaining:child.remainingLot}:{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,item)=>sum+Number(item.remainingLot||0),0)};
+    const updatedJournal=await supabase.from('trading_journal').update(journalUpdate).eq('id',row.id).eq('user_id',user.id);if(updatedJournal.error)throw new Error(updatedJournal.error.message);
+   }
+  }
  }
  return {synced:true,journalMappings:[...existingRows,...created].map(row=>({id:row.id,positionId:row.position_id||null}))};
 }
+
 export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=null,positionId=null){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(error)throw new Error(error.message);if(!user)return {synced:false,reason:'not_authenticated'};
  let removed=await supabase.from('trading_journal').delete().eq('id',journalId).eq('user_id',user.id).select('id');
