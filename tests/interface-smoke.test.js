@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {handler as marketQuoteHandler} from '../netlify/functions/market-quote.mjs';
 import {getMarketStatus} from '../market-hours.js';
+import {MARKET_INSTRUMENTS} from '../market-catalog.js';
 const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
 const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');
 test('l’interface expose les treize espaces fonctionnels',()=>{const pages=[...html.matchAll(/data-page-view="([^"]+)"/g)].map(x=>x[1]);assert.equal(new Set(pages).size,13);for(const page of ['accueil','marches','risque','journal','positions','validation-trade','dxy','actualites','annonces','telegram','parametres','guide','admin'])assert.ok(pages.includes(page));});
@@ -183,4 +184,32 @@ test('le message de réouverture affiche une seule fois l’heure locale du Burk
  assert.equal(status.status,'CLOSED');
  assert.match(status.reason,/Réouverture prévue le dimanche 15 novembre à 23:00/);
  assert.doesNotMatch(status.reason,/à 23:00 à 23:00/);
+});
+
+
+test('les horaires des métaux suivent le changement été/hiver de New York',()=>{
+ const winterClosed=getMarketStatus('XAU/USD',new Date('2026-11-15T22:59:00Z'));
+ const winterOpen=getMarketStatus('XAU/USD',new Date('2026-11-15T23:00:00Z'));
+ const summerClosed=getMarketStatus('XAU/USD',new Date('2026-06-14T21:59:00Z'));
+ const summerOpen=getMarketStatus('XAU/USD',new Date('2026-06-14T22:00:00Z'));
+ assert.equal(winterClosed.status,'CLOSED');
+ assert.equal(winterClosed.reopensAt,'2026-11-15T23:00:00.000Z');
+ assert.equal(winterOpen.status,'OPEN');
+ assert.equal(summerClosed.status,'CLOSED');
+ assert.equal(summerClosed.reopensAt,'2026-06-14T22:00:00.000Z');
+ assert.equal(summerOpen.status,'OPEN');
+});
+
+test('les horaires Forex suivent aussi le changement été/hiver de New York',()=>{
+ assert.equal(getMarketStatus('EUR/USD',new Date('2026-11-15T21:59:00Z')).status,'CLOSED');
+ assert.equal(getMarketStatus('EUR/USD',new Date('2026-11-15T22:00:00Z')).status,'OPEN');
+ assert.equal(getMarketStatus('EUR/USD',new Date('2026-06-14T20:59:00Z')).status,'CLOSED');
+ assert.equal(getMarketStatus('EUR/USD',new Date('2026-06-14T21:00:00Z')).status,'OPEN');
+});
+
+test('tous les instruments du catalogue correspondent à une famille horaire connue',()=>{
+ for(const [id,item] of Object.entries(MARKET_INSTRUMENTS)){
+  const status=getMarketStatus(id,new Date('2026-11-16T12:00:00Z'));
+  assert.equal(status.market,item.market, `${id} doit être classé ${item.market}`);
+ }
 });
