@@ -117,6 +117,13 @@ export function persistTradeGroup(updated){
   return updated;
 }
 export function loadLinkedJournal(){return read(JOURNAL_KEY);}
+export function attachCloudJournalIds(groupId,mappings=[]){
+  const ids=new Map((mappings||[]).map(row=>[row.positionId||'parent',row.id]));
+  const rows=read(JOURNAL_KEY).map(row=>row.groupId===groupId&&ids.has(row.childId||'parent')?{...row,cloudId:ids.get(row.childId||'parent')}:row);
+  if(!write(JOURNAL_KEY,rows))throw new Error('Impossible d’associer les identifiants cloud aux fiches journal locales.');
+  return true;
+}
+
 
 export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
   const local=read(STORAGE_KEY),byId=new Map(local.map(g=>[g.id,g]));
