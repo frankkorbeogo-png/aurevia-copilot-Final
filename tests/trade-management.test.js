@@ -292,3 +292,20 @@ test('payload cloud : un ordre MARKET transmet OPEN au suivi et au journal',()=>
  assert.equal(payload.positions[0].status,'OPEN');
  assert.equal(payload.journalRows[0].result,'OPEN');
 });
+
+
+test('un trade en attente ne peut jamais être clôturé avant son activation',()=>{
+ const group=createTradeGroup({mode:'separate',instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010}],orderType:'BUY LIMIT'});
+ const child=group.children[0];
+ assert.equal(child.status,'PENDING');
+ const before={remainingLot:child.remainingLot,closes:child.closes.length,realizedPnl:child.realizedPnl,status:child.status};
+ assert.throws(()=>recordPartialClose(group,child.id,{volume:child.remainingLot,exit:2005,contractSize:100}),/encore en attente/);
+ assert.deepEqual({remainingLot:child.remainingLot,closes:child.closes.length,realizedPnl:child.realizedPnl,status:child.status},before);
+});
+
+test('une position unique en attente ne propose aucune clôture et ses enfants restent en attente',()=>{
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.03,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2010},{label:'TP2',price:2020}],orderType:'BUY LIMIT'});
+ assert.equal(group.children.every(child=>child.status==='PENDING'),true);
+ for(const child of group.children)assert.throws(()=>recordPartialClose(group,child.id,{volume:child.remainingLot,exit:2005,contractSize:100}),/encore en attente/);
+ assert.equal(group.children.every(child=>child.status==='PENDING'&&child.closes.length===0),true);
+});
