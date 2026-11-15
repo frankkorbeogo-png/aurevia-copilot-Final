@@ -322,30 +322,19 @@ export async function restoreTradeGroupsFromSupabase(){
 }
 
 export async function syncTradeGroupToSupabase(group){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
  const {groupRow,positions,journalRows}=buildTradeGroupCloudRows(group,user.id);
- // Position status (including PENDING) stays unchanged. Journal rows use OPEN
- // because the SQL journal constraint does not accept PENDING.
- const g=await supabase.from('trading_position_groups').upsert(groupRow,{onConflict:'id'});if(g.error)throw new Error(g.error.message);
- const p=await supabase.from('trading_positions').upsert(positions,{onConflict:'id'});if(p.error)throw new Error(p.error.message);
- let existingRows=[],created=[];
- if(group.autoJournal){
-  const existing=await supabase.from('trading_journal').select('id,position_id').eq('user_id',user.id).eq('group_id',group.id);if(existing.error)throw new Error(existing.error.message);
-  existingRows=existing.data||[];
-  const missing=journalRows.filter(row=>row.position_id?!existingRows.some(x=>x.position_id===row.position_id):!existingRows.some(x=>!x.position_id));
-  if(missing.length){const j=await supabase.from('trading_journal').insert(missing).select('id,position_id');if(j.error)throw new Error(j.error.message);created=j.data||[];}
-  for(const row of [...existingRows,...created]){
-   const target=row.position_id||null;
-   const q=target?supabase.from('trading_positions').update({journal_id:row.id}).eq('id',target):supabase.from('trading_positions').update({journal_id:row.id}).eq('group_id',group.id);
-   const result=await q;if(result.error)throw new Error(result.error.message);
-   const child=target?group.children.find(item=>item.id===target):group.children[0];
-   if(child){
-    const journalUpdate=target?{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:child.initialLot,volume_remaining:child.remainingLot}:{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,item)=>sum+Number(item.remainingLot||0),0)};
-    const updatedJournal=await supabase.from('trading_journal').update(journalUpdate).eq('id',row.id).eq('user_id',user.id);if(updatedJournal.error)throw new Error(updatedJournal.error.message);
-   }
-  }
- }
- return {synced:true,journalMappings:[...existingRows,...created].map(row=>({id:row.id,positionId:row.position_id||null}))};
+ // The RPC derives user_id from auth.uid(), checks the active AUREVIA session,
+ // and commits group, positions and linked journal rows in one transaction.
+ const {data,error}=await supabase.rpc('aurevia_sync_trade_group',{
+  p_group:groupRow,p_positions:positions,p_journal:journalRows
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'La synchronisation atomique du trade n’a pas été confirmée.');
+ return {synced:true,journalMappings:Array.isArray(data.journal_mappings)?data.journal_mappings:[]};
 }
 
 export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=null,positionId=null){
