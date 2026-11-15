@@ -121,7 +121,7 @@ function economicReleaseMessage(event){
  const utc=new Date(event.scheduled_at);
  const burkina=new Intl.DateTimeFormat('fr-FR',{timeZone:'Africa/Ouagadougou',dateStyle:'full',timeStyle:'short'}).format(utc);
  const eastern=new Intl.DateTimeFormat('fr-FR',{timeZone:'America/New_York',dateStyle:'short',timeStyle:'short'}).format(utc);
- return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\n\n'+event.event_name+'\nDevise : '+event.currency+' · Impact : élevé\nHeure prévue (New York) : '+eastern+'\nHeure Burkina Faso (UTC+0) : '+burkina+'\n\nRappel envoyé au contrôle horaire précédant la publication, généralement environ 30 minutes avant. La date vient du calendrier FRED ; l’heure est un horaire habituel de publication, à vérifier sur la source officielle.\nSource : '+event.source_url+'\n\nCette alerte n’est pas un signal BUY/SELL.';
+ return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\n\n'+event.event_name+'\nDevise : '+event.currency+' · Impact : élevé\nHeure prévue (New York) : '+eastern+'\nHeure Burkina Faso (UTC+0) : '+burkina+'\n\nRappel envoyé au contrôle horaire précédant la publication, environ 30 à 60 minutes avant selon l’horaire de publication. La date vient du calendrier FRED ; l’heure est un horaire habituel de publication, à vérifier sur la source officielle.\nSource : '+event.source_url+'\n\nCette alerte n’est pas un signal BUY/SELL.';
 }
 async function broadcastDueReleases(){
  if(!env('TELEGRAM_BOT_TOKEN'))return {processed:0,notice:'TELEGRAM_BOT_TOKEN absent.'};
