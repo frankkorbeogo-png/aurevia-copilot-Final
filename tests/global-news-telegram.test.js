@@ -16,7 +16,7 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id')){calls.insert=JSON.parse(options.body);return response([],201);}
-  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
+  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:null,seen_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
   if(url.includes('/rest/v1/global_news_events?id=eq.event-1'))return response([]);
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'},{user_id:'u2',chat_id:'456'}]);
   if(url.includes('/rest/v1/telegram_event_deliveries?on_conflict='))return response([],201);
@@ -65,7 +65,7 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url')){
-   return response(completed?[]:[{id:'retry-event',title:'Rate decision follow-up',source_url:'https://news.example.com/rates',source_domain:'news.example.com',published_at:new Date().toISOString(),telegram_broadcast_started_at:'2026-11-15T08:00:00Z'}]);
+   return response(completed?[]:[{id:'retry-event',title:'Rate decision follow-up',source_url:'https://news.example.com/rates',source_domain:'news.example.com',published_at:null,seen_at:new Date().toISOString(),telegram_broadcast_started_at:'2026-11-15T08:00:00Z'}]);
   }
   if(url.includes('/rest/v1/global_news_events?id=eq.retry-event')){if(body.telegram_broadcast_completed_at)completed=true;return response([]);}
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'},{user_id:'u2',chat_id:'456'}]);
