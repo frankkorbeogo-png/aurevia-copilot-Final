@@ -4,6 +4,20 @@ const JOURNAL_KEY = 'aurevia-linked-journal-v2';
 const id = () => globalThis.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16);});
 const round = (n, p=2) => Number(n.toFixed(p));
 
+
+export function validatePendingOrderAgainstQuote({orderType,direction,entry,triggerPrice=null,marketPrice}){
+  if(orderType==='MARKET')return {ok:true};
+  const price=Number(marketPrice),level=Number(entry),trigger=Number(triggerPrice);
+  if(!Number.isFinite(price)||price<=0||!Number.isFinite(level)||level<=0)return {ok:false,error:'Cours de marché indisponible : impossible de vérifier le placement de cet ordre en attente.'};
+  if(orderType==='BUY LIMIT'&&price<=level)return {ok:false,error:`BUY LIMIT invalide : le cours actuel (${price}) doit être au-dessus de ton entrée (${level}).`};
+  if(orderType==='SELL LIMIT'&&price>=level)return {ok:false,error:`SELL LIMIT invalide : le cours actuel (${price}) doit être sous ton entrée (${level}).`};
+  if(orderType==='BUY STOP'&&price>=level)return {ok:false,error:`BUY STOP invalide : le cours actuel (${price}) doit être sous ton déclenchement (${level}).`};
+  if(orderType==='SELL STOP'&&price<=level)return {ok:false,error:`SELL STOP invalide : le cours actuel (${price}) doit être au-dessus de ton déclenchement (${level}).`};
+  if(orderType==='BUY STOP LIMIT'&&(!Number.isFinite(trigger)||trigger<=0||price>=trigger))return {ok:false,error:`BUY STOP LIMIT invalide : le cours actuel (${price}) doit être sous le déclenchement (${trigger}).`};
+  if(orderType==='SELL STOP LIMIT'&&(!Number.isFinite(trigger)||trigger<=0||price<=trigger))return {ok:false,error:`SELL STOP LIMIT invalide : le cours actuel (${price}) doit être au-dessus du déclenchement (${trigger}).`};
+  return {ok:true};
+}
+
 export function splitVolume(total, count, step=0.01) {
   if (![total,count,step].every(Number.isFinite) || total<=0 || count<1 || step<=0) throw new Error('Volume, nombre de TP et pas broker invalides.');
   const scaled=total/step;
