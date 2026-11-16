@@ -1,23 +1,27 @@
 import { calculateContractPnl } from '../../contract-engine.js';
 import { getFxSnapshot, inferQuoteCurrency } from './_fx-rate.mjs';
 import {MARKET_LABELS} from '../../market-catalog.js';
+import {getMarketStatus} from '../../market-hours.js';
 // Scheduled AUREVIA-only position monitor. It never connects to a broker or places orders.
-const BASE=()=>process.env.SUPABASE_URL, KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
+const BASE=()=>String(process.env.SUPABASE_URL||'').replace(/\\/+$/,''); const KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${BASE()}/rest/v1/${path}`,{method,headers:{apikey:KEY(),authorization:`Bearer ${KEY()}`,'content-type':'application/json',...(prefer?{prefer}:{})},...(body?{body:JSON.stringify(body)}:{})});const t=await r.text();if(!r.ok)throw new Error(`Supabase ${r.status}: ${t.slice(0,180)}`);return t?JSON.parse(t):null;}
 const SYMBOLS=new Set(MARKET_LABELS);
 async function quote(symbol){
  if(!SYMBOLS.has(symbol))throw new Error('Instrument non pris en charge par le suivi.');
+ const marketStatus=getMarketStatus(symbol);
+ if(!marketStatus.tradable)throw new Error(`Marché fermé : ${marketStatus.closureLabel||marketStatus.status}. Surveillance des déclenchements suspendue jusqu’à la réouverture.`);
  const rows=await rest(`aurevia_market_quotes?select=price,quote_at,source&symbol=eq.${encodeURIComponent(symbol)}`);
  const row=rows?.[0],stored=Number(row?.price),age=Date.now()-Date.parse(row?.quote_at||'');
  if(row&&Number.isFinite(stored)&&stored>0&&Number.isFinite(age)&&age>=0&&age<=90000)return {price:stored,quoteAt:row.quote_at,source:row.source||'flux marché'};
  const key=process.env.TWELVEDATA_API_KEY;if(!key)throw new Error('Prix de marché indisponible : flux absent ou trop ancien.');
- const url=new URL('https://api.twelvedata.com/price');url.searchParams.set('symbol',symbol);url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
- const response=await fetch(url,{signal:AbortSignal.timeout(10000)}),data=await response.json(),price=Number(data.price);
- if(!response.ok||data.status==='error'||!Number.isFinite(price)||price<=0)throw new Error(data.message||'Prix de marché Twelve Data indisponible.');
- const quoteAt=new Date().toISOString();
- await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data REST Last Price',updated_at:quoteAt}});
- return {price,quoteAt,source:'Twelve Data REST Last Price'};
+ // /price has no exchange timestamp. Use the latest 1-minute candle instead,
+ // and reject it when its source timestamp is stale or in the future.
+ const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval','1min');url.searchParams.set('outputsize','1');url.searchParams.set('timezone','UTC');url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
+ const response=await fetch(url,{signal:AbortSignal.timeout(10000)}),data=await response.json(),candle=data.values?.[0],price=Number(candle?.close),quoteAt=candle?.datetime?new Date(candle.datetime.replace(' ','T')+'Z').toISOString():null,quoteAge=quoteAt?Date.now()-Date.parse(quoteAt):Infinity;
+ if(!response.ok||data.status==='error'||!Number.isFinite(price)||price<=0||!Number.isFinite(quoteAge)||quoteAge<0||quoteAge>90000)throw new Error(data.message||'Cotation Twelve Data absente ou trop ancienne : déclenchement suspendu.');
+ await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data 1min candle',updated_at:new Date().toISOString()}});
+ return {price,quoteAt,source:'Twelve Data 1min candle'};
 }
 export {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
 import {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
