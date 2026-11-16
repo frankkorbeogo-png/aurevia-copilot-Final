@@ -142,7 +142,7 @@ async function syncGlobalNews(){
  const articles=await fetchArticles();
  if(articles.length)await rest('global_news_events?on_conflict=external_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:articles});
  const cutoff=new Date(Date.now()-100*60*1000).toISOString();
- const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,seen_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(seen_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=published_at.desc&limit=75');
+ const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,seen_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(seen_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=seen_at.desc&limit=75');
  const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastToSubscribers('global_news',item,globalNewsMessage(item),'global_news_events')});
  return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
 }
