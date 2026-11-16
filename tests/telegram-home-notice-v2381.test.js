@@ -8,7 +8,7 @@ test('l’accueil invite à connecter Telegram avec un accès direct à la liais
 });
 test('la notification disparaît après vérification d’une liaison Telegram active', async()=>{
  const app=await read('app.js');
- assert.match(app,/async function refreshTelegramHomeNotice\([\s\S]*?loadTelegramPreferences\(\)[\s\S]*?notice\.hidden=Boolean\(prefs\?\.chat_id\)/);
+ assert.match(app,/async function refreshTelegramHomeNotice\([\s\S]*?const ownerId=String\(window\.__aureviaUserId\|\|''\)\.trim\(\)[\s\S]*?loadTelegramPreferences\(ownerId\)[\s\S]*?notice\.hidden=Boolean\(prefs\?\.chat_id\)/);
  assert.match(app,/refreshTelegramHomeNotice\(\)/);
 });
 test('le cache PWA change de version avec la nouvelle notification', async()=>{
