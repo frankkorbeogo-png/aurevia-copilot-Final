@@ -263,29 +263,29 @@ export async function createTelegramPairingCode(){
  const preferences={...(data?.preferences||{}),telegram_pair_code:code,telegram_pair_expires_at:new Date(Date.now()+10*60*1000).toISOString()};
  const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return code;
 }
-export async function loadAccountCurrency(){
- await ensureUser();if(!currentUser)return null;
- const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();
- if(error)throw new Error(error.message);
+export async function loadAccountCurrency(expectedUserId=null){
+ await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return null;
  const value=String(data?.preferences?.account_currency||'').trim().toUpperCase();
  return /^[A-Z]{3}$/.test(value)?value:null;
 }
-export async function saveAccountCurrency(currency){
- await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de définir la devise du compte.');
+export async function saveAccountCurrency(currency,expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de définir la devise du compte.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
  const value=String(currency||'').trim().toUpperCase();if(!/^[A-Z]{3}$/.test(value))throw new Error('Choisissez une devise valide.');
- const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
  const preferences={...(data?.preferences||{}),account_currency:value};
- const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return value;
+ const saved=await supabase.from('user_preferences').upsert({user_id:userId,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return value;
 }
-export async function loadBrokerSettings(instrument){
- await ensureUser();if(!currentUser)return null;
- const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();
- if(error)throw new Error(error.message);
+export async function loadBrokerSettings(instrument,expectedUserId=null){
+ await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return null;
  const profiles=data?.preferences?.broker_specs||{};
  return profiles[instrument]||profiles.default||null;
 }
-export async function saveBrokerSettings(instrument,spec){
- await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant d’enregistrer les paramètres broker.');
+export async function saveBrokerSettings(instrument,spec,expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant d’enregistrer les paramètres techniques.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
  const key=String(instrument||'').trim();if(!key)throw new Error('Choisissez un instrument.');
  const calculationType=String(spec?.calculationType||'').toLowerCase();
  if(!['contract','point','tick'].includes(calculationType))throw new Error('Choisissez une méthode de calcul.');
@@ -295,11 +295,11 @@ export async function saveBrokerSettings(instrument,spec){
  if(calculationType==='contract')clean.contractSize=number(spec.contractSize,'taille du contrat');
  if(calculationType==='point'){clean.pointSize=number(spec.pointSize,'taille du point');clean.pointValue=number(spec.pointValue,'valeur du point');}
  if(calculationType==='tick'){clean.tickSize=number(spec.tickSize,'taille du tick');clean.tickValue=number(spec.tickValue,'valeur du tick');}
- const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
  const preferences={...(data?.preferences||{}),broker_specs:{...(data?.preferences?.broker_specs||{}),[key]:clean}};
- const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return clean;
+ const saved=await supabase.from('user_preferences').upsert({user_id:userId,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return clean;
 }
-export async function loadTelegramPreferences(){await ensureUser();if(!currentUser)return null;const {data,error}=await supabase.from('telegram_connections').select('chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements,notify_product_announcements').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);return data;}
+export async function loadTelegramPreferences(expectedUserId=null){await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;const {data,error}=await supabase.from('telegram_connections').select('chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements,notify_product_announcements').eq('user_id',userId).maybeSingle();if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return null;return data;}
 export async function unlinkTelegramAccount(){
  await ensureUser();
  if(!currentUser)throw new Error('Connectez-vous avant de délier Telegram.');
@@ -309,7 +309,7 @@ export async function unlinkTelegramAccount(){
  if(!response.ok||result.ok!==true||result.unlinked!==true)throw new Error(result.error||'Le serveur n’a pas confirmé la déliaison Telegram.');
  return result;
 }
-export async function saveTelegramPreferences(prefs){await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de modifier vos notifications.');const {error}=await supabase.from('telegram_connections').update({notify_all_analyses:Boolean(prefs.all),notify_validated_signals:Boolean(prefs.signals),notify_economic_announcements:Boolean(prefs.economic),notify_product_announcements:Boolean(prefs.productAnnouncements),updated_at:new Date().toISOString()}).eq('user_id',currentUser.id);if(error)throw new Error(error.message);}
+export async function saveTelegramPreferences(prefs,expectedUserId=null){await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de modifier vos notifications.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');const {error}=await supabase.from('telegram_connections').update({notify_all_analyses:Boolean(prefs.all),notify_validated_signals:Boolean(prefs.signals),notify_economic_announcements:Boolean(prefs.economic),notify_product_announcements:Boolean(prefs.productAnnouncements),updated_at:new Date().toISOString()}).eq('user_id',userId);if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');}
 
 
 export async function getAnalysisAccessToken(){
