@@ -101,3 +101,12 @@ test('manual fill corrections update the real entry price in Supabase without br
  assert.match(sql,/ACTUAL_FILL_PRICE_OUTSIDE_SL_TP/);
  assert.match(sql,/actual_entry_price=p_actual_entry_price/);
 });
+
+test('unique group stores one actual fill price for open and pending TP children',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const sql=await readFile(new URL('../supabase/migrations/20261116192500_aurevia_unique_pending_actual_fill.sql',import.meta.url),'utf8');
+ assert.match(sql,/status in \('OPEN','PENDING'\)/);
+ assert.match(sql,/actual_entry_price=p_actual_entry_price/);
+ assert.match(sql,/status='OPEN' then p_actual_entry_price else entry_price end/);
+ assert.match(sql,/UNIQUE_GROUP_ALREADY_PARTIALLY_CLOSED/);
+});
