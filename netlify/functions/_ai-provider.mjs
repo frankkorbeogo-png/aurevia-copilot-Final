@@ -1,5 +1,5 @@
-// Routage IA serveur AUREVIA : ordre strict Gemini > Cloudflare > Groq.
-// Les délais sont compatibles avec la limite synchrone Netlify (60 s).
+// Registre IA serveur AUREVIA : Gemini > OpenRouter > Cloudflare > Groq pour le fallback générique.
+// Les collaborations M15/M5 définissent leur propre rôle et ordre de contrôle par fournisseur.
 const env = (name) => {
   let value = '';
   try { value = globalThis.Netlify?.env?.get?.(name) || ''; } catch {}
