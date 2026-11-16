@@ -21,6 +21,7 @@ test('M15 et M30 sont requis, H4 et H1 restent optionnels',()=>{
   assert.match(source,/requiredMissing/);
   assert.match(source,/allRequiredAvailable/);
   assert.match(source,/analyses\.M15\?\.last/);
+  assert.match(source,/analyses\.M30\?\.last/);
   assert.match(source,/\['M15','M30'\]/);
   assert.doesNotMatch(source,/M5:'5min'/);
 });
