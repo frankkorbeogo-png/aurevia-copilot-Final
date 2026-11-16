@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const migration = await readFile(new URL('../supabase/migrations/20261116144849_aurevia_global_news_seen_at.sql', import.meta.url), 'utf8');
+const migration = await readFile(new URL('../supabase/migrations/20261116154433_global_news_seen_at.sql', import.meta.url), 'utf8');
 const sync = await readFile(new URL('../netlify/functions/global-news-sync.mjs', import.meta.url), 'utf8');
 const macro = await readFile(new URL('../netlify/functions/macro-context.mjs', import.meta.url), 'utf8');
 
