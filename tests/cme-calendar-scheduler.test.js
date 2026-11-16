@@ -28,3 +28,44 @@ test('CME calendar sync accepts the scheduled POST invocation',async()=>{
   Object.assign(process.env,oldEnv);
  }
 });
+
+
+test('CME permanent upstream denial is reported without retryable 5xx', async () => {
+ const oldFetch=globalThis.fetch,oldEnv={...process.env};
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service'});
+ globalThis.fetch=async()=>new Response('Forbidden',{status:403});
+ try{
+  const result=await handler({httpMethod:'POST'});
+  const body=JSON.parse(result.body);
+  assert.equal(result.statusCode,422);
+  assert.equal(body.stage,'cme_fetch');
+  assert.equal(body.code,'CME_HTTP_ERROR');
+  assert.equal(body.upstreamStatus,403);
+  assert.equal(body.retryable,false);
+  assert.equal(body.automaticMarketClosuresApplied,false);
+ }finally{
+  globalThis.fetch=oldFetch;
+  for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];
+  Object.assign(process.env,oldEnv);
+ }
+});
+
+test('CME temporary upstream failure remains retryable', async () => {
+ const oldFetch=globalThis.fetch,oldEnv={...process.env};
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service'});
+ globalThis.fetch=async()=>new Response('Upstream unavailable',{status:503});
+ try{
+  const result=await handler({httpMethod:'POST'});
+  const body=JSON.parse(result.body);
+  assert.equal(result.statusCode,503);
+  assert.equal(body.stage,'cme_fetch');
+  assert.equal(body.code,'CME_HTTP_ERROR');
+  assert.equal(body.upstreamStatus,503);
+  assert.equal(body.retryable,true);
+  assert.equal(body.automaticMarketClosuresApplied,false);
+ }finally{
+  globalThis.fetch=oldFetch;
+  for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];
+  Object.assign(process.env,oldEnv);
+ }
+});
