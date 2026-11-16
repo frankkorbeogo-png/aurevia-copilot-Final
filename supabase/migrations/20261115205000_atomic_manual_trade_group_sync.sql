@@ -10,7 +10,7 @@ create or replace function public.aurevia_sync_trade_group(
 language plpgsql
 security invoker
 set search_path = pg_catalog, public, auth
-as $$
+as $aurevia_sync$
 declare
   v_user_id uuid := auth.uid();
   v_group_id uuid;
@@ -235,7 +235,7 @@ begin
     'journal_synced',v_journal_count,'journal_mappings',v_mappings
   );
 end;
-$$;
+$aurevia_sync$;
 
 revoke all on function public.aurevia_sync_trade_group(jsonb,jsonb,jsonb) from public, anon;
 grant execute on function public.aurevia_sync_trade_group(jsonb,jsonb,jsonb) to authenticated;
