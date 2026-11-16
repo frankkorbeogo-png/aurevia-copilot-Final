@@ -392,3 +392,11 @@ test('position unique exige au moins 0,01 par TP',()=>{
  const base={mode:'unique',instrument:'XAU/USD',direction:'BUY',entry:2000,stopLoss:1990,takeProfits:[{price:2010},{price:2020},{price:2030}],lot:0.02,lotStep:0.01,contractSpec:{brokerName:'Exness',accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0}};
  assert.throws(()=>createTradeGroup(base),/volume est insuffisant|Volume insuffisant|minimum et maximum/);
 });
+
+
+test('une position cloud conserve les minimums et incréments propres au broker',()=>{
+ const spec={accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.001,lotStep:0.001,maxLot:0.05,feesPerLot:0};
+ const group=createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.015,lotStep:0.001,entry:4000,stopLoss:3990,takeProfits:[{price:4010},{price:4020}],contractSpec:spec});
+ assert.equal(group.lotStep,0.001);assert.deepEqual(group.children.map(x=>x.lot),[0.007,0.008]);
+ assert.throws(()=>createTradeGroup({mode:'unique',instrument:'XAU/USD',direction:'BUY',lot:0.06,lotStep:0.001,entry:4000,stopLoss:3990,takeProfits:[{price:4010}],contractSpec:spec}),/lot maximum/);
+});
