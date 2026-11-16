@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateOpportunityScenarios} from '../opportunity-engine.js';
 import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mjs';
+import {validateM5AIConsensus} from '../m5-entry-validation.js';
 
 function buildScenario(side,kind){
   const buy=side==='BUY',price=100,bias=buy?'haussier':'baissier';
@@ -42,4 +43,34 @@ test('STOP LIMIT waits for trigger crossing then limit crossing',()=>{
   assert.equal(second.action,'TRIGGER_SEEN');
   const third=evaluateEntryTrigger({...position,trigger_seen:true,last_observed_price:101.6,entry_armed:true},group,{price:101.4});
   assert.equal(third.action,'ACTIVATE');
+});
+
+test('M5 entry price must be proposed and corroborated by all three AIs',()=>{
+ const scenario={direction:'BUY',entryZoneLow:100,entryZoneHigh:102,stopLoss:98,takeProfits:[106]};
+ const lead={decision:'CONFIRM',entryPrice:101,entryZoneLow:100.8,entryZoneHigh:101.2,score:80,reasoning:'Retest structurel M5'};
+ const review={decision:'CONFIRM',entryPrice:101.05,score:75,verdict:'CONFIRME',reasoning:'Prix cohérent avec le retest'};
+ const audit={decision:'CONFIRM',veto:false,score:85,criticalBlockers:[],reasoning:'Risque acceptable'};
+ const result=validateM5AIConsensus({scenario,lead,review,audit,atr:0.4});
+ assert.equal(result.confirmed,true);
+ assert.equal(result.entryReference,101);
+ assert.equal(result.components.length,3);
+});
+test('M5 consensus waits when AIs disagree on the entry price',()=>{
+ const scenario={direction:'BUY',entryZoneLow:100,entryZoneHigh:102,stopLoss:98,takeProfits:[106]};
+ const lead={decision:'CONFIRM',entryPrice:101,entryZoneLow:100.8,entryZoneHigh:101.2,score:80};
+ const review={decision:'CONFIRM',entryPrice:102,score:75,verdict:'CONFIRME'};
+ const audit={decision:'CONFIRM',veto:false,score:85,criticalBlockers:[]};
+ const result=validateM5AIConsensus({scenario,lead,review,audit,atr:0.4});
+ assert.equal(result.confirmed,false);
+ assert.equal(result.entryReference,null);
+ assert.match(result.reason,/désaccord sur le prix/);
+});
+test('M5 consensus vetoes prices outside the M15 zone or beyond SL/TP1',()=>{
+ const scenario={direction:'BUY',entryZoneLow:100,entryZoneHigh:102,stopLoss:98,takeProfits:[106]};
+ const lead={decision:'CONFIRM',entryPrice:105,entryZoneLow:104.8,entryZoneHigh:105.2,score:95};
+ const review={decision:'CONFIRM',entryPrice:105,score:90,verdict:'CONFIRME'};
+ const audit={decision:'CONFIRM',veto:false,score:90,criticalBlockers:[]};
+ const result=validateM5AIConsensus({scenario,lead,review,audit});
+ assert.equal(result.confirmed,false);
+ assert.equal(result.entryReference,null);
 });
