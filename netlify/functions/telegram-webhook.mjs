@@ -90,7 +90,8 @@ async function finishSetup(token,chatId,userId,setup){
   setup.step='lot';await saveSetup(userId,setup);
   await telegramSend(token,chatId,`Le lot doit respecter le minimum ${spec.minLot}, le pas ${spec.lotStep}${spec.maxLot!==null?` et le maximum ${spec.maxLot}`:''}. Saisis un autre volume.`);return false;
  }
- const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};\n const preferences=await getPreferences(userId);const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...spec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
+ const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};
+ const preferences=await getPreferences(userId);const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...spec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
  const result=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenario.id,p_user_id:userId,p_mode:setup.mode,p_volume:volume,p_contract_spec:spec,p_broker_snapshot:brokerSnapshot,p_auto_journal:setup.autoJournal!==false}});
  const groupId=typeof result==='string'?result:result?.[0]?.aurevia_create_position_from_scenario||result?.aurevia_create_position_from_scenario;
  if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
