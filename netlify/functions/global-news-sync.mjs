@@ -56,7 +56,7 @@ async function fetchArticles(){
    throw error;
   }
   if(response.status===429&&attempt===0){
-   const delay=gdeltRetryDelay(response);await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] rate limited; retrying after '+delay+'ms');await wait(delay);continue;
+   const delay=gdeltRetryDelay(response);await response.text().catch(()=>{});if(delay>7000)throw new Error('GDELT HTTP 429; Retry-After exceeds the safe function time budget.');console.warn('[AUREVIA GDELT] rate limited; retrying after '+delay+'ms');await wait(delay);continue;
   }
   if(response.status>=500&&attempt===0){
    await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] upstream HTTP '+response.status+'; retrying once');await wait(1500);continue;
