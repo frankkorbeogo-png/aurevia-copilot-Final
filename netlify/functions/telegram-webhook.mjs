@@ -73,12 +73,14 @@ async function promptStep(token,chatId,setup){
 function summary(setup,scenario){
  const s=setup.spec,entry=scenario.entry_confirmation_price??scenario.entry??scenario.last_price??'Non renseignée';
  const tps=Array.isArray(scenario.take_profits)?scenario.take_profits.join(' · '):'Non renseignés';
+ const isPendingOrder=String(scenario.order_type||'').includes('LIMIT')||String(scenario.order_type||'').includes('STOP');
+ const fillLabel=isPendingOrder?'non applicable avant activation':(setup.actualEntryPrice??'non renseigné — référence IA M5 utilisée');
  const calc=s.calculationType==='contract'
   ?`Taille du contrat : ${s.contractSize}\nDevise de cotation : ${s.quoteCurrency||'Non identifiée'}\nConversion vers ${s.accountCurrency} : ${s.quoteToAccount}`
   :s.calculationType==='point'
    ?`Taille du point : ${s.pointSize}\nValeur du point/lot : ${s.pointValue}`
    :`Taille du tick : ${s.tickSize}\nValeur du tick/lot : ${s.tickValue}`;
- return `Vérifie les informations avant enregistrement\n\nInstrument : ${scenario.instrument}\nDirection : ${scenario.direction}\nPrix proposé par l’IA M5 : ${entry}\nPrix réel saisi : ${setup.actualEntryPrice??'non renseigné — référence IA M5 utilisée'}\nStop Loss : ${scenario.stop_loss??'Non renseigné'}\nTake Profits : ${tps}\nMode : ${setup.mode==='unique'?'Position unique':'Trades séparés'}\nLot : ${setup.volume}\nDevise du compte (profil) : ${s.accountCurrency}\nLevier : ${s.leverage?`1:${s.leverage}`:'Non précisé'}\nMéthode : ${s.calculationType}\n${calc}\nLot minimum et incrément : ${s.minLot} / ${s.lotStep}${s.maxLot!==null?` · maximum ${s.maxLot}`:''}\nFrais/lot : ${s.feesPerLot} ${s.accountCurrency}\nAjout automatique au journal : ${setup.autoJournal?'Oui':'Non'}\n\nConfirmer l’enregistrement ? AUREVIA n’exécutera aucun ordre.`;
+ return `Vérifie les informations avant enregistrement\n\nInstrument : ${scenario.instrument}\nDirection : ${scenario.direction}\nPrix proposé par l’IA M5 : ${entry}\nPrix réel saisi : ${fillLabel}\nStop Loss : ${scenario.stop_loss??'Non renseigné'}\nTake Profits : ${tps}\nMode : ${setup.mode==='unique'?'Position unique':'Trades séparés'}\nLot : ${setup.volume}\nDevise du compte (profil) : ${s.accountCurrency}\nLevier : ${s.leverage?`1:${s.leverage}`:'Non précisé'}\nMéthode : ${s.calculationType}\n${calc}\nLot minimum et incrément : ${s.minLot} / ${s.lotStep}${s.maxLot!==null?` · maximum ${s.maxLot}`:''}\nFrais/lot : ${s.feesPerLot} ${s.accountCurrency}\nAjout automatique au journal : ${setup.autoJournal?'Oui':'Non'}\n\nConfirmer l’enregistrement ? AUREVIA n’exécutera aucun ordre.`;
 }
 
 async function finishSetup(token,chatId,userId,setup){
@@ -104,6 +106,7 @@ async function finishSetup(token,chatId,userId,setup){
   setup.step='lot';await saveSetup(userId,setup);
   await telegramSend(token,chatId,`Le lot doit respecter le minimum ${spec.minLot}, le pas ${spec.lotStep}${spec.maxLot!==null?` et le maximum ${spec.maxLot}`:''}. Saisis un autre volume.`);return false;
  }
+ const fillLabel=isMarket?(setup.actualEntryPrice??'non renseigné — référence IA M5 utilisée'):'non applicable avant activation';
  const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};
  const preferences=await getPreferences(userId);const brokerSpec={...spec};delete brokerSpec.actualEntryPrice;const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...brokerSpec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
  const result=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenario.id,p_user_id:userId,p_mode:setup.mode,p_volume:volume,p_contract_spec:spec,p_broker_snapshot:brokerSnapshot,p_auto_journal:setup.autoJournal!==false}});
