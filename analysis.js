@@ -124,7 +124,7 @@ async function runInstrumentAnalysis(symbol){
   }
   const macroContext=await fetchMacroContext(symbol);
   const m15=analyses.M15;
-  const frameBrief=(tf)=>{const a=analyses[tf];if(!a)return {available:false,bias:'indisponible'};const i=a.indicators||{},st=a.structure||{};return {available:true,bias:st.bias||'indéterminé',ema20:i.ema20??null,ema50:i.ema50??null,ema200:i.ema200??null,rsi14:i.rsi14??null,macdHistogram:i.macd?.histogram??null,breaks:(st.breaks||[]).slice(-3).map(x=>({type:x.type,price:x.price??null})),sweeps:(st.sweeps||[]).slice(-2).map(x=>({type:x.type,price:x.price??null})),lastClose:a.last?.close??null,lastCandleTime:a.last?.time??null};};
+  const frameBrief=(tf)=>{const a=analyses[tf];if(!a)return {available:false,bias:'indisponible'};const i=a.indicators||{},st=a.structure||{};return {available:true,bias:st.bias||'indéterminé',ema20:i.ema20??null,ema50:i.ema50??null,ema200:i.ema200??null,rsi14:i.rsi14??null,macdHistogram:i.macd?.histogram??null,breaks:(st.breaks||[]).slice(-3).map(x=>({type:x.type,price:x.price??null})),sweeps:(st.sweeps||[]).slice(-2).map(x=>({type:x.type,price:x.price??null})),lastClose:a.last?.close??null,lastCandleTime:(()=>{const stamp=parseProviderTime(a.last?.time,frames[tf]?.timezone||'UTC');return Number.isFinite(stamp)?new Date(stamp).toISOString():null;})()};};
   const higherTimeframes={h4:analyses.H4?.structure?.bias||'indisponible',h1:analyses.H1?.structure?.bias||'indisponible',m30:analyses.M30?.structure?.bias||'indisponible'};
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
   let aiResult=null,aiError=null;
