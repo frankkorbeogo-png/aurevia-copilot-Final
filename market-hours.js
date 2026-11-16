@@ -70,10 +70,23 @@ function usEquityHolidays(year){
   addObserved(12,25,'Noël');
   return dates;
 }
+function equityEarlyClose(year,month,day){
+  const date=new Date(Date.UTC(year,month-1,day)),weekday=date.getUTCDay();
+  if(weekday===0||weekday===6)return null;
+  if(month===11&&day===nthWeekday(year,11,4,4)+1)return 'lendemain de Thanksgiving';
+  if(month===12&&day===24)return 'veille de Noël';
+  const observedJuly4=new Date(observedDate(year,7,4)+'T00:00:00Z');
+  let previous=addDay(observedJuly4,-1);
+  while(previous.getUTCDay()===0||previous.getUTCDay()===6||usEquityHolidays(year).has(previous.toISOString().slice(0,10)))previous=addDay(previous,-1);
+  if(previous.toISOString().slice(0,10)===date.toISOString().slice(0,10))return 'veille de l’Indépendance';
+  return null;
+}
 function equityClosure(now){
   const p=parts(now,'America/New_York'),day=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[p.weekday];
-  const date=`${p.year}-${p.month}-${p.day}`,holiday=usEquityHolidays(+p.year).get(date);
-  const mins=+p.hour*60 + +p.minute,closed=holiday||day===0||day===6||mins<570||mins>=960;
+  const date=p.year+'-'+p.month+'-'+p.day,holiday=usEquityHolidays(+p.year).get(date);
+  const earlyClose=!holiday?equityEarlyClose(+p.year,+p.month,+p.day):null;
+  const closeMinute=earlyClose?13*60:16*60;
+  const mins=+p.hour*60 + +p.minute,closed=holiday||day===0||day===6||mins<570||mins>=closeMinute;
   if(!closed)return null;
   let next=new Date(Date.UTC(+p.year,+p.month-1,+p.day));
   for(let i=0;i<10;i++){
@@ -84,46 +97,15 @@ function equityClosure(now){
   const reopen=mins<570&&!holiday&&day!==0&&day!==6
     ? instant(+p.year,+p.month,+p.day,9,30)
     : instant(next.getUTCFullYear(),next.getUTCMonth()+1,next.getUTCDate(),9,30);
-  return {label:holiday|| (day===0||day===6?'week-end':mins<570?'avant ouverture de Wall Street':'après clôture de Wall Street'),type:holiday?'HOLIDAY':'SESSION',reopen};
-}
-
-function weeklySchedule(now,market){
-  const rules=market==='METALS'?METALS_SESSION:FOREX_SESSION;
-  const p=parts(now),dow=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[p.weekday];
-  const daysToSunday=(7-dow)%7,base=addDaysFromParts(p,daysToSunday);
-  const sunday=instant(base.getUTCFullYear(),base.getUTCMonth()+1,base.getUTCDate(),rules.openSunday,0);
-  const fridayDay=addDay(base,5),friday=instant(fridayDay.getUTCFullYear(),fridayDay.getUTCMonth()+1,fridayDay.getUTCDate(),rules.closeFriday,0);
-  let schedule=`Ouverture dimanche ${fmtBF(sunday)} – fermeture vendredi ${fmtBF(friday)} (heure du Burkina Faso)`;
-  if(market==='METALS'){
-    const monday=addDay(base,1);
-    const pauseStart=instant(monday.getUTCFullYear(),monday.getUTCMonth()+1,monday.getUTCDate(),rules.dailyBreakStart,0);
-    const pauseEnd=instant(monday.getUTCFullYear(),monday.getUTCMonth()+1,monday.getUTCDate(),rules.dailyBreakEnd,0);
-    schedule+=`; pause quotidienne ${fmtBF(pauseStart)}–${fmtBF(pauseEnd)}`;
-  }
-  return schedule;
-}
-function sessionClosure(now,market){
-  const rules=market==='METALS'?METALS_SESSION:FOREX_SESSION;
-  const p=parts(now),mins=+p.hour*60 + +p.minute,dow=p.weekday;
-  if(market==='METALS'&&['Mon','Tue','Wed','Thu'].includes(dow)&&mins>=rules.dailyBreakStart*60&&mins<rules.dailyBreakEnd*60){
-    const reopen=instant(+p.year,+p.month,+p.day,rules.dailyBreakEnd,0);
-    return {label:'pause quotidienne des métaux',type:'DAILY_BREAK',reopen};
-  }
-  const openMin=rules.openSunday*60,closeMin=rules.closeFriday*60;
-  if(dow==='Fri'&&mins>=closeMin||dow==='Sat'||dow==='Sun'&&mins<openMin){
-    const daysToSunday=dow==='Fri'?2:dow==='Sat'?1:0;
-    const day=addDaysFromParts(p,daysToSunday);
-    const reopen=instant(day.getUTCFullYear(),day.getUTCMonth()+1,day.getUTCDate(),rules.openSunday,0);
-    return {label:'week-end',type:'WEEKEND',reopen};
-  }
-  return null;
+  const label=holiday||(day===0||day===6?'week-end':mins<570?'avant ouverture de Wall Street':earlyClose?'après clôture anticipée ('+earlyClose+')':'après clôture de Wall Street');
+  return {label,type:holiday?'HOLIDAY':earlyClose&&mins>=closeMinute?'EARLY_CLOSE':'SESSION',reopen};
 }
 export function getMarketStatus(symbol,now=new Date()){
   const code=String(symbol||'').toUpperCase().replace(/[^A-Z]/g,'');
   if(CRYPTO.has(code))return {tradable:true,status:'OPEN',market:'CRYPTO',checkedAt:now.toISOString()};
   if(EQUITIES.has(code)){
     const session=equityClosure(now),closed=!!session,reopen=session?.reopen||null,label=session?.label||null;
-    return {tradable:!closed,status:closed?'CLOSED':'OPEN',market:'EQUITY',timezone:'America/New_York',schedule:'NYSE/Nasdaq : lundi–vendredi, 09:30–16:00 (heure de New York)',closureType:session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché actions fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).`:''} Les nouvelles analyses sont suspendues jusqu’à la réouverture.`:null,checkedAt:now.toISOString()};
+    return {tradable:!closed,status:closed?'CLOSED':'OPEN',market:'EQUITY',timezone:'America/New_York',schedule:'NYSE/Nasdaq : lundi–vendredi, 09:30–16:00 (heure de New York), avec clôtures anticipées à 13:00 certains jours fériés',closureType:session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché actions fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).`:''} Les nouvelles analyses sont suspendues jusqu’à la réouverture.`:null,checkedAt:now.toISOString()};
   }
   const market=FX.has(code)?'FOREX':METALS.has(code)?'METALS':'UNKNOWN';
   if(market==='UNKNOWN')return {tradable:true,status:'UNRESTRICTED',market,checkedAt:now.toISOString()};
