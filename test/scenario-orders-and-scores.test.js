@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateOpportunityScenarios} from '../opportunity-engine.js';
+import {buildTradeGroupCloudRows} from '../trade-management.js';
 import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mjs';
 import {validateM5AIConsensus} from '../m5-entry-validation.js';
 import {cleanScenario} from '../netlify/functions/ai-analysis.mjs';
@@ -109,4 +110,16 @@ test('unique group stores one actual fill price for open and pending TP children
  assert.match(sql,/actual_entry_price=p_actual_entry_price/);
  assert.match(sql,/status='OPEN' then p_actual_entry_price else entry_price end/);
  assert.match(sql,/UNIQUE_GROUP_ALREADY_PARTIALLY_CLOSED/);
+});
+
+test('le prix réellement exécuté est conservé dans la synchronisation locale, position et journal',async()=>{
+ const group={id:'g1',mode:'unique',instrument:'XAU/USD',direction:'BUY',orderType:'MARKET',requestedLot:0.1,lotStep:0.01,autoJournal:true,status:'OPEN',actualEntryPrice:2005,children:[{id:'p1',tpLabel:'TP1',entry:2005,actualEntryPrice:2005,stopLoss:1990,takeProfit:2020,initialLot:0.1,remainingLot:0.1,status:'OPEN'}]};
+ const rows=buildTradeGroupCloudRows(group,'user-1');
+ assert.equal(rows.groupRow.actual_entry_price,2005);
+ assert.equal(rows.positions[0].actual_entry_price,2005);
+ assert.equal(rows.journalRows[0].actual_entry_price,2005);
+ const {readFile}=await import('node:fs/promises');
+ const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
+ assert.match(auth,/actual_entry_price\?\?row\.entry_price/);
+ assert.match(auth,/actual_entry_price,stop_loss,take_profit/);
 });
