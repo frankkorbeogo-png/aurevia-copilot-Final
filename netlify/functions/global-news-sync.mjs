@@ -90,7 +90,7 @@ async function syncEconomicCalendar(){
    if(Date.parse(scheduledAt)<Date.now()-60*60*1000||Date.parse(scheduledAt)>Date.now()+15*86400000)return null;
    return {external_id:'FRED-'+release.id+'-'+date,release_id:release.id,event_name:release.name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:release.url,source_provider:'FRED release calendar',time_basis:'standard_release_time'};
   }).filter(Boolean);
- });}
+ }));}
   catch(error){fredSyncError=String(error.message||error).slice(0,300);}
  }
  const events=[...results.flat(),...buildFomcReleaseEvents(new Date(),15)];
