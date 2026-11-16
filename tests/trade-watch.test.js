@@ -174,7 +174,7 @@ test('la surveillance vérifie l’expiration avant de demander une cotation',as
 });
 test('la migration d’expiration synchronise expires_at et expose un worker service_role',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261115220000_pending_order_expiry.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116144833_aurevia_pending_order_expiry.sql',import.meta.url),'utf8');
  assert.match(sql,/add column if not exists expires_at/);
  assert.match(sql,/add column if not exists expired_at/);
  assert.match(sql,/aurevia_expire_pending_position_worker/);
