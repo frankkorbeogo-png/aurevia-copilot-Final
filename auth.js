@@ -14,7 +14,7 @@ const REMEMBERED_ACCOUNTS_KEY='aurevia_remembered_accounts_v1';
 const ACCOUNT_SESSIONS_KEY='aurevia_account_sessions_v1';
 const LOCAL_DATA_OWNER_KEY='aurevia_local_data_owner_id';
 const LOCAL_ACCOUNT_DATA_KEYS=[
- 'aurevia-copilot-journal-v1','aurevia-position-groups-v2','aurevia-linked-journal-v2',
+ 'aurevia-copilot-journal-v1','aurevia-position-groups-v2','aurevia-linked-journal-v2','aurevia_trade_sync_queue_v1','aurevia_active_session_id',
  'aurevia_last_telegram_analysis','aurevia_scenario_summary_draft','aurevia_last_confrontation',
  'aurevia_analysis_history','aurevia_my_analysis'
 ];
