@@ -28,6 +28,7 @@ test('M5 confirms a BUY after zone mitigation with a structural breakout and sco
   const result=evaluateM5EntryConfirmation('BUY',bars,last.time-1000,now);
   assert.equal(result.confirmed,true,result.reason);
   assert.ok(result.score>=65);
+  assert.equal(result.entryReference,last.close);
   assert.match(result.reason,/Validation M5 confirmée/);
 });
 
@@ -36,6 +37,7 @@ test('M5 confirms a SELL after zone mitigation with a structural breakdown and s
   const result=evaluateM5EntryConfirmation('SELL',bars,last.time-1000,now);
   assert.equal(result.confirmed,true,result.reason);
   assert.ok(result.score>=65);
+  assert.equal(result.entryReference,last.close);
 });
 
 test('M5 cannot validate with a candle that began before mitigation',()=>{
@@ -56,4 +58,13 @@ test('M5 refuses insufficient history and invalid direction',()=>{
   const now=Date.now();
   assert.equal(evaluateM5EntryConfirmation('BUY',candlesFor('BUY',now).slice(-20),now-60000,now).confirmed,false);
   assert.equal(evaluateM5EntryConfirmation('WAIT',candlesFor('BUY',now),now-60000,now).confirmed,false);
+});
+
+test('the M5-confirmed close becomes the proposed entry and is shown in the app',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const watch=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+  const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+  assert.match(watch,/entry:m5Entry/);
+  assert.match(watch,/Entrée M5 de référence/);
+  assert.match(app,/Entrée M5 de référence/);
 });
