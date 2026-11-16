@@ -30,8 +30,9 @@ test('macro-context marks future DXY and FRED timestamps as future, not recent',
   const data=JSON.parse(r.body);
   assert.equal(r.statusCode,200);
   assert.equal(data.dxy.freshness,'future');
-  assert.equal(data.dxy.configured,false);
-  assert.equal(data.dxy.price,null);
+  assert.equal(data.dxy.configured,true);
+  assert.equal(data.dxy.usableForDirectionalBias,false);
+  assert.equal(data.dxy.price,105.2);
   assert.equal(data.series.NOMINAL_YIELD_10Y.freshness,'future');
   assert.equal(data.series.NOMINAL_YIELD_10Y.available,false);
  }finally{
