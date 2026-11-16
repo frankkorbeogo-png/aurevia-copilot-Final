@@ -81,7 +81,7 @@ export async function handler(){
       await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.entry_confirmed`,{method:'PATCH',body:{status:'stopped',lot_confirmation_code:null,lot_confirmation_expires_at:null,stop_reason:'Délai de validation du lot expiré',updated_at:new Date().toISOString()},prefer:'return=minimal'});continue;
      }
      if(s.entry_notified)continue;
-     const sent=await notify(s.user_id,`AUREVIA COPILOT · VALIDATION M5 · ENTRÉE PROPOSÉE\n${s.instrument} · ${s.direction}\nPrix observé : ${price}\nEntrée indicative : ${s.entry}\nSL : ${s.stop_loss}\nTP : ${(s.take_profits||[]).join(' / ')}\n\nLe scénario a été suivi après mitigation et validé par la structure M5. Pour enregistrer le trade, choisissez le mode ci-dessous. Aucune opération broker n’est exécutée. Code valable jusqu’à ${new Date(s.lot_confirmation_expires_at).toLocaleTimeString('fr-FR',{timeZone:'UTC'})} UTC.`,{inline_keyboard:[[{text:'Position unique',callback_data:`start:${s.lot_confirmation_code}:unique`}],[{text:'Trades séparés',callback_data:`start:${s.lot_confirmation_code}:separate`}]]});
+     const sent=await notify(s.user_id,`AUREVIA COPILOT · VALIDATION M5 · ENTRÉE PROPOSÉE\n${s.instrument} · ${s.direction}\nPrix observé : ${price}\nEntrée M5 de référence : ${m5Entry}\nSL : ${s.stop_loss}\nTP : ${(s.take_profits||[]).join(' / ')}\n\nLe scénario a été suivi après mitigation et validé par la structure M5. Pour enregistrer le trade, choisissez le mode ci-dessous. Aucune opération broker n’est exécutée. Code valable jusqu’à ${new Date(s.lot_confirmation_expires_at).toLocaleTimeString('fr-FR',{timeZone:'UTC'})} UTC.`,{inline_keyboard:[[{text:'Position unique',callback_data:`start:${s.lot_confirmation_code}:unique`}],[{text:'Trades séparés',callback_data:`start:${s.lot_confirmation_code}:separate`}]]});
      if(sent)await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.entry_confirmed`,{method:'PATCH',body:{entry_notified:true,updated_at:new Date().toISOString()},prefer:'return=minimal'});
      continue;
     }
@@ -98,9 +98,16 @@ export async function handler(){
      let m5=m5Cache.get(s.instrument);if(!m5){m5=await candles(s.instrument,'5min','80');m5Cache.set(s.instrument,m5);}
      const confirmation=evaluateM5EntryConfirmation(s.direction,m5,s.zone_reached_at);
      if(!confirmation.confirmed)continue;
+     const m5Entry=Number(confirmation.entryReference),firstTarget=Number(s.take_profits?.[0]);
+     const validM5Entry=Number.isFinite(m5Entry)&&Number.isFinite(firstTarget)&&(s.direction==='BUY'?m5Entry>Number(s.stop_loss)&&m5Entry<firstTarget:m5Entry<Number(s.stop_loss)&&m5Entry>firstTarget);
+     if(!validM5Entry){
+      await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.zone_reached`,{method:'PATCH',body:{status:'invalidated',stop_reason:'Validation M5 trop tardive : la référence d’entrée a déjà dépassé le SL ou le TP1',updated_at:new Date().toISOString()},prefer:'return=minimal'});
+      await notify(s.user_id,`AUREVIA COPILOT · ENTRÉE NON RETENUE\n${s.instrument} · ${s.direction}\nLa clôture M5 de confirmation ne permet plus une entrée cohérente avec le SL et le TP1. Le scénario est arrêté pour éviter une entrée tardive.`);
+      invalidated++;continue;
+     }
      const stillActive=await rest(`aurevia_analysis_scenarios?select=id,status&id=eq.${s.id}&status=eq.zone_reached`);if(!stillActive?.length)continue;
      const code=randomBytes(4).toString('hex').toUpperCase(),expiresAt=new Date(Date.now()+30*60*1000).toISOString();
-     const changed=await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.zone_reached`,{method:'PATCH',body:{status:'entry_confirmed',entry_notified:false,entry_confirmed_at:new Date().toISOString(),lot_confirmation_code:code,lot_confirmation_expires_at:expiresAt,updated_at:new Date().toISOString()},prefer:'return=representation'});
+     const changed=await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.zone_reached`,{method:'PATCH',body:{status:'entry_confirmed',entry:m5Entry,entry_notified:false,entry_confirmed_at:new Date().toISOString(),lot_confirmation_code:code,lot_confirmation_expires_at:expiresAt,updated_at:new Date().toISOString()},prefer:'return=representation'});
      if(!changed?.length)continue;
      const sent=await notify(s.user_id,`AUREVIA COPILOT · VALIDATION M5 · ENTRÉE PROPOSÉE\n${s.instrument} · ${s.direction}\nPrix observé : ${price}\nEntrée indicative : ${s.entry}\nSL : ${s.stop_loss}\nTP : ${(s.take_profits||[]).join(' / ')}\n\nJUSTIFICATION M5\nScore de confirmation : ${confirmation.score}/100\n${confirmation.reason}\n\nL’entrée est proposée pour validation manuelle et enregistrement. Aucune opération broker n’est exécutée. Code valable 30 minutes.`,{inline_keyboard:[[{text:'Position unique',callback_data:`start:${code}:unique`}],[{text:'Trades séparés',callback_data:`start:${code}:separate`}]]});
      if(sent){await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.entry_confirmed`,{method:'PATCH',body:{entry_notified:true,updated_at:new Date().toISOString()},prefer:'return=minimal'});entries++;}
