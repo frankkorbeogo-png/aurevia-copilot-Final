@@ -709,8 +709,10 @@ async function closeChildAtCurrentQuote(childId,button=null){
         closeSpec={...closeSpec,quoteCurrency,quoteToAccount:fxSnapshot.rate,fxSnapshot};
       }
     }
+    const actualEntry=Number(child.actualEntryPrice);
+    if(!Number.isFinite(actualEntry)||actualEntry<=0)throw new Error('Saisissez le prix réel d’exécution manuelle dans « Modifier les niveaux » avant de calculer le résultat.');
     const fees=volume*(closeSpec?.feesPerLot??group.feesPerLot??0);
-    const preview=calculateClosePnl({direction:child.direction,entry:child.entry,exit,volume,contractSize:group.contractSize,quoteToAccount:closeSpec?.quoteToAccount??group.quoteToAccount??1,fees,contractSpec:closeSpec});
+    const preview=calculateClosePnl({direction:child.direction,entry:actualEntry,exit,volume,contractSize:group.contractSize,quoteToAccount:closeSpec?.quoteToAccount??group.quoteToAccount??1,fees,contractSpec:closeSpec});
     const currency=preview.currency||closeSpec?.accountCurrency||'';
     const amount=Number(preview.net||0);
     const resultLabel=amount>0?'GAIN ESTIMÉ':amount<0?'PERTE ESTIMÉE':'RÉSULTAT ESTIMÉ : ÉQUILIBRE';
