@@ -11,7 +11,7 @@ function retryDelay(response) {
   const seconds = Number(raw);
   const date = Date.parse(raw);
   const requested = Number.isFinite(seconds) ? seconds * 1000 : Number.isFinite(date) ? Math.max(0, date - Date.now()) : 2000;
-  return Math.min(5000, Math.max(1500, requested));
+  return Math.max(1500, requested);
 }
 
 async function fetchCmeSource() {
@@ -35,6 +35,7 @@ async function fetchCmeSource() {
     }
     if ((response.status === 429 || response.status >= 500) && attempt === 0) {
       const delay = response.status === 429 ? retryDelay(response) : 1500;
+      if (delay > 6000) return response;
       await response.text().catch(() => '');
       console.warn('[AUREVIA CME sync] upstream HTTP ' + response.status + '; retrying after ' + delay + 'ms');
       await wait(delay);
