@@ -37,3 +37,10 @@ test('les prompts M5 utilisent CONFIRM/WAIT sans hériter du vocabulaire BUY/SEL
  assert.match(m5,/const criticSystem=m5Base/);
  assert.match(m5,/const controlSystem=m5Base/);
 });
+
+test('la surveillance des scénarios s’arrête si le compte est suspendu ou sans licence active',async()=>{
+ const s=await read();
+ assert.match(s,/rpc\/aurevia_telegram_access_status/);
+ assert.match(s,/access\?\.allowed!==true/);
+ assert.match(s,/stop_reason:'Accès AUREVIA suspendu ou licence expirée'/);
+});
