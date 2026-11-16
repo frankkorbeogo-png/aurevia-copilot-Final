@@ -93,8 +93,13 @@ async function syncEconomicCalendar(){
  if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
  const now=new Date(),horizon=new Date(now.getTime()+15*86400000);const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+[...RELEASES.map(x=>x.id),101].join(',')+')&limit=500');
  const live=new Set(events.map(x=>x.external_id));let deactivated=0;
+ // FRED is intentionally skipped while its six-hour cache is fresh (or when
+ // no API key is configured). In those cases, absence from `events` is not
+ // evidence that a FRED release disappeared. Reconcile FOMC independently.
+ const fredReconciliationAllowed=Boolean(key&&!cacheFresh);
  for(const row of (Array.isArray(current)?current:[])){
-  if(!live.has(row.external_id)){
+  const isFomc=Number(row.release_id)===101;
+  if((isFomc||fredReconciliationAllowed)&&!live.has(row.external_id)){
    await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});
    deactivated++;
   }
