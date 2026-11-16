@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {handler} from '../netlify/functions/global-news-sync.mjs';
+import {handler,getFredDateRange} from '../netlify/functions/global-news-sync.mjs';
 
 test('global-news-sync reports a failed GDELT subsystem instead of claiming success',async()=>{
  const old={...process.env};process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service';delete process.env.FRED_API_KEY;delete process.env.TELEGRAM_BOT_TOKEN;
@@ -51,4 +51,11 @@ test('global-news-sync backs off after GDELT HTTP 429 and stores the recovered a
   globalThis.fetch=oldFetch;globalThis.setTimeout=oldTimeout;
   for(const key of keys){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key];}
  }
+});
+
+
+test('FRED release windows use the New York calendar date across UTC midnight',()=>{
+ const range=getFredDateRange(new Date('2026-11-16T02:00:00.000Z'));
+ assert.equal(range.today,'2026-11-15');
+ assert.equal(range.end,'2026-11-29');
 });
