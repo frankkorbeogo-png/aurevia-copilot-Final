@@ -72,11 +72,11 @@ Les fonctions planifiées sont définies dans netlify.toml :
 
 ## Migrations et publication
 
-1. Appliquer les migrations dans l'ordre sur un projet Supabase de staging.
-2. Vérifier les politiques RLS, fonctions SQL, tests et flux de bout en bout.
-3. Comparer l'état des migrations staging et production.
-4. Appliquer les migrations de production seulement après autorisation explicite.
-5. Déployer Netlify seulement après fusion et autorisation explicite.
+1. Le dossier supabase/migrations est aligné sur les 63 migrations déjà appliquées en production; les 17 migrations de la version 2.4.19 sont les seules en attente.
+2. Le projet staging est un snapshot isolé avec un historique de migrations distinct. Ne pas lancer supabase db push sur staging avant réconciliation de son historique.
+3. Vérifier les politiques RLS, fonctions SQL, tests et flux de bout en bout sur staging.
+4. Après autorisation explicite, sauvegarder la production puis appliquer les 17 migrations en attente dans l'ordre indiqué dans supabase/RELEASE-MIGRATION-PLAN-2.4.19.md.
+5. Déployer Netlify seulement après vérification des migrations et autorisation explicite.
 6. Vérifier /api/service-status, les fonctions planifiées, le calendrier, les flux de marché et Telegram.
 
 **Aucune fusion ou aucun déploiement ne doit être effectué sans autorisation explicite.**
