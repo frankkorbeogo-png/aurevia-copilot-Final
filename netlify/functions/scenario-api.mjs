@@ -1,5 +1,6 @@
 import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 import {getMarketInstrument} from '../../market-catalog.js';
+import {getMarketStatus} from '../../market-hours.js';
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const base=()=>process.env.SUPABASE_URL, key=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${base()}/rest/v1/${path}`,{method,headers:{apikey:key(),authorization:`Bearer ${key()}`,'content-type':'application/json',...(prefer?{prefer}:{})},...(body?{body:JSON.stringify(body)}:{})});const t=await r.text();if(!r.ok)throw new Error(`Base de données (${r.status}) : ${t.slice(0,240)}`);return t?JSON.parse(t):null;}
@@ -24,10 +25,12 @@ export async function handler(event){
    if(!/^[A-Z]{3}$/.test(accountCurrency))return json(400,{error:'Définissez d’abord la devise de votre compte dans Paramètres.'});
    const brokerSnapshot={accountCurrency,leverage:contractSpec.leverage??null};
    contractSpec.accountCurrency=accountCurrency;
-   const rows=await rest(`aurevia_analysis_scenarios?select=id,status,lot_confirmation_expires_at,trade_group_id,instrument,direction&user_id=eq.${user}&id=eq.${encodeURIComponent(scenarioId)}&limit=1`);
+   const rows=await rest(`aurevia_analysis_scenarios?select=id,status,lot_confirmation_expires_at,trade_group_id,instrument,direction,last_price_at&user_id=eq.${user}&id=eq.${encodeURIComponent(scenarioId)}&limit=1`);
    const scenario=rows?.[0];
    if(!scenario)return json(404,{error:'Scénario introuvable.'});
-   if(!getMarketInstrument(scenario.instrument))return json(409,{error:'Cet instrument n’est plus pris en charge par AUREVIA.'});
+   const marketInstrument=getMarketInstrument(scenario.instrument);if(!marketInstrument)return json(409,{error:'Cet instrument n’est plus pris en charge par AUREVIA.'});
+   const marketStatus=getMarketStatus(marketInstrument.label);if(!marketStatus.tradable)return json(409,{error:marketStatus.reason||'Marché fermé : validation suspendue.',code:'MARKET_CLOSED'});
+   const quoteAt=Date.parse(scenario.last_price_at||''),quoteAge=Date.now()-quoteAt;if(!Number.isFinite(quoteAge)||quoteAge< -5000||quoteAge>120000)return json(409,{error:'La dernière cotation est trop ancienne. Attendez la prochaine mise à jour du suivi avant de valider.',code:'SCENARIO_PRICE_STALE'});
    if(scenario.trade_group_id)return json(409,{error:'Cette proposition a déjà été enregistrée en position.'});
    if(scenario.status!=='entry_confirmed'||!scenario.lot_confirmation_expires_at||Date.parse(scenario.lot_confirmation_expires_at)<=Date.now())return json(409,{error:'L’entrée n’est pas encore confirmée par la surveillance M15 ou le délai de validation a expiré.'});
    const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot,p_auto_journal:body.auto_journal!==false}});
