@@ -7,13 +7,13 @@ export function validateM5AIConsensus({scenario,lead,review,audit,atr=null}){
  const reviewPrice=Number(review?.entryPrice);
  const tolerance=Math.max(Math.abs(price)*0.00015,Number.isFinite(Number(atr))&&Number(atr)>0?Number(atr)*0.25:0);
  const priceAgreement=Number.isFinite(reviewPrice)&&Math.abs(reviewPrice-price)<=tolerance;
- const reviewClear=review?.decision==='CONFIRM'&&review?.verdict!=='CONTESTE'&&priceAgreement;
- const auditClear=audit?.decision==='CONFIRM'&&audit?.veto!==true&&!(audit?.criticalBlockers||[]).length;
+ const reviewClear=review?.decision==='CONFIRM'&&review?.verdict==='CONFIRME'&&priceAgreement;
+ const auditClear=audit?.decision==='CONFIRM'&&audit?.veto===false&&!(audit?.criticalBlockers||[]).length;
  const blockers=[...(review?.criticalBlockers||[]),...(audit?.criticalBlockers||[])].filter(Boolean).slice(0,12);
  const scores=[Number(lead?.score),Number(review?.score),Number(audit?.score)];
- const allScores=scores.every(Number.isFinite);
+ const allScores=scores.every(v=>Number.isFinite(v)&&v>=0&&v<=100);
  const score=allScores?Math.round(scores.reduce((a,b)=>a+b,0)/3):0;
- const confirmed=lead?.decision==='CONFIRM'&&reviewClear&&auditClear&&validPrice&&levelsValid&&Number(lead?.score)>=65&&Number(review?.score)>=60&&Number(audit?.score)>=60&&!blockers.length;
+ const confirmed=lead?.decision==='CONFIRM'&&reviewClear&&auditClear&&validPrice&&levelsValid&&Number(lead?.score)>=65&&Number(lead?.score)<=100&&Number(review?.score)>=60&&Number(review?.score)<=100&&Number(audit?.score)>=60&&Number(audit?.score)<=100&&!blockers.length;
  const components=[
   {label:'Proposition IA principale (Groq)',passed:lead?.decision==='CONFIRM'&&validPrice,weight:40,score:Number.isFinite(scores[0])?scores[0]:0,reasoning:String(lead?.reasoning||'').slice(0,300)},
   {label:'Contre-analyse et accord sur le prix (OpenRouter)',passed:reviewClear,weight:30,score:Number.isFinite(scores[1])?scores[1]:0,reasoning:String(review?.reasoning||'').slice(0,300)},
