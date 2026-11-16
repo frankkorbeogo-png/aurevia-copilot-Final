@@ -9,7 +9,8 @@ export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitVal
   const precision=Math.max(0,Math.min(8,(String(lotStep).split('.')[1]||'').length));
   const lots=Number((Math.floor((rawLots+1e-10)/lotStep)*lotStep).toFixed(precision));
   if(lots<minLot)return {error:`Le risque saisi est trop faible pour atteindre le lot minimum de ${minLot}.`};
-  if(maxLot!==null&&lots>maxLot){const capped=Number((Math.floor((maxLot+1e-10)/lotStep)*lotStep).toFixed(precision));if(capped<minLot)return {error:'Le lot maximum est inférieur au minimum exploitable avec ce pas.'};return calculatePositionRisk({balance,riskAmount:Math.min(riskAmount,capped*stopDistance*accountUnitValuePerLot),stopDistance,unitValuePerLot,quoteToAccount,rewardDistance,entryPrice,leverage,minLot,lotStep,maxLot:null});}
+  if(maxLot!==null&&lots>maxLot)lots=Number((Math.floor((maxLot+1e-10)/lotStep)*lotStep).toFixed(precision));
+  if(lots<minLot)return {error:'Le lot maximum ne permet pas de respecter le lot minimum et le pas de volume.'};
   const riskMoney=lots*stopDistance*accountUnitValuePerLot;
   const gain=Number.isFinite(rewardDistance)&&rewardDistance>0?lots*rewardDistance*accountUnitValuePerLot:null;
   const rr=gain===null?null:gain/riskMoney;
