@@ -23,6 +23,6 @@ export async function handler(event){
    if(message.includes('AUTH_USER_NOT_FOUND'))return json(404,{error:'Ce compte utilisateur n’existe plus.'});
    throw Object.assign(new Error('La suppression sécurisée du compte a échoué.'),{statusCode:response.status===404?503:500});
   }
-  return json(200,{ok:true,deleted:true,application_data_deleted:true,cleaned_tables:cleanup.tables_cleaned,reauthentication_required:true});
+  return json(200,{ok:true,deleted:true,application_data_deleted:true,reauthentication_required:true});
  }catch(error){return json(error.statusCode||500,{error:error.statusCode>=500?'Service de suppression temporairement indisponible.':error.message,code:error.code||null});}
 }
