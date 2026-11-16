@@ -11,6 +11,8 @@ export async function handler(event){
  try{
   const context=await verifyBearerUser(event);await activeSession(context);
   if(event.httpMethod==='GET'){
+   const isAdmin=await rpc(context.base,context.service,'aurevia_is_admin',{p_user_id:context.user.id});
+   if(isAdmin===true)return json(200,{ok:true,status:'licensed',plan:'admin',expires_at:null,max_active_sessions:1});
    const status=await rpc(context.base,context.service,'aurevia_license_status',{p_user_id:context.user.id});
    return json(200,status||{ok:false,code:'STATUS_UNAVAILABLE'});
   }
