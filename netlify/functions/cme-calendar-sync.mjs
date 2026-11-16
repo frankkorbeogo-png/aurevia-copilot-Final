@@ -7,8 +7,8 @@ const REQUEST_TIMEOUT_MS = 15000;
 
 function cleanText(value = '') {
   return value
-    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')
-    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;|&#160;/gi, ' ')
     .replace(/&amp;/gi, '&')
@@ -16,7 +16,7 @@ function cleanText(value = '') {
     .replace(/&mdash;|&#8212;/gi, '—')
     .replace(/&rsquo;|&#8217;|&#39;/gi, "'")
     .replace(/&ldquo;|&rdquo;|&quot;/gi, '"')
-    .replace(/\\s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -26,12 +26,12 @@ function extractHolidayCandidates(html) {
   const sectionStart = html.search(/2026 CME Globex Trading Schedule/i);
   if (sectionStart < 0) return [];
   const section = html.slice(sectionStart, sectionStart + 50000);
-  const tableMatch = section.match(/<table[\\s\\S]*?<\\/table>/i);
+  const tableMatch = section.match(/<table[\s\S]*?<\/table>/i);
   if (!tableMatch) return [];
 
-  const rows = [...tableMatch[0].matchAll(/<tr\\b[^>]*>([\\s\\S]*?)<\\/tr>/gi)];
+  const rows = [...tableMatch[0].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
   return rows.slice(1).map(match => {
-    const cells = [...match[1].matchAll(/<t[dh]\\b[^>]*>([\\s\\S]*?)<\\/t[dh]>/gi)]
+    const cells = [...match[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)]
       .map(cell => cleanText(cell[1]));
     if (cells.length < 2 || !cells[0] || !cells[1]) return null;
     return {
@@ -58,7 +58,7 @@ function json(statusCode, body) {
 }
 
 export async function handler() {
-  const base = String(process.env.SUPABASE_URL || '').replace(/\\/+$/, '');
+  const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const service = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
   if (!base || !service) {
     console.error('[AUREVIA CME sync] stage=config error=missing_supabase_configuration');
