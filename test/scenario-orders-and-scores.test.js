@@ -6,7 +6,7 @@ import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mj
 function buildScenario(side,kind){
   const buy=side==='BUY',price=100,bias=buy?'haussier':'baissier';
   const zone=kind==='market'?[99,101]:kind==='stoplimit'?(buy?[101,102]:[98,99]):kind==='stop'?(buy?[101,102]:[98,99]):null;
-  const breaks=kind==='stoplimit'?[{type:buy?'haussier':'baissier'}]:[];
+  const breaks=['stoplimit','market'].includes(kind)?[{type:buy?'haussier':'baissier'}]:[];
   const indicators={atr14:1,ema20:buy?99:101,ema50:buy?98:102,ema200:buy?97:103,rsi14:buy?60:40,macd:{histogram:buy?1:-1}};
   const structure={bias,swings:[{type:'high',price:103},{type:'low',price:97}],breaks,sweeps:[{type:buy?'sell-side':'buy-side'}],orderBlocks:zone?[{type:buy?'bullish':'bearish',low:zone[0],high:zone[1],mitigated:false}]:[],fvg:[]};
   const analyses={M15:{last:{close:price},indicators,structure,patterns:[{name:buy?'bullish engulfing':'bearish engulfing'}]}};
