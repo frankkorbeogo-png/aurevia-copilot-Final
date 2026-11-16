@@ -469,18 +469,18 @@ export async function loadPublishedAnnouncements(expectedUserId=null){
  const readMap=new Map((reads||[]).map(row=>[row.announcement_id,row.read_at]));
  return (announcements||[]).map(item=>({...item,read_at:readMap.get(item.id)||null,is_read:readMap.has(item.id)}));
 }
-export async function markAnnouncementAsRead(id){
- await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour marquer une annonce comme lue.');
+export async function markAnnouncementAsRead(id,expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour marquer une annonce comme lue.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé.');
  if(!id)throw new Error('Annonce invalide.');
- const {error}=await supabase.from('announcement_reads').upsert({user_id:currentUser.id,announcement_id:id},{onConflict:'user_id,announcement_id',ignoreDuplicates:true});
- if(error)throw new Error(error.message);return {success:true};
+ const {error}=await supabase.from('announcement_reads').upsert({user_id:userId,announcement_id:id},{onConflict:'user_id,announcement_id',ignoreDuplicates:true});
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return {success:true};
 }
-export async function markAllAnnouncementsAsRead(ids){
- await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour marquer les annonces comme lues.');
+export async function markAllAnnouncementsAsRead(ids,expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour marquer les annonces comme lues.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé.');
  const unique=[...new Set((ids||[]).filter(Boolean))];if(!unique.length)return {success:true,count:0};
- const rows=unique.map(announcement_id=>({user_id:currentUser.id,announcement_id}));
+ const rows=unique.map(announcement_id=>({user_id:userId,announcement_id}));
  const {error}=await supabase.from('announcement_reads').upsert(rows,{onConflict:'user_id,announcement_id',ignoreDuplicates:true});
- if(error)throw new Error(error.message);return {success:true,count:unique.length};
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return {success:true,count:unique.length};
 }
 
 export async function syncManualJournalToSupabase(entries=[],expectedUserId=null){
