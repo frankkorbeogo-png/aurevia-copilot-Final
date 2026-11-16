@@ -157,7 +157,10 @@ async function handleGuidedMessage(token,chatId,userId,text){
  if(step==='lot'){
   if(n===null||n<=0){await telegramSend(token,chatId,'Saisis un volume positif. Exemple : 0.05.');return true;}
   setup.volume=n;setup.step=String(setup.orderType||'').includes('LIMIT')||String(setup.orderType||'').includes('STOP')?(setup.spec.calculationType?'review':'leverage'):'actualEntryPrice';
- }else if(step==='actualEntryPrice'){\n  if(n===null||n<=0){await telegramSend(token,chatId,'Saisis le prix réellement exécuté sur ton broker.');return true;}\n  setup.actualEntryPrice=n;setup.step=setup.spec.calculationType?'review':'leverage';\n }else if(step==='leverage'){
+ }else if(step==='actualEntryPrice'){
+  if(n===null||n<=0){await telegramSend(token,chatId,'Saisis le prix réellement exécuté sur ton broker.');return true;}
+  setup.actualEntryPrice=n;setup.step=setup.spec.calculationType?'review':'leverage';
+ }else if(step==='leverage'){
   if(!skip&&(n===null||n<1||n>100000)){await telegramSend(token,chatId,'Saisis un levier valide, par exemple 2000, ou « ignorer ».');return true;}
   setup.spec.leverage=skip?null:n;setup.step=setup.spec.calculationType?'review':'calculationType';
  }else if(['contractSize','pointSize','pointValue','tickSize','tickValue','feesPerLot','minLot','lotStep','maxLot'].includes(step)){
