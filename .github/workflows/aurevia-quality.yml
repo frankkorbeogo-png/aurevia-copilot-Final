@@ -7,6 +7,7 @@ on:
       - main
       - work/trade-validation-no-broker-2026-11-15
       - work/multi-asset-support-2026-11-15
+      - fix/cme-calendar-market-hours-guard
 
 jobs:
   test-and-build:
