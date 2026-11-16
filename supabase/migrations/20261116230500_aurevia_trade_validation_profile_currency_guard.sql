@@ -1,4 +1,8 @@
 -- Add account-currency validation to the already deployed 7-argument scenario trade RPC.
+-- Retire legacy RPC overloads; all current creation flows use the validated 7-argument contract.
+REVOKE ALL ON FUNCTION public.aurevia_create_position_from_scenario(uuid,uuid,text,numeric) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.aurevia_create_position_from_scenario(uuid,uuid,text,numeric,jsonb,jsonb) FROM PUBLIC, anon, authenticated, service_role;
+
 -- Broker name and account type remain optional; service-role-only execution is preserved.
 create or replace function public.aurevia_create_position_from_scenario(
   p_scenario_id uuid,
