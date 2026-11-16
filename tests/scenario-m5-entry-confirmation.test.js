@@ -15,6 +15,7 @@ test('M5 BUY is confirmed only from three agreeing AI analyses and an AI-propose
  const input=consensus('BUY'),result=validateM5AIConsensus({...input,atr:0.2});
  assert.equal(result.confirmed,true,result.reason);
  assert.equal(result.entryReference,100.5);
+ assert.equal(result.score,83);
  assert.equal(result.components.length,3);
 });
 test('M5 SELL is confirmed only from three agreeing AI analyses and an AI-proposed price',()=>{
