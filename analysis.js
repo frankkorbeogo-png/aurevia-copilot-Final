@@ -8,6 +8,7 @@ import {generateOpportunityScenarios} from './opportunity-engine.js';
 import {getMarketStatus} from './market-hours.js';
 import {MARKET_INSTRUMENTS} from './market-catalog.js';
 import {selectClosedMarketCandles} from './market-candle-validation.js';
+import {buildMacroContextForAI} from './macro-context-forwarding.js';
 const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
 // H4/H1/M30 restent des contextes optionnels ; M5/M1 sont consultés sur TradingView
