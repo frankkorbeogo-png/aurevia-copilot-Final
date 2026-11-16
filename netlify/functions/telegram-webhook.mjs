@@ -151,10 +151,10 @@ async function handleGuidedMessage(token,chatId,userId,text){
  const value=text.trim(),skip=/^(ignorer|aucun|aucune)$/i.test(value),n=numberInput(value),step=setup.step;
  if(step==='lot'){
   if(n===null||n<=0){await telegramSend(token,chatId,'Saisis un volume positif. Exemple : 0.05.');return true;}
-  setup.volume=n;setup.step='leverage';
+  setup.volume=n;setup.step=setup.spec.calculationType?'review':'leverage';
  }else if(step==='leverage'){
   if(!skip&&(n===null||n<1||n>100000)){await telegramSend(token,chatId,'Saisis un levier valide, par exemple 2000, ou « ignorer ».');return true;}
-  setup.spec.leverage=skip?null:n;setup.step='calculationType';
+  setup.spec.leverage=skip?null:n;setup.step=setup.spec.calculationType?'review':'calculationType';
  }else if(['contractSize','pointSize','pointValue','tickSize','tickValue','feesPerLot','minLot','lotStep','maxLot'].includes(step)){
   if(['minLot','lotStep','maxLot'].includes(step)&&skip){
    if(step==='maxLot')setup.spec.maxLot=null;
