@@ -11,7 +11,7 @@ test('Telegram guide la saisie avec des boutons, valide le code et crée via la 
  assert.match(source,/telegram_trade_setup/);
  assert.match(source,/validateContractSpec/);
  assert.match(source,/rpc\/aurevia_create_position_from_scenario/);
- assert.match(source,/Aucun ordre n’a été envoyé au broker/);
+ assert.match(source,/AUREVIA n’a exécuté aucun ordre/);
 });
 
 test('la confirmation M15 propose les deux modes avec des boutons Telegram',async()=>{
