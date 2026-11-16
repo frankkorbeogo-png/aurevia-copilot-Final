@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const source = readFileSync(new URL('../auth.js', import.meta.url), 'utf8');
-const migration = readFileSync(new URL('../supabase/migrations/20261115212000_atomic_trade_tracking_deletion.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../supabase/migrations/20261116144826_aurevia_atomic_trade_tracking_deletion.sql', import.meta.url), 'utf8');
 const start = source.indexOf('export async function deleteLinkedJournalEntryFromSupabase(');
 const end = source.indexOf('\n}\n', start);
 assert.notEqual(start, -1, 'linked journal delete function exists');
