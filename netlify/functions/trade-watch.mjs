@@ -57,7 +57,7 @@ async function deliverEntryNotifications(positions,groups){
 ${g.instrument} · ${g.direction}
 Prix d’entrée prévu : ${p.entry_price}
 Prix de marché observé au déclenchement : ${p.activation_price}
-${fillKnown?`Prix réel confirmé : ${actual}`:`Aucun prix réel saisi : le suivi utilise le prix observé au déclenchement (${p.activation_price}) comme référence estimée. Tu peux le corriger dans l’éditeur de position.`}
+${fillKnown?`Prix réel confirmé : ${actual}`:`Aucun prix réel confirmé : le calcul P/L et les clôtures internes restent suspendus jusqu’à la saisie de ton prix réel dans l’éditeur de position.`}
 Heure : ${p.activated_at}
 Aucun ordre broker n’a été exécuté.`;
    const result=await telegram(p.user_id,message);if(result.sent)sent++;
