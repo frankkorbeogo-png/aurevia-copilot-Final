@@ -85,12 +85,13 @@ export function calculateContractPnl({ direction, entry, exit, volume, contractS
   return { gross: round(gross), fees: round(feeAmount), net: round(gross - feeAmount), currency: spec.accountCurrency || null };
 }
 
+const lotPrecision=value=>{const [mantissa,exponent]=String(value).toLowerCase().split('e');return Math.max(0,Math.min(10,(mantissa.split('.')[1]||'').length-Number(exponent||0)));};
 export function calculateLotsFromRisk({ riskAmount, stopDistance, contractSpec, balance = 0, rewardDistance = null }) {
   if (!finite(riskAmount) || Number(riskAmount) <= 0 || !finite(stopDistance) || Number(stopDistance) <= 0) return { error: 'Le montant à risquer et la distance du stop doivent être positifs.' };
   const spec = normalizeContractSpec(contractSpec);
   let unitValue; try { unitValue = getPriceUnitValuePerLot(spec); } catch (error) { return { error: error.message }; }
   const rawLots = Number(riskAmount) / (Number(stopDistance) * unitValue);
-  const precision = Math.max(0,Math.min(8,(String(spec.lotStep).split('.')[1]||'').length));
+  const precision = lotPrecision(spec.lotStep);
   let lots = Number((Math.floor((rawLots + 1e-10) / spec.lotStep) * spec.lotStep).toFixed(precision));
   if (lots < spec.minLot) return { error: `Le risque saisi est trop faible pour atteindre le lot minimum de ${spec.minLot}.` };
   if(spec.maxLot!==null&&lots>spec.maxLot)lots=Number((Math.floor((spec.maxLot+1e-10)/spec.lotStep)*spec.lotStep).toFixed(precision));
