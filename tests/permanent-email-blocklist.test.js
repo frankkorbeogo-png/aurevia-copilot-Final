@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const migration=await readFile(new URL('../supabase/migrations/20261116104632_aurevia_permanent_email_blocklist.sql',import.meta.url),'utf8');
-const enforcement=await readFile(new URL('../supabase/migrations/20261116104657_aurevia_enforce_email_block_before_auth_insert.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261116154458_aurevia_permanent_email_blocklist.sql',import.meta.url),'utf8');
+const enforcement=await readFile(new URL('../supabase/migrations/20261116154506_aurevia_enforce_email_block_before_auth_insert.sql',import.meta.url),'utf8');
 
 test('permanent blocklist stores only a keyed HMAC fingerprint, never the raw email',()=>{
  assert.match(migration,/email_fingerprint text primary key/i);
@@ -34,7 +34,7 @@ test('the ordinary account deletion endpoint remains independent from the email 
 });
 
 test('le blocage définitif et la révocation de session sont atomiques côté SQL',async()=>{
- const atomic=await readFile(new URL('../supabase/migrations/20261116105029_aurevia_permanent_delete_atomic_session_revoke.sql',import.meta.url),'utf8');
+ const atomic=await readFile(new URL('../supabase/migrations/20261116154514_aurevia_permanent_delete_atomic_session_revoke.sql',import.meta.url),'utf8');
  assert.match(atomic,/update app_private\.aurevia_user_sessions/i);
  assert.match(atomic,/revoked_at=now\(\)/i);
  assert.match(atomic,/insert into app_private\.admin_audit_log/i);
