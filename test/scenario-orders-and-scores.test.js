@@ -164,3 +164,11 @@ test('un ordre conditionnel activé sans prix réel manuel ne peut pas calculer 
  const result=recordPartialClose(group,child.id,{volume:0.1,exit:2010,contractSpec:group.contractSpec});
  assert.equal(result.pnl.gross,90);
 });
+
+test('l’aperçu de clôture dans l’interface utilise le prix réel confirmé et refuse un prix absent',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+ assert.match(app,/const actualEntry=Number\(child\.actualEntryPrice\)/);
+ assert.match(app,/entry:actualEntry,exit,volume/);
+ assert.match(app,/Saisissez le prix réel d’exécution manuelle/);
+});
