@@ -37,7 +37,7 @@ function bindLocalDataOwner(userId){
   if(!previous){
    const hasUnownedData=LOCAL_ACCOUNT_DATA_KEYS.some(key=>key!=='aurevia_active_session_id'&&localStorage.getItem(key)!==null);
    if(hasUnownedData){clearLocalAccountData();window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{previousUserId:null,userId:id}}));}
-   if(localStorage.getItem(LEGACY_TRADE_SYNC_QUEUE_KEY))localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);
+   if(localStorage.getItem(LEGACY_TRADE_SYNC_QUEUE_KEY))localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);restoreLocalAccountData(id);
   }
   localStorage.setItem(LOCAL_DATA_OWNER_KEY,id);window.__aureviaUserId=id;
  }catch{}
