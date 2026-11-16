@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
 const endpoint=await readFile(new URL('../netlify/functions/account-reject-new-login.mjs',import.meta.url),'utf8');
-const migration=await readFile(new URL('../supabase/migrations/20261112130000_fix_google_oauth_session_claim_v235.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261112103700_fix_google_oauth_session_claim_v235.sql',import.meta.url),'utf8');
 test('la première ouverture restaure une session connue sans réclamer la session d’un autre appareil',()=>{assert.match(auth,/known\?'heartbeat':'claim'/);assert.match(auth,/aurevia_active_session_id/);});
 test('le retour OAuth refuse une nouvelle identité créée via le bouton connexion',()=>{assert.match(auth,/intent\.mode==='login'&&createdAt>=intent\.startedAt-5000/);assert.match(auth,/ACCOUNT_NOT_REGISTERED/);assert.match(auth,/account-reject-new-login/);});
 test('le retour OAuth refuse une inscription avec une identité existante',()=>{assert.match(auth,/intent\.mode==='signup'&&createdAt<intent\.startedAt-5000/);assert.match(auth,/EXISTING_ACCOUNT/);});
