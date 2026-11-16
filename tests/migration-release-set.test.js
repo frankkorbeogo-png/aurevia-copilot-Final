@@ -31,6 +31,6 @@ test('les snapshots de staging et les migrations retirées sont archivés hors d
  assert.ok(staging.some(x=>x.includes('staging_schema_snapshot_tables')));
  assert.ok(retired.includes('20261112190000_allow_users_to_unlink_own_telegram.sql'));
  const plan=await readFile(new URL('../supabase/RELEASE-MIGRATION-PLAN-2.4.19.md',import.meta.url),'utf8');
- assert.match(plan,/63 migrations déjà appliquées/);
+ assert.match(plan,/63 migrations appliquées/);
  assert.match(plan,/17 migrations/);
 });
