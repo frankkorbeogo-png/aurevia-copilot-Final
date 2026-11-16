@@ -4,9 +4,11 @@ import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../netlify/functions/ai-analysis.mjs', import.meta.url), 'utf8');
 
-test('le moteur IA limite les bougies transmises aux 40 M15 les plus récentes', () => {
-  assert.match(source, /m15\.candles\.slice\(-40\)/);
+test('le moteur IA ne transmet que les 40 dernières bougies M15 clôturées', () => {
+  assert.match(source, /selectClosedMarketCandles/);
+  assert.match(source, /closed\.candles\.slice\(-40\)/);
   assert.match(source, /m15\.candles\.length<60/);
+  assert.match(source, /validateLatestClosedCandle/);
 });
 
 test('les contextes secondaires sont compactés et la sortie est plafonnée', async () => {
