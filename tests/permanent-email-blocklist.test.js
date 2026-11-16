@@ -40,3 +40,16 @@ test('le blocage définitif et la révocation de session sont atomiques côté S
  assert.match(atomic,/insert into app_private\.admin_audit_log/i);
  assert.match(atomic,/return jsonb_build_object\('ok',true,'email_blocked',true,'new_block',v_inserted,'session_revoked',v_session_revoked\)/i);
 });
+
+
+test('permanent email blocks are checked by every license-status call before trial or license access',async()=>{
+ const sql=await readFile(new URL('../supabase/migrations/20261116223000_aurevia_license_status_enforces_email_blocklist.sql',import.meta.url),'utf8');
+ const blockCheck=sql.indexOf('from app_private.aurevia_blocked_emails');
+ const accessInsert=sql.indexOf('insert into public.aurevia_account_access');
+ const trialInsert=sql.indexOf('insert into public.aurevia_trial_claims');
+ assert.ok(blockCheck>=0);
+ assert.ok(accessInsert>blockCheck,'blocked emails must be rejected before account access is recreated');
+ assert.ok(trialInsert>blockCheck,'blocked emails must be rejected before a trial claim can be created');
+ assert.match(sql,/app_private\.aurevia_email_fingerprint\(v_email\)/);
+ assert.match(sql,/code','EMAIL_BLOCKED'/);
+});
