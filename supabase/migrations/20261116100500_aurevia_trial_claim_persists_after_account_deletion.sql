@@ -10,19 +10,14 @@ create index aurevia_trial_claims_user_idx on public.aurevia_trial_claims(first_
 alter table public.aurevia_trial_claims enable row level security;
 revoke all on table public.aurevia_trial_claims from public, anon, authenticated;
 grant select, insert, update, delete on table public.aurevia_trial_claims to service_role;
-
 insert into public.aurevia_trial_claims(email_hash,first_user_id,trial_started_at,trial_expires_at)
-select encode(digest(lower(btrim(u.email)),'sha256'),'hex'),a.user_id,a.trial_started_at,a.trial_expires_at
-from public.aurevia_account_access a
-join auth.users u on u.id=a.user_id
-where nullif(btrim(u.email),'') is not null
-  and a.trial_started_at is not null
-  and a.trial_expires_at is not null
+select encode(extensions.digest(lower(btrim(u.email)),'sha256'),'hex'),a.user_id,a.trial_started_at,a.trial_expires_at
+from public.aurevia_account_access a join auth.users u on u.id=a.user_id
+where nullif(btrim(u.email),'') is not null and a.trial_started_at is not null and a.trial_expires_at is not null
 on conflict(email_hash) do nothing;
-
 create or replace function public.aurevia_license_status(p_user_id uuid)
 returns jsonb language plpgsql security definer
-set search_path = pg_catalog, public, pg_temp
+set search_path = pg_catalog, public, extensions, pg_temp
 as $$
 declare
   v_access public.aurevia_account_access%rowtype;
@@ -36,7 +31,7 @@ begin
   select email,email_confirmed_at into v_email,v_email_confirmed_at from auth.users where id=p_user_id;
   if p_user_id is null or not found then return jsonb_build_object('ok',false,'code','USER_NOT_FOUND'); end if;
   if nullif(btrim(v_email),'') is null or v_email_confirmed_at is null then return jsonb_build_object('ok',false,'code','EMAIL_NOT_VERIFIED'); end if;
-  v_email_hash:=encode(digest(lower(btrim(v_email)),'sha256'),'hex');
+  v_email_hash:=encode(extensions.digest(lower(btrim(v_email)),'sha256'),'hex');
 
   insert into public.aurevia_account_access(user_id,access_status) values(p_user_id,'trial') on conflict(user_id) do nothing;
   select * into v_access from public.aurevia_account_access where user_id=p_user_id for update;
@@ -69,9 +64,8 @@ begin
   if v_access.trial_started_at is distinct from v_claim.trial_started_at
      or v_access.trial_expires_at is distinct from v_claim.trial_expires_at
      or v_access.access_status not in ('trial','expired') then
-    update public.aurevia_account_access
-    set trial_started_at=v_claim.trial_started_at,trial_expires_at=v_claim.trial_expires_at,
-        access_status=case when v_claim.trial_expires_at<=v_now then 'expired' else 'trial' end,updated_at=v_now
+    update public.aurevia_account_access set trial_started_at=v_claim.trial_started_at,trial_expires_at=v_claim.trial_expires_at,
+      access_status=case when v_claim.trial_expires_at<=v_now then 'expired' else 'trial' end,updated_at=v_now
     where user_id=p_user_id returning * into v_access;
   end if;
 
