@@ -53,3 +53,14 @@ test('permanent email blocks are checked by every license-status call before tri
  assert.match(sql,/app_private\.aurevia_email_fingerprint\(v_email\)/);
  assert.match(sql,/code','EMAIL_BLOCKED'/);
 });
+
+
+test('a permanently blocked email cannot consume or activate a license key',async()=>{
+ const sql=await readFile(new URL('../supabase/migrations/20261116230000_aurevia_license_activation_respects_email_blocklist.sql',import.meta.url),'utf8');
+ const blockCheck=sql.indexOf('from app_private.aurevia_blocked_emails');
+ const licenseLookup=sql.indexOf('from public.aurevia_licenses');
+ assert.ok(blockCheck>=0);
+ assert.ok(licenseLookup>blockCheck,'license lookup must happen only after the blocklist check');
+ assert.match(sql,/code','EMAIL_BLOCKED'/);
+ assert.match(sql,/grant execute on function public\.aurevia_license_activate\(uuid,text\) to service_role/i);
+});
