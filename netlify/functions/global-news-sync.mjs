@@ -68,6 +68,19 @@ async function fetchArticles(){
  const data=await response.json();const articles=Array.isArray(data.articles)?data.articles:[];
  return articles.map(normalizeArticle).filter(Boolean);
 }
+function dateInZone(date,zone){
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+ const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+ return `${values.year}-${values.month}-${values.day}`;
+}
+function addDaysToIsoDate(value,days){
+ const [year,month,day]=value.split('-').map(Number);
+ return new Date(Date.UTC(year,month-1,day+days)).toISOString().slice(0,10);
+}
+export function getFredDateRange(now=new Date()){
+ const today=dateInZone(now,'America/New_York');
+ return {today,end:addDaysToIsoDate(today,14)};
+}
 function zonedTimeToUtc(date,hour,minute,zone='America/New_York'){
  const [year,month,day]=date.split('-').map(Number);const target=Date.UTC(year,month-1,day,hour,minute);let guess=target;
  for(let i=0;i<4;i++){
@@ -81,7 +94,7 @@ async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
  if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000)return {status:'fresh_cache',synced:0};
- const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
+ const {today,end}=getFredDateRange(new Date());
  const results=await Promise.all(RELEASES.map(async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
   url.searchParams.set('release_id',String(release.id));url.searchParams.set('api_key',key);url.searchParams.set('file_type','json');
