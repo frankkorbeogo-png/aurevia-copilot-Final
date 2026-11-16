@@ -72,15 +72,15 @@ export function createTradeGroup(input) {
 
 export function buildTradeGroupCloudRows(group,userId){
   if(!group?.id||!userId||!['unique','separate'].includes(group.mode)||!Array.isArray(group.children)||!group.children.length)throw new Error('Groupe de trades invalide pour la synchronisation cloud.');
-  const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null,created_at:group.createdAt};
-  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:group.createdAt||child.createdAt}));
+  const groupRow={id:group.id,user_id:userId,mode:group.mode,instrument:group.instrument,direction:group.direction,order_type:group.orderType||'MARKET',requested_volume:group.requestedLot,lot_step:group.lotStep||0.01,auto_journal:Boolean(group.autoJournal),status:group.status||'OPEN',contract_spec:group.contractSpec||null,broker_snapshot:group.brokerSnapshot||null,actual_entry_price:group.actualEntryPrice??null,created_at:group.createdAt};
+  const positions=group.children.map(child=>({id:child.id,group_id:group.id,user_id:userId,tp_label:child.tpLabel,entry_price:child.entry,actual_entry_price:child.actualEntryPrice??null,stop_loss:child.stopLoss,take_profit:child.takeProfit,trigger_price:group.triggerPrice,limit_price:group.limitPrice,volume_initial:child.initialLot,volume_remaining:child.remainingLot,contract_size:group.contractSize,quote_to_account:group.quoteToAccount,fees_per_lot:group.feesPerLot,contract_spec:group.contractSpec||null,status:child.status,trigger_seen:Boolean(child.triggerSeen),activated_at:child.activatedAt||null,activation_price:child.activationPrice??null,opened_at:group.createdAt||child.createdAt}));
   let journalRows=[];
   if(group.autoJournal){
     if(group.mode==='unique'){
       const first=group.children[0],pending=group.children.every(child=>child.status==='PENDING');
-      journalRows=[{user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${pending?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,child)=>sum+Number(child.remainingLot||0),0),gross_pnl:0,fees:0,entry_price:first.entry,stop_loss:first.stopLoss,take_profit:first.takeProfit,created_at:group.createdAt}];
+      journalRows=[{user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Position unique AUREVIA · clôtures partielles liées${pending?' · ordre en attente d’activation':''}`,group_id:group.id,mode:'unique',volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,child)=>sum+Number(child.remainingLot||0),0),gross_pnl:0,fees:0,entry_price:first.entry,actual_entry_price:first.actualEntryPrice??group.actualEntryPrice??null,stop_loss:first.stopLoss,take_profit:first.takeProfit,created_at:group.createdAt}];
     }else{
-      journalRows=group.children.map(child=>({user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${child.tpLabel}${child.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:child.id,mode:'separate',volume_initial:child.initialLot,volume_remaining:child.remainingLot,tp_label:child.tpLabel,gross_pnl:0,fees:0,entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,created_at:group.createdAt}));
+      journalRows=group.children.map(child=>({user_id:userId,instrument:group.instrument,direction:group.direction,result:'OPEN',pnl:0,notes:`Trade séparé AUREVIA · ${child.tpLabel}${child.status==='PENDING'?' · ordre en attente d’activation':''}`,group_id:group.id,position_id:child.id,mode:'separate',volume_initial:child.initialLot,volume_remaining:child.remainingLot,tp_label:child.tpLabel,gross_pnl:0,fees:0,entry_price:child.entry,actual_entry_price:child.actualEntryPrice??null,stop_loss:child.stopLoss,take_profit:child.takeProfit,created_at:group.createdAt}));
     }
   }
   return {groupRow,positions,journalRows};
@@ -214,7 +214,7 @@ export function editSeparateTradeChild(group, childId, {entry,stopLoss,takeProfi
   if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(stopLoss)||stopLoss<=0||!Number.isFinite(takeProfit)||takeProfit<=0)throw new Error('Entrée, Stop Loss et TP doivent être des prix positifs.');
   if(group.direction==='BUY'&&(stopLoss>=entry||takeProfit<=entry))throw new Error('Pour un BUY, le SL doit être sous l’entrée et le TP au-dessus.');
   if(group.direction==='SELL'&&(stopLoss<=entry||takeProfit>=entry))throw new Error('Pour un SELL, le SL doit être au-dessus de l’entrée et le TP sous l’entrée.');
-  child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfit;group.updatedAt=new Date().toISOString();return child;
+  child.entry=entry;if(child.status==='OPEN')child.actualEntryPrice=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfit;group.updatedAt=new Date().toISOString();return child;
 }
 
 export function deletePendingSeparateTradeChild(groupId,childId){
@@ -253,7 +253,9 @@ export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
   if(group.direction==='BUY'&&stopLoss>=entry)throw new Error('Pour un BUY, le Stop Loss doit rester sous l’entrée.');
   if(group.direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le Stop Loss doit rester au-dessus de l’entrée.');
   if(!Array.isArray(takeProfits)||takeProfits.length!==group.children.length||takeProfits.some(v=>!Number.isFinite(v)||v<=0||(group.direction==='BUY'?v<=entry:v>=entry)))throw new Error('Chaque TP doit être valide et rester du côté favorable de l’entrée.');
-  group.children.forEach((child,i)=>{child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
+  const actualFillKnown=group.children.some(child=>child.status==='OPEN');
+  group.children.forEach((child,i)=>{child.entry=entry;if(actualFillKnown)child.actualEntryPrice=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
+  if(actualFillKnown)group.actualEntryPrice=entry;
   group.updatedAt=new Date().toISOString();return group;
 }
 
