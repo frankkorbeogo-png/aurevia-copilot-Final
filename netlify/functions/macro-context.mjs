@@ -27,7 +27,7 @@ export function assessDxyQuote(data, now = Date.now()) {
  }
  if(asOfMs===null&&data?.datetime){
   const raw=String(data.datetime).trim();
-  const hasZone=/(Z|[+-]\\d{2}:?\\d{2})$/i.test(raw);
+  const hasZone=/(Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(raw);
   const parsed=Date.parse(hasZone?raw:raw.replace(' ','T')+'Z');
   if(Number.isFinite(parsed))asOfMs=parsed;
  }
