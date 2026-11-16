@@ -49,3 +49,49 @@ test('scenario-api valide strictement les niveaux des huit types d’ordres côt
  assert.match(source,/Le prix d’entrée doit correspondre au niveau d’ordre/);
  assert.match(source,/Un ordre MARKET ne doit pas contenir/);
 });
+
+
+function installCreatePositionMocks({orderType='BUY MARKET'}={}){
+ const old=globalThis.fetch;
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'pub',SUPABASE_SERVICE_ROLE_KEY:'service'});
+ let createCalled=false,createdPayload=null;
+ globalThis.fetch=async(input,options={})=>{
+  const u=String(input);
+  if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});
+  if(u.includes('/rpc/aurevia_session_is_active_for_user')||u.includes('/rpc/aurevia_is_admin'))return new Response('true',{status:200});
+  if(u.includes('/rest/v1/user_preferences'))return new Response(JSON.stringify([{preferences:{account_currency:'USD'}}]),{status:200});
+  if(u.includes('/rest/v1/aurevia_analysis_scenarios'))return new Response(JSON.stringify([{id:'s1',status:'entry_confirmed',lot_confirmation_expires_at:new Date(Date.now()+600000).toISOString(),trade_group_id:null,instrument:'BTC/USD',direction:'BUY',last_price_at:new Date().toISOString(),order_type:orderType,entry_confirmation_price:100,entry:100,entry_low:99,entry_high:101,stop_loss:95,take_profits:[110]}]),{status:200});
+  if(u.includes('/rpc/aurevia_create_position_from_scenario')){createCalled=true;createdPayload=JSON.parse(options.body||'{}');return new Response(JSON.stringify('group-1'),{status:200});}
+  return new Response('[]',{status:200});
+ };
+ return {restore(){globalThis.fetch=old;for(const k of ['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SERVICE_ROLE_KEY'])delete process.env[k];},get createCalled(){return createCalled;},get createdPayload(){return createdPayload;}};
+}
+const validContractSpec={calculationType:'contract',contractSize:1,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0};
+test('scenario-api exige le prix réellement exécuté pour un ordre au marché avant le RPC',async()=>{
+ const mock=installCreatePositionMocks();
+ try{
+  const r=await handler(req({action:'create_position',id:'s1',mode:'unique',volume:0.05,contract_spec:{...validContractSpec},auto_journal:true}));
+  assert.equal(r.statusCode,400);assert.match(parse(r).error,/prix réellement exécuté est obligatoire/);assert.equal(mock.createCalled,false);
+ }finally{mock.restore();}
+});
+test('scenario-api transmet le prix réellement exécuté validé au RPC',async()=>{
+ const mock=installCreatePositionMocks();
+ try{
+  const r=await handler(req({action:'create_position',id:'s1',mode:'unique',volume:0.05,contract_spec:{...validContractSpec,actualEntryPrice:101},auto_journal:true}));
+  assert.equal(r.statusCode,201,parse(r).error);assert.equal(mock.createCalled,true);assert.equal(mock.createdPayload.p_contract_spec.actualEntryPrice,101);assert.equal(parse(r).actual_entry_price,101);
+ }finally{mock.restore();}
+});
+test('scenario-api refuse un prix réel pour un ordre conditionnel non exécuté',async()=>{
+ const mock=installCreatePositionMocks({orderType:'BUY LIMIT'});
+ try{
+  const r=await handler(req({action:'create_position',id:'s1',mode:'unique',volume:0.05,contract_spec:{...validContractSpec,actualEntryPrice:100},auto_journal:true}));
+  assert.equal(r.statusCode,400);assert.match(parse(r).error,/ordre conditionnel/);assert.equal(mock.createCalled,false);
+ }finally{mock.restore();}
+});
+test('le RPC reste rétrocompatible avec les anciennes interfaces pendant la migration, tandis que l’API impose le prix réel',async()=>{
+ const sql=await readFile(new URL('../supabase/migrations/20261116190500_aurevia_actual_manual_fill_price.sql',import.meta.url),'utf8');
+ const api=await readFile(new URL('../netlify/functions/scenario-api.mjs',import.meta.url),'utf8');
+ assert.doesNotMatch(sql,/ACTUAL_FILL_PRICE_REQUIRED/);
+ assert.match(sql,/coalesce\(v_actual_entry,s\.entry_confirmation_price,s\.entry\)/);
+ assert.match(api,/Le prix réellement exécuté est obligatoire/);
+});
