@@ -86,13 +86,15 @@ async function finishSetup(token,chatId,userId,setup){
  setup.spec.quoteCurrency=quoteCurrency;setup.spec.quoteToAccount=quoteToAccount;setup.spec.fxSnapshot=fxSnapshot;
  const checked=validateContractSpec(setup.spec);
  if(!checked.ok){await telegramSend(token,chatId,`Paramètres incomplets : ${checked.error}`);return false;}
- const spec=checked.spec,volume=Number(setup.volume);\n const isMarket=!String(scenario.order_type||'').includes('LIMIT')&&!String(scenario.order_type||'').includes('STOP');\n if(isMarket){const actual=Number(setup.actualEntryPrice);const tp1=Number(scenario.take_profits?.[0]),sl=Number(scenario.stop_loss);if(!Number.isFinite(actual)||actual<=0||(scenario.direction==='BUY'?(actual<=sl||actual>=tp1):(actual>=sl||actual<=tp1))){await telegramSend(token,chatId,'Prix d’exécution invalide ou incohérent avec le SL/TP1. Saisis le prix réel obtenu sur ton broker.');setup.step='actualEntryPrice';await saveSetup(userId,setup);await promptStep(token,chatId,setup);return false;}spec.actualEntryPrice=actual;}else spec.actualEntryPrice=null;
+ const spec=checked.spec,volume=Number(setup.volume);
+ const isMarket=!String(scenario.order_type||'').includes('LIMIT')&&!String(scenario.order_type||'').includes('STOP');
+ if(isMarket){const actual=Number(setup.actualEntryPrice);const tp1=Number(scenario.take_profits?.[0]),sl=Number(scenario.stop_loss);if(!Number.isFinite(actual)||actual<=0||(scenario.direction==='BUY'?(actual<=sl||actual>=tp1):(actual>=sl||actual<=tp1))){await telegramSend(token,chatId,'Prix d’exécution invalide ou incohérent avec le SL/TP1. Saisis le prix réel obtenu sur ton broker.');setup.step='actualEntryPrice';await saveSetup(userId,setup);await promptStep(token,chatId,setup);return false;}spec.actualEntryPrice=actual;}else spec.actualEntryPrice=null;
  if(!Number.isFinite(volume)||volume<spec.minLot||(spec.maxLot!==null&&volume>spec.maxLot)||Math.abs(volume/spec.lotStep-Math.round(volume/spec.lotStep))>1e-7){
   setup.step='lot';await saveSetup(userId,setup);
   await telegramSend(token,chatId,`Le lot doit respecter le minimum ${spec.minLot}, le pas ${spec.lotStep}${spec.maxLot!==null?` et le maximum ${spec.maxLot}`:''}. Saisis un autre volume.`);return false;
  }
  const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};
- const preferences=await getPreferences(userId);const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...spec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
+ const preferences=await getPreferences(userId);const brokerSpec={...spec};delete brokerSpec.actualEntryPrice;const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...brokerSpec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
  const result=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenario.id,p_user_id:userId,p_mode:setup.mode,p_volume:volume,p_contract_spec:spec,p_broker_snapshot:brokerSnapshot,p_auto_journal:setup.autoJournal!==false}});
  const groupId=typeof result==='string'?result:result?.[0]?.aurevia_create_position_from_scenario||result?.aurevia_create_position_from_scenario;
  if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
