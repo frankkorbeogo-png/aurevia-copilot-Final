@@ -3,9 +3,10 @@
 ## État vérifié en lecture seule le 16 novembre 2026
 
 - Production : projet Supabase imkwbizyblzuevkodzqc, 63 migrations appliquées; dernière version 20261116160908.
-- Staging : projet Supabase cfoipulmnkisaaiirmps, 54 migrations appliquées. Ce projet a été créé comme snapshot isolé le 16 novembre; ses migrations bootstrap et ses versions générées ne correspondent pas à l'historique de production.
+- Staging : projet Supabase cfoipulmnkisaaiirmps, 55 migrations appliquées. Ce projet a été créé comme snapshot isolé le 16 novembre; ses migrations bootstrap et ses versions générées ne correspondent pas à l'historique de production.
 - Dépôt : le dossier supabase/migrations contient désormais 63 fichiers reconstruits exactement depuis les enregistrements de migrations déjà appliquées en production, plus 19 migrations de livraison en attente.
 - Les snapshots de staging sont archivés dans supabase/staging-bootstrap/ et ne sont pas inclus dans le dossier de migrations de production.
+- Le doublon identique de la migration aurevia_telegram_access_entitlement a été retiré de l'historique staging après vérification du hash SQL; le schéma n'a pas été modifié par ce nettoyage de métadonnées.
 - La migration allow_users_to_unlink_own_telegram a été retirée du dossier de production et archivée dans supabase/retired-migrations/: la déliaison passe par telegram-unlink.mjs, qui vérifie l'utilisateur et la session active avant la suppression avec le rôle service. Une politique DELETE directe côté client n'est pas nécessaire.
 
 ## Réconciliation effectuée dans le dépôt
