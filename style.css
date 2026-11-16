@@ -668,3 +668,5 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
   #page-marches .signal-panel .disclaimer-mini{grid-column:1}
   #page-marches .signal-panel .probability{margin:0;padding:12px}
 }
+
+@media(max-width:600px){.mobile-nav{display:none!important}.main-content{padding-bottom:24px!important}}
