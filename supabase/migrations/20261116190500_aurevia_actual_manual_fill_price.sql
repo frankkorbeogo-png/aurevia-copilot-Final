@@ -25,7 +25,7 @@ declare
   v_group uuid; v_position uuid; v_journal uuid;
   v_count integer; v_idx integer := 0; v_child numeric; v_remaining numeric;
   v_entry numeric; v_order text; v_group_order text; v_pending boolean;
-  v_trigger numeric; v_limit numeric; tp numeric;
+  v_trigger numeric; v_limit numeric; v_actual_entry numeric; tp numeric;
 begin
   if auth.role() <> 'service_role' then raise exception 'SERVICE_ROLE_REQUIRED'; end if;
   if p_mode not in ('unique','separate') or p_volume is null or p_volume <= 0 then raise exception 'INVALID_LOT_INPUT'; end if;
@@ -72,11 +72,13 @@ begin
   if v_order like '%STOP LIMIT' and (v_trigger is null or v_limit is null) then raise exception 'STOP_LIMIT_REQUIRES_TRIGGER_AND_LIMIT'; end if;
   if v_order like '%STOP%' and v_order not like '%STOP LIMIT' and v_trigger is null then raise exception 'STOP_REQUIRES_TRIGGER'; end if;
   if v_order like '%LIMIT%' and v_limit is null then raise exception 'LIMIT_REQUIRES_LIMIT_PRICE'; end if;
+  v_actual_entry := nullif(p_contract_spec->>'actualEntryPrice','')::numeric;
+  if not v_pending and (v_actual_entry is null or v_actual_entry<=0) then raise exception 'ACTUAL_FILL_PRICE_REQUIRED'; end if;
   v_entry := case
     when v_order like '%STOP LIMIT' then v_limit
     when v_order like '%LIMIT%' then v_limit
     when v_order like '%STOP%' then v_trigger
-    else coalesce(s.entry_confirmation_price,s.entry)
+    else coalesce(v_actual_entry,s.entry_confirmation_price,s.entry)
   end;
   if v_entry is null or v_entry<=0 then raise exception 'ENTRY_PRICE_UNAVAILABLE'; end if;
   if v_order='BUY STOP LIMIT' and v_trigger<=v_limit then raise exception 'STOP_LIMIT_PRICE_ORDER_INVALID'; end if;
@@ -89,8 +91,8 @@ begin
     if v_child < v_min then raise exception 'LOT_TOO_SMALL_FOR_TP_SPLIT'; end if;
   end if;
 
-  insert into public.trading_position_groups(user_id,mode,instrument,direction,order_type,requested_volume,lot_step,auto_journal,status,contract_spec,broker_snapshot)
-  values(p_user_id,p_mode,s.instrument,s.direction,v_group_order,p_volume,v_step,coalesce(p_auto_journal,true),'OPEN',p_contract_spec,p_broker_snapshot)
+  insert into public.trading_position_groups(user_id,mode,instrument,direction,order_type,requested_volume,lot_step,auto_journal,status,contract_spec,broker_snapshot,actual_entry_price)
+  values(p_user_id,p_mode,s.instrument,s.direction,v_group_order,p_volume,v_step,coalesce(p_auto_journal,true),'OPEN',p_contract_spec,p_broker_snapshot,v_actual_entry)
   returning id into v_group;
   v_remaining := p_volume;
   foreach tp in array s.take_profits loop
@@ -101,12 +103,12 @@ begin
     else v_child := p_volume;
     end if;
     insert into public.trading_positions(
-      group_id,user_id,tp_label,entry_price,stop_loss,take_profit,
+      group_id,user_id,tp_label,entry_price,actual_entry_price,stop_loss,take_profit,
       volume_initial,volume_remaining,contract_size,quote_to_account,fees_per_lot,
       contract_spec,status,opened_at,trigger_price,limit_price,entry_armed,
       trigger_seen,expires_at
     ) values(
-      v_group,p_user_id,'TP'||v_idx,v_entry,s.stop_loss,tp,
+      v_group,p_user_id,'TP'||v_idx,v_entry,v_actual_entry,s.stop_loss,tp,
       v_child,v_child,case when v_calc='contract' then v_contract else null end,
       case when v_calc='contract' then v_quote else 1 end,v_fees,
       p_contract_spec,case when v_pending then 'PENDING' else 'OPEN' end,
@@ -116,15 +118,15 @@ begin
       false,false,case when v_pending then now()+interval '24 hours' else null end
     ) returning id into v_position;
     if coalesce(p_auto_journal,true) and p_mode='separate' then
-      insert into public.trading_journal(user_id,instrument,direction,result,pnl,notes,group_id,position_id,mode,volume_initial,volume_remaining,tp_label,gross_pnl,fees,entry_price,stop_loss,take_profit)
-      values(p_user_id,s.instrument,s.direction,'OPEN',0,case when v_pending then 'Ordre interne en attente · TP'||v_idx else 'Trade AUREVIA · TP'||v_idx end,v_group,v_position,'separate',v_child,v_child,'TP'||v_idx,0,0,v_entry,s.stop_loss,tp)
+      insert into public.trading_journal(user_id,instrument,direction,result,pnl,notes,group_id,position_id,mode,volume_initial,volume_remaining,tp_label,gross_pnl,fees,entry_price,actual_entry_price,stop_loss,take_profit)
+      values(p_user_id,s.instrument,s.direction,'OPEN',0,case when v_pending then 'Ordre interne en attente · TP'||v_idx else 'Trade AUREVIA · TP'||v_idx end,v_group,v_position,'separate',v_child,v_child,'TP'||v_idx,0,0,v_entry,v_actual_entry,s.stop_loss,tp)
       returning id into v_journal;
       update public.trading_positions set journal_id=v_journal where id=v_position;
     end if;
   end loop;
   if coalesce(p_auto_journal,true) and p_mode='unique' then
-    insert into public.trading_journal(user_id,instrument,direction,result,pnl,notes,group_id,mode,volume_initial,volume_remaining,gross_pnl,fees,entry_price,stop_loss,take_profit)
-    values(p_user_id,s.instrument,s.direction,'OPEN',0,case when v_pending then 'Ordre interne en attente · clôtures partielles' else 'Position unique AUREVIA · clôtures partielles' end,v_group,'unique',p_volume,p_volume,0,0,v_entry,s.stop_loss,s.take_profits[1])
+    insert into public.trading_journal(user_id,instrument,direction,result,pnl,notes,group_id,mode,volume_initial,volume_remaining,gross_pnl,fees,entry_price,actual_entry_price,stop_loss,take_profit)
+    values(p_user_id,s.instrument,s.direction,'OPEN',0,case when v_pending then 'Ordre interne en attente · clôtures partielles' else 'Position unique AUREVIA · clôtures partielles' end,v_group,'unique',p_volume,p_volume,0,0,v_entry,v_actual_entry,s.stop_loss,s.take_profits[1])
     returning id into v_journal;
     update public.trading_positions set journal_id=v_journal where group_id=v_group;
   end if;
