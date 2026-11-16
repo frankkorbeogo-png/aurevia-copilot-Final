@@ -7,7 +7,7 @@ function candles(count,start,step=15*60000){
 }
 
 test('exclut la bougie M15 encore en formation et conserve les bougies clôturées',()=>{
- const now=Date.UTC(2026,10,16,3,7),rows=candles(35,now-35*15*60000);
+ const now=Date.UTC(2026,10,16,3,7),rows=candles(35,now-34*15*60000-5*60000);
  const result=selectClosedMarketCandles(rows,'UTC',15,now);
  assert.equal(result.ok,true);
  assert.equal(result.excludedUnclosed,1);
