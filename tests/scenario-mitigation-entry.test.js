@@ -41,3 +41,20 @@ test('le worker transmet bien zone_reached_at au contrôle M5/M1',async()=>{
  assert.match(src,/s\.status==='zone_reached'&&!s\.entry_notified/);
  assert.match(src,/evaluateMitigationEntryConfirmation\(s\.direction,m5,m1,s\.zone_reached_at\)/);
 });
+
+test('les confirmations M5/M1 fonctionnent sans bougie partielle artificielle en tête',()=>{
+ const m5=[bar(10,101,104,100,103),bar(15,99,102,98,100)];
+ const m1=[bar(3,103,106,102,105),bar(4,102,104,101,103)];
+ assert.equal(evaluateMitigationEntryConfirmation('BUY',m5,m1,mitigation,now).confirmed,true);
+});
+
+test('le surveillant de scénarios utilise le quote horodaté et le catalogue canonique',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/api\.twelvedata\.com\/quote/);
+ assert.match(source,/last_quote_at/);
+ assert.match(source,/MARKET_INSTRUMENTS/);
+ assert.match(source,/closedM5/);
+ assert.doesNotMatch(source,/api\.twelvedata\.com\/price/);
+ assert.doesNotMatch(source,/US30|NAS100/);
+});
