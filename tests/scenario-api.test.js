@@ -12,7 +12,7 @@ test('scenario-api rejette des niveaux incohérents avant insertion',async()=>{c
 
 test('scenario-api refuse les instruments retirés du catalogue, dont les indices',async()=>{
  const old=globalThis.fetch;Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'pub',SUPABASE_SERVICE_ROLE_KEY:'service'});let databaseCalled=false;
- globalThis.fetch=async url=>{const u=String(url);if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});databaseCalled=true;return new Response('[]',{status:200});};
+ globalThis.fetch=async url=>{const u=String(url);if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});if(u.includes('/rpc/aurevia_is_admin'))return new Response('true',{status:200});databaseCalled=true;return new Response('[]',{status:200});};
  try{const r=await handler(req({action:'save',instrument:'US30',direction:'BUY',entry:100,entry_low:99,entry_high:101,stop_loss:95,take_profits:[110],summary:'Synthèse technique valide',source:'synthesis'}));assert.equal(r.statusCode,400);assert.equal(databaseCalled,false);assert.match(parse(r).error,/Instrument non pris en charge/);}finally{globalThis.fetch=old;for(const k of ['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SERVICE_ROLE_KEY'])delete process.env[k];}
 });
 
