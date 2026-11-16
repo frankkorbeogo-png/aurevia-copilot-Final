@@ -30,7 +30,7 @@ export function parseProviderTime(value,zone){
  if(zone==='UTC'||zone==='Etc/UTC'||zone==='GMT')return utc;
  try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc));const got=Object.fromEntries(parts.map(p=>[p.type,Number(p.value)]));const represented=Date.UTC(got.year,got.month-1,got.day,got.hour,got.minute,got.second);return utc-(represented-utc);}catch{return NaN;}
 }
-function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=Date.now()-(stamp+intervalMinutes*60000);return age>=0&&age<=intervalMinutes*2.5*60000;}
+function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=Date.now()-(stamp+intervalMinutes*60000);return age>=0&&age<=intervalMinutes*1.5*60000;}
 async function fetchMacroContext(instrument){try{const token=await getAnalysisAccessToken();if(!token)return {configured:false,notice:'Connexion requise pour les données macro.'};const r=await fetch(`/api/macro-context?instrument=${encodeURIComponent(instrument)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return {configured:false,notice:'Flux macro indisponible.'};return await r.json();}catch{return {configured:false,notice:'Flux macro indisponible.'};}}
 
 async function requestAureviaAnalysis(symbol,m15,context){
@@ -66,6 +66,9 @@ async function fetchFrame(symbol,interval){
    const data=await r.json().catch(()=>({}));
    if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);const limited=new Error(data.error||'Limite de requêtes atteinte. Réessayez dans une minute.');limited.code='MARKET_RATE_LIMIT';throw limited;}
    if(r.ok){
+    if(data.stale===true)throw new Error('Le fournisseur est indisponible : cache OHLC périmé refusé pour l’analyse.');
+    const fetchedAt=Date.parse(data.fetchedAt||''),fetchAge=Date.now()-fetchedAt;
+    if(!Number.isFinite(fetchedAt)||fetchAge<0||fetchAge>120000)throw new Error('Horodatage de récupération OHLC absent ou trop ancien.');
     if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');
     const minutes=({ '15min':15,'30min':30,'1h':60,'4h':240 })[interval];
     const closed=selectClosedMarketCandles(data.candles,data.timezone||'UTC',minutes,Date.now());
