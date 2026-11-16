@@ -1,6 +1,7 @@
 import { calculateContractPnl } from '../../contract-engine.js';
 import { getFxSnapshot, inferQuoteCurrency } from './_fx-rate.mjs';
 import {MARKET_LABELS} from '../../market-catalog.js';
+import {validateMarketQuote} from '../../market-quote-validation.js';
 // Scheduled AUREVIA-only position monitor. It never connects to a broker or places orders.
 const BASE=()=>process.env.SUPABASE_URL, KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
@@ -8,16 +9,22 @@ async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${B
 const SYMBOLS=new Set(MARKET_LABELS);
 async function quote(symbol){
  if(!SYMBOLS.has(symbol))throw new Error('Instrument non pris en charge par le suivi.');
- const rows=await rest(`aurevia_market_quotes?select=price,quote_at,source&symbol=eq.${encodeURIComponent(symbol)}`);
- const row=rows?.[0],stored=Number(row?.price),age=Date.now()-Date.parse(row?.quote_at||'');
- if(row&&Number.isFinite(stored)&&stored>0&&Number.isFinite(age)&&age>=0&&age<=90000)return {price:stored,quoteAt:row.quote_at,source:row.source||'flux marché'};
- const key=process.env.TWELVEDATA_API_KEY;if(!key)throw new Error('Prix de marché indisponible : flux absent ou trop ancien.');
- const url=new URL('https://api.twelvedata.com/price');url.searchParams.set('symbol',symbol);url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
- const response=await fetch(url,{signal:AbortSignal.timeout(10000)}),data=await response.json(),price=Number(data.price);
- if(!response.ok||data.status==='error'||!Number.isFinite(price)||price<=0)throw new Error(data.message||'Prix de marché Twelve Data indisponible.');
- const quoteAt=new Date().toISOString();
- await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data REST Last Price',updated_at:quoteAt}});
- return {price,quoteAt,source:'Twelve Data REST Last Price'};
+ const rows=await rest(`aurevia_market_quotes?select=price,quote_at,updated_at,source&symbol=eq.${encodeURIComponent(symbol)}`);
+ const row=rows?.[0],stored=Number(row?.price);
+ const trustedSources=new Set(['Twelve Data WebSocket Last Price · timestamp verified','Twelve Data REST Quote · timestamp verified']);
+ if(row&&trustedSources.has(row.source)){
+  const checked=validateMarketQuote({price:stored,asOf:row.quote_at,fetchedAt:row.updated_at,freshness:'recent',stale:false},{maxFetchedAgeMs:90000});
+  if(checked.ok)return {price:checked.price,quoteAt:row.quote_at,source:row.source};
+ }
+ const key=process.env.TWELVEDATA_API_KEY;if(!key)throw new Error('Prix de marché indisponible : aucune cotation récente horodatée.');
+ const url=new URL('https://api.twelvedata.com/quote');url.searchParams.set('symbol',symbol);url.searchParams.set('apikey',key);url.searchParams.set('interval','1min');url.searchParams.set('timezone','UTC');url.searchParams.set('format','JSON');
+ const response=await fetch(url,{signal:AbortSignal.timeout(10000)}),data=await response.json().catch(()=>({}));
+ const price=Number(data.close??data.price),stamp=Number(data.last_quote_at),asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():null,fetchedAt=new Date().toISOString();
+ const age=asOf?Date.now()-Date.parse(asOf):null,freshness=age===null?'unknown':age < -300000?'future':age<=120000?'recent':'stale';
+ const checked=validateMarketQuote({price,asOf,fetchedAt,freshness,stale:false},{maxFetchedAgeMs:10000});
+ if(!response.ok||data.status==='error'||data.code||!checked.ok)throw new Error(data.message||checked.error||'Cotation Twelve Data récente et horodatée indisponible.');
+ await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price:checked.price,quote_at:asOf,source:'Twelve Data REST Quote · timestamp verified',updated_at:fetchedAt}});
+ return {price:checked.price,quoteAt:asOf,source:'Twelve Data REST Quote · timestamp verified'};
 }
 export {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
 import {evaluateEntryTrigger,isPendingOrderExpired} from './_trade-entry-trigger.mjs';
