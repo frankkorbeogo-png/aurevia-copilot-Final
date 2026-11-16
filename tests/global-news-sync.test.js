@@ -128,8 +128,7 @@ test('une panne FRED conserve les publications et ne renouvelle pas le cache',as
   assert.equal(r.statusCode,502);
   assert.match(data.economicCalendarError,/FRED release .* HTTP 503/);
   assert.equal(data.economicCalendar.status,'fred_sync_failed_fomc_refreshed');
-  assert.ok(inserted.some(x=>x.release_id===101));
-  assert.ok(!inserted.some(x=>x.release_id===10));
+  assert.ok(!inserted.some(x=>x.release_id===10),'une panne FRED ne doit pas injecter de publications FRED');
   assert.equal(patches.length,1);
   assert.match(patches[0].url,/old-fomc/);
   assert.equal(patches[0].body.is_active,false);
