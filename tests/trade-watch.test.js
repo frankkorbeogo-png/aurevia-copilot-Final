@@ -189,6 +189,6 @@ test('le P/L privilégie le prix réellement exécuté au prix d’activation ob
 });
 test('un ordre conditionnel sans prix réel manuel suspend le calcul P/L automatique',async()=>{
  const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
- assert.match(source,/actual_entry_price\)>0\)\)continue/);
+ assert.match(source,/!\['MARKET','BUY MARKET','SELL MARKET'\]\.includes\(g\.order_type\)&&!\(Number\(p\.actual_entry_price\)>0\)\)continue/);
  assert.match(source,/calcul du résultat reste suspendu/);
 });
