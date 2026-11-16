@@ -63,7 +63,7 @@ test('la clôture TP/SL planifiée utilise une transaction SQL service_role pour
 
 test('surveillance refuse de clôturer si les métadonnées de calcul P/L sont absentes',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
- assert.throws(()=>calculateInternalClosePnl({volume_remaining:0.1,entry_price:2000,contract_size:null,quote_to_account:1},'BUY',2010),/P\/L incomplètes/);
+ assert.throws(()=>calculateInternalClosePnl({volume_remaining:0.1,entry_price:2000,contract_size:null,quote_to_account:1},'BUY',2010),/prix réel d’exécution manuelle absent/i);
 });
 test('surveillance calcule le P/L BUY et SELL avec volume, contrat, conversion et frais',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
