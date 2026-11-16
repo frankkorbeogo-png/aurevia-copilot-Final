@@ -800,7 +800,9 @@ async function issueAdminLicenses(){
 function bindEvents(){
   let pendingAdminRoute=false;
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
-  $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);\n  $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);\n  $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
+  $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);
+  $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);
+  $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
   window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshBrokerProfile();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
   $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
