@@ -7,7 +7,7 @@ const migration = await readFile(new URL('../supabase/migrations/20261116144803_
 const tradeManagement = await readFile(new URL('../trade-management.js', import.meta.url), 'utf8');
 
 test('la synchronisation manuelle appelle une seule RPC transactionnelle', () => {
-  const start = auth.indexOf('export async function syncTradeGroupToSupabase(group)');
+  const start = auth.indexOf('export async function syncTradeGroupToSupabase(group,expectedUserId=null)');
   const end = auth.indexOf('export async function deleteLinkedJournalEntryFromSupabase', start);
   const fn = auth.slice(start, end);
   assert.ok(fn.includes("supabase.rpc('aurevia_sync_trade_group'"));
@@ -66,7 +66,7 @@ test('la RPC ne supprime pas les anciennes fiches ni les positions non présente
 const closeMigration = await readFile(new URL('../supabase/migrations/20261116144811_aurevia_atomic_close_fx_snapshot.sql', import.meta.url), 'utf8');
 
 test('la clôture manuelle et son snapshot FX sont enregistrés dans une seule RPC', () => {
-  const start = auth.indexOf('export async function syncTradeCloseToSupabase(group,child,closeEvent)');
+  const start = auth.indexOf('export async function syncTradeCloseToSupabase(group,child,closeEvent,expectedUserId=null)');
   const end = auth.indexOf('export async function sendTelegramTest', start);
   const fn = auth.slice(start, end);
   assert.ok(fn.includes("supabase.rpc('aurevia_record_position_close'"));
