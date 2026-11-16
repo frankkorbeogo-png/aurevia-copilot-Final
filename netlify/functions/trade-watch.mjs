@@ -33,8 +33,8 @@ export function evaluatePositionThreshold(position,price){
  return sl?'SL':tp?'TP':null;
 }
 export function calculateInternalClosePnl(position,direction,price){
- const volume=Number(position.volume_remaining),entry=Number(position.actual_entry_price??position.activation_price??position.entry_price);
- if(!Number.isFinite(volume)||volume<=0||!Number.isFinite(entry)||entry<=0)throw new Error('Volume ou prix d’entrée invalide : clôture automatique suspendue.');
+ const volume=Number(position.volume_remaining),entry=Number(position.actual_entry_price);
+ if(!Number.isFinite(volume)||volume<=0||!Number.isFinite(entry)||entry<=0)throw new Error('Prix réel d’exécution manuelle absent : calcul P/L et clôture suspendus.');
  const contractSpec=position.contract_spec||{calculationType:'contract',contractSize:Number(position.contract_size),quoteToAccount:Number(position.quote_to_account),feesPerLot:Number(position.fees_per_lot??0),minLot:0.00000001,lotStep:0.00000001};
  let pnl;try{pnl=calculateContractPnl({direction,entry,exit:Number(price),volume,contractSpec});}catch(error){throw new Error(`Métadonnées de calcul P/L incomplètes : ${error.message}`);}
  const {currency,...values}=pnl;return {...values,...(currency?{currency}:{}),volume};
@@ -107,8 +107,9 @@ export async function handler(event){
       const activationPrice=observedPrice;
       const activatedAt=new Date().toISOString();const activation=await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:activatedAt}});if(activation?.ok&&activation.status==='OPEN')activated++;else if(activation?.status==='EXPIRED'){const expiry=await rest('rpc/aurevia_expire_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_expired_at:activatedAt}});if(expiry?.ok&&expiry.expired)expired++;}continue;
     }
-    // Conditional orders use the observed activation price when no manual fill adjustment is supplied.
-    // Internal TP/SL is evaluated against the single observed Last Price. This is not a broker execution price.
+    // P/L and internal TP/SL closure stay suspended until the user confirms the real manual fill.
+    // The activation quote is only an observation, never a substitute for the executed entry price.
+    if(!Number.isFinite(Number(p.actual_entry_price))||Number(p.actual_entry_price)<=0)continue;
     const exitPrice=observedPrice;
     const eventType=evaluatePositionThreshold({...p,direction:g.direction},exitPrice);if(!eventType)continue;
     const eventId=`${p.id}:${eventType}`;const inserted=await rest('aurevia_trade_alert_events?on_conflict=event_key',{method:'POST',prefer:'resolution=ignore-duplicates,return=representation',body:{event_key:eventId,position_id:p.id,user_id:p.user_id,event_type:eventType,observed_price:exitPrice,closed_volume:Number(p.volume_remaining),status:'pending'}});
