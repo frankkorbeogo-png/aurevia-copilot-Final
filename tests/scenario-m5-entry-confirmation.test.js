@@ -81,8 +81,14 @@ test('la contre-analyse OpenRouter et le veto Cloudflare M5 sont parallélisés 
  const j=source.indexOf('\n}',i);
  const m5=source.slice(i,j);
  assert.match(m5,/const \[reviewResult,auditResult\]=await Promise\.allSettled/);
- assert.match(m5,/ask\(openrouter,[\s\S]*?\],7500\)/);
- assert.match(m5,/ask\(cloudflare,[\s\S]*?\],7500\)/);
+ assert.match(m5,/ask\(openrouter,[\s\S]*?\],6500\)/);
+ assert.match(m5,/ask\(cloudflare,[\s\S]*?\],6500\)/);
  assert.match(m5,/if\(reviewResult\.status!==\x27fulfilled\x27\)/);
  assert.match(m5,/if\(auditResult\.status!==\x27fulfilled\x27\)/);
+});
+
+test('le worker M5 respecte le budget de 30 secondes des fonctions planifiées',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/AbortSignal\.timeout\(5000\)/);
 });
