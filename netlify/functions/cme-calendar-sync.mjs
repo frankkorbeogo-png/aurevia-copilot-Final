@@ -23,7 +23,7 @@ function cleanText(value = '') {
 // The annual CME summary table is deliberately captured as unverified candidates.
 // It does not identify a specific CFD/OTC product and must never close one.
 function findScheduleSection(html) {
-  const matches = [...html.matchAll(/(20\\d{2}) CME Globex Trading Schedule/gi)];
+  const matches = [...html.matchAll(/(20\d{2}) CME Globex Trading Schedule/gi)];
   if (!matches.length) return { index: -1, year: null };
   const currentYear = new Date().getUTCFullYear();
   const selected = matches.find(match => Number(match[1]) === currentYear)
