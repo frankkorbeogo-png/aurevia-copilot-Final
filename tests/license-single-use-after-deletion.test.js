@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const schema = await readFile(new URL('../supabase/migrations/20261116100001_aurevia_license_and_trial_core.sql', import.meta.url), 'utf8');
-const activation = await readFile(new URL('../supabase/migrations/20261116102634_aurevia_license_activation_requires_verified_email.sql', import.meta.url), 'utf8');
+const schema = await readFile(new URL('../supabase/migrations/20261116154435_aurevia_license_and_trial_core.sql', import.meta.url), 'utf8');
+const activation = await readFile(new URL('../supabase/migrations/20261116154456_aurevia_license_activation_requires_verified_email.sql', import.meta.url), 'utf8');
 
 test('a license row is locked while its one-time activation is decided', () => {
   assert.match(activation, /where key_hash\s*=\s*p_key_hash for update/i);
