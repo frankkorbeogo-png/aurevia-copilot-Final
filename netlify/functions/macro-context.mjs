@@ -82,24 +82,29 @@ async function fetchEconomicReleaseSchedule(){
  return {configured:true,source:'FRED release calendar',events:(Array.isArray(rows)?rows:[]).map(x=>({event:x.event_name,date:x.release_date,scheduledAt:x.scheduled_at,timezone:x.source_timezone,currency:x.currency,impact:x.impact,sourceUrl:x.source_url,timeBasis:x.time_basis})),asOf:new Date().toISOString(),notice:'Dates futures publiées par FRED pour six publications américaines majeures. Les heures sont les horaires habituels de publication des organismes, pas un horaire garanti ; vérifier le lien officiel avant la publication.'};
 }
 async function fetchCalendar(currencies){
- const unique=[...new Set((currencies||['USD']).filter(x=>/^[A-Z]{3}$/.test(x)))];
- const settled=await Promise.all(unique.map(async currency=>{
-  const u=new URL('https://showmytrades.com/api/public/calendar/v1');
-  u.searchParams.set('currency',currency);u.searchParams.set('impact','high,medium');u.searchParams.set('days','7');u.searchParams.set('format','json');
-  const r=await fetch(u,{signal:AbortSignal.timeout(12000),headers:{accept:'application/json'}});
-  if(!r.ok)throw new Error(`${currency}: HTTP ${r.status}`);
-  const data=await r.json();if(!data||!Array.isArray(data.events))throw new Error(`${currency}: format invalide`);
-  return {currency,data};
- }));
- const events=settled.flatMap(({currency,data})=>(data.events||[]).map(e=>{
-  const timestamp=Number.isFinite(Number(e.ts))?Number(e.ts):null;
-  const eventMs=timestamp!==null?timestamp*1000:Date.parse(e.time||'');
-  const published=String(e.actual??'').trim()!=='';
-  const phase=published?'published':Number.isFinite(eventMs)&&eventMs<Date.now()?'awaiting_result':'upcoming';
-  return {id:e.id||null,timestamp,date:e.time||null,country:e.country||null,currency:e.currency||currency, event:e.title||'Événement économique',importance:e.impact||null,actual:e.actual??'',forecast:e.forecast??'',previous:e.previous??'',status:e.status||'scheduled',phase,confidence:e.confidence||null,movedFrom:e.moved_from||null,period:e.period||null};
- }).filter(e=>e.date&&e.event&&e.currency===currency));
- const seen=new Set();const deduped=events.filter(e=>{const key=e.id||`${e.currency}|${e.date}|${e.event}`;if(seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
- return {configured:true,source:'ShowMyTrades',currencies:unique,timezone:'UTC',events:deduped,asOf:new Date().toISOString(),notice:'Flux fondamental interne réservé à l’analyse IA ; il ne constitue pas le calendrier affiché dans l’interface. Exhaustivité et horaires dépendants du fournisseur. Les événements publiés doivent être confrontés à la réaction réelle des prix.'};
+  const unique=[...new Set((currencies||['USD']).filter(x=>/^[A-Z]{3}$/.test(x)))];
+  const results=await Promise.all(unique.map(async currency=>{
+   try{
+    const u=new URL('https://showmytrades.com/api/public/calendar/v1');
+    u.searchParams.set('currency',currency);u.searchParams.set('impact','high,medium');u.searchParams.set('days','7');u.searchParams.set('format','json');
+    const r=await fetch(u,{signal:AbortSignal.timeout(12000),headers:{accept:'application/json'}});
+    if(!r.ok)throw new Error(`${currency}: HTTP ${r.status}`);
+    const data=await r.json();if(!data||!Array.isArray(data.events))throw new Error(`${currency}: format invalide`);
+    return {currency,data};
+   }catch(error){return {currency,error:String(error?.message||error).slice(0,160)};}
+  }));
+  const available=results.filter(x=>x.data),failed=results.filter(x=>x.error);
+  if(!available.length&&failed.length)throw new Error(failed.map(x=>x.error).join(' ; '));
+  const events=available.flatMap(({currency,data})=>(data.events||[]).map(e=>{
+   const timestamp=Number.isFinite(Number(e.ts))?Number(e.ts):null;
+   const eventMs=timestamp!==null?timestamp*1000:Date.parse(e.time||'');
+   const published=String(e.actual??'').trim()!=='';
+   const phase=published?'published':Number.isFinite(eventMs)&&eventMs<Date.now()?'awaiting_result':'upcoming';
+   return {id:e.id||null,timestamp,date:e.time||null,country:e.country||null,currency:e.currency||currency, event:e.title||'Événement économique',importance:e.impact||null,actual:e.actual??'',forecast:e.forecast??'',previous:e.previous??'',status:e.status||'scheduled',phase,confidence:e.confidence||null,movedFrom:e.moved_from||null,period:e.period||null};
+  }).filter(e=>e.date&&e.event&&e.currency===currency));
+  const seen=new Set();const deduped=events.filter(e=>{const key=e.id||`${e.currency}|${e.date}|${e.event}`;if(seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
+  const partial=failed.length>0;
+  return {configured:available.length>0,source:'ShowMyTrades',currencies:unique,availableCurrencies:available.map(x=>x.currency),failedCurrencies:failed.map(x=>x.currency),partial,timezone:'UTC',events:deduped,asOf:new Date().toISOString(),notice:partial?'Calendrier partiel : certaines devises sont indisponibles ; les événements reçus restent utilisables. Vérifiez la source officielle.':'Flux fondamental interne réservé à l’analyse IA ; il ne constitue pas le calendrier affiché dans l’interface. Exhaustivité et horaires dépendants du fournisseur. Les événements publiés doivent être confrontés à la réaction réelle des prix.'};
 }
 
 export async function handler(event){if(event.httpMethod!=='GET')return json(405,{error:'Méthode non autorisée.'});try{const context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Session invalide.'});}
