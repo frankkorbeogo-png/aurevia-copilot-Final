@@ -254,3 +254,19 @@ export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
   group.children.forEach((child,i)=>{child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
   group.updatedAt=new Date().toISOString();return group;
 }
+
+
+export function markTradeGroupCloudSyncPending(groupId,pending=true){
+  const rows=read(STORAGE_KEY),group=rows.find(row=>row.id===groupId);
+  if(!group)return false;
+  group.cloudSyncPending=Boolean(pending);
+  return write(STORAGE_KEY,rows);
+}
+export function markTradeCloseCloudSyncPending(groupId,childId,closeId,pending=true){
+  const rows=read(STORAGE_KEY),group=rows.find(row=>row.id===groupId);
+  const child=group?.children.find(row=>row.id===childId);
+  const close=child?.closes?.find(row=>row.id===closeId);
+  if(!close)return false;
+  close.cloudSyncPending=Boolean(pending);
+  return write(STORAGE_KEY,rows);
+}
