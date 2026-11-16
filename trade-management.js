@@ -63,10 +63,10 @@ export function createTradeGroup(input) {
   const groupId=id();
   const createdAt=new Date().toISOString();
   const initialStatus=orderType==='MARKET'?'OPEN':'PENDING';
-  const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:initialStatus,triggerSeen:false,activatedAt:orderType==='MARKET'?createdAt:null,activationPrice:orderType==='MARKET'?entry:null,realizedPnl:0,fees:0,closes:[],createdAt}));
+  const children=tps.map((tp,i)=>({id:id(),groupId,instrument,direction,mode,lot:volumes[i],initialLot:volumes[i],remainingLot:volumes[i],entry,actualEntryPrice:orderType==='MARKET'?entry:null,stopLoss,takeProfit:tp.price,tpLabel:tp.label,status:initialStatus,triggerSeen:false,activatedAt:orderType==='MARKET'?createdAt:null,activationPrice:orderType==='MARKET'?entry:null,realizedPnl:0,fees:0,closes:[],createdAt}));
   const effectiveLimitPrice = orderType.endsWith('LIMIT') && !orderType.includes('STOP LIMIT') ? (limitPrice ?? entry) : limitPrice;
   if(expiresAt){const expiry=new Date(expiresAt);if(Number.isNaN(expiry.getTime())||expiry.getTime()<=Date.now())throw new Error('La date d’expiration doit être valide et située dans le futur.');if(orderType==='MARKET')throw new Error('Une position au marché ne possède pas de date d’expiration d’ordre en attente.');}
-  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep:lotStepFixed,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt};
+  const group={id:groupId,instrument,direction,mode,orderType,triggerPrice,limitPrice:effectiveLimitPrice,expiresAt:expiresAt?new Date(expiresAt).toISOString():null,requestedLot:lot,lotStep:lotStepFixed,actualEntryPrice:orderType==='MARKET'?entry:null,children,autoJournal:Boolean(autoJournal),contractSpec:snapshot,brokerSnapshot:brokerSnapshot?{...brokerSnapshot}:snapshot?{brokerName:snapshot.brokerName,accountType:snapshot.accountType,accountCurrency:snapshot.accountCurrency,leverage:snapshot.leverage}:null,contractSize:snapshot?.contractSize??contractSize,quoteToAccount:snapshot?.quoteToAccount??quoteToAccount,feesPerLot:snapshot?.feesPerLot??feesPerLot,status:'OPEN',createdAt};
   return group;
 }
 
@@ -97,8 +97,10 @@ export function recordPartialClose(group, childId, {volume,exit,contractSize=gro
   if(!Number.isFinite(volume)||volume<=0||volume>child.remainingLot+1e-9) throw new Error('Le volume clôturé doit être positif et ne peut pas dépasser le volume restant.');
   if(group.lotStep&&Math.abs(volume/group.lotStep-Math.round(volume/group.lotStep))>1e-7)throw new Error('Le volume clôturé ne respecte pas le pas broker.');
   if(!contractSpec&&(!Number.isFinite(contractSize)||contractSize<=0))throw new Error('Renseignez les spécifications contractuelles du broker avant de calculer le résultat réel.');
+  const actualEntry=Number(child.actualEntryPrice);
+  if(!Number.isFinite(actualEntry)||actualEntry<=0)throw new Error('Le prix réel d’exécution manuelle doit être confirmé avant tout calcul P/L.');
   const feeAmount=fees===null?volume*(contractSpec?.feesPerLot??feesPerLot):fees;
-  const pnl=calculateClosePnl({direction:child.direction,entry:child.entry,exit,volume,contractSize,quoteToAccount,fees:feeAmount,contractSpec});
+  const pnl=calculateClosePnl({direction:child.direction,entry:actualEntry,exit,volume,contractSize,quoteToAccount,fees:feeAmount,contractSpec});
   child.closes.push({id:id(),volume,exit,...pnl,...(fxSnapshot?{fxSnapshot}:{}),closedAt:new Date().toISOString()});
   child.remainingLot=round(Math.max(0,child.remainingLot-volume),8);
   child.realizedPnl=round(child.realizedPnl+pnl.net,2); child.fees=round(child.fees+pnl.fees,2);
