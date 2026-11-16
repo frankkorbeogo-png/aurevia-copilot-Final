@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {generateOpportunityScenarios} from '../opportunity-engine.js';
 import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mjs';
 import {validateM5AIConsensus} from '../m5-entry-validation.js';
+import {cleanScenario} from '../netlify/functions/ai-analysis.mjs';
 
 function buildScenario(side,kind){
   const buy=side==='BUY',price=100,bias=buy?'haussier':'baissier';
@@ -73,4 +74,19 @@ test('M5 consensus vetoes prices outside the M15 zone or beyond SL/TP1',()=>{
  const result=validateM5AIConsensus({scenario,lead,review,audit});
  assert.equal(result.confirmed,false);
  assert.equal(result.entryReference,null);
+});
+
+test('AI M15 scenario normalizes transparent score components and preserves order prices',()=>{
+ const candidate={direction:'BUY',entryZone:{low:99,high:101},entry:100,stopLoss:98,takeProfits:[104],orderType:'BUY LIMIT',triggerPrice:null,limitPrice:100,confirmationScore:60,scoreComponents:[{label:'Structure M15',passed:true,weight:60},{label:'EMA and RSI',passed:false,weight:40}]};
+ const result=cleanScenario(candidate,'BUY',100);
+ assert.ok(result);
+ assert.equal(result.pendingOrderType,'BUY LIMIT');
+ assert.equal(result.limitPrice,100);
+ assert.equal(result.triggerPrice,null);
+ assert.equal(result.score,60);
+ assert.equal(Math.round(result.scoreComponents.reduce((sum,x)=>sum+x.weight,0)),100);
+});
+test('AI M15 rejects malformed STOP LIMIT geometry',()=>{
+ const candidate={direction:'BUY',entryZone:{low:99,high:102},entry:100,stopLoss:98,takeProfits:[105],orderType:'BUY STOP LIMIT',triggerPrice:99.5,limitPrice:100,confirmationScore:80,scoreComponents:[{label:'Structure',passed:true,weight:100}]};
+ assert.equal(cleanScenario(candidate,'BUY',100),null);
 });
