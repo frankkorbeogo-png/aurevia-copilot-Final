@@ -6,8 +6,7 @@ export function evaluateEntryTrigger(position,group,prices){
  const direction=group?.direction,order=group?.order_type||group?.orderType;
  if(!['BUY','SELL'].includes(direction)||!['BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'].includes(order)||((order.startsWith('BUY')&&direction!=='BUY')||(order.startsWith('SELL')&&direction!=='SELL')))return null;
  const buy=direction==='BUY',stopLimit=order.endsWith('STOP LIMIT');
- const plainStop=order==='BUY STOP'||order==='SELL STOP';
- const stopLeg=(stopLimit&&!position.trigger_seen)||plainStop;
+ const stopLeg=stopLimit&&!position.trigger_seen;
  const threshold=stopLeg?trigger:entry;
  if(!Number.isFinite(threshold)||threshold<=0)return null;
  // For LIMIT entries, the safe side is above entry for BUY and below for SELL.
