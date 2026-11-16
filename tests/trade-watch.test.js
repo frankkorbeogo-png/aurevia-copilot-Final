@@ -192,3 +192,11 @@ test('un ordre conditionnel sans prix réel manuel suspend le calcul P/L automat
  assert.match(source,/!\['MARKET','BUY MARKET','SELL MARKET'\]\.includes\(g\.order_type\)&&!\(Number\(p\.actual_entry_price\)>0\)\)continue/);
  assert.match(source,/calcul du résultat reste suspendu/);
 });
+
+test('une position unique ne génère qu’une notification d’activation pour tous ses TP',async()=>{
+ const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/notifiedUniqueGroups=new Set\(\)/);
+ assert.match(source,/g\.mode==='unique'&&notifiedUniqueGroups\.has\(g\.id\)/);
+ assert.match(source,/trading_positions\?group_id=eq\.\$\{g\.id\}&status=eq\.OPEN/);
+ assert.match(source,/Prix réellement exécuté confirmé/);
+});
