@@ -19,10 +19,28 @@ const LOCAL_ACCOUNT_DATA_KEYS=[
  'aurevia_analysis_history','aurevia_my_analysis'
 ];
 const LEGACY_TRADE_SYNC_QUEUE_KEY='aurevia-cloud-sync-retry-v1';
-function clearLocalAccountData(tradeQueueUserId=null){try{for(const key of LOCAL_ACCOUNT_DATA_KEYS)localStorage.removeItem(key);if(tradeQueueUserId){localStorage.removeItem(`${LEGACY_TRADE_SYNC_QUEUE_KEY}:${tradeQueueUserId}`);localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);}}catch{}}
+const LOCAL_ACCOUNT_SNAPSHOT_PREFIX='aurevia_account_data_v1:';
+function snapshotLocalAccountData(userId){if(!userId)return;try{const snapshot={};for(const key of LOCAL_ACCOUNT_DATA_KEYS){if(key==='aurevia_active_session_id')continue;const value=localStorage.getItem(key);if(value!==null)snapshot[key]=value;}localStorage.setItem(`${LOCAL_ACCOUNT_SNAPSHOT_PREFIX}${userId}`,JSON.stringify(snapshot));}catch{}}
+function restoreLocalAccountData(userId){if(!userId)return;try{const raw=localStorage.getItem(`${LOCAL_ACCOUNT_SNAPSHOT_PREFIX}${userId}`);if(!raw)return;const snapshot=JSON.parse(raw);for(const key of LOCAL_ACCOUNT_DATA_KEYS){if(key==='aurevia_active_session_id')continue;if(typeof snapshot?.[key]==='string')localStorage.setItem(key,snapshot[key]);}}catch{}}
+function clearLocalAccountData(tradeQueueUserId=null){try{for(const key of LOCAL_ACCOUNT_DATA_KEYS)localStorage.removeItem(key);if(tradeQueueUserId){localStorage.removeItem(`${LEGACY_TRADE_SYNC_QUEUE_KEY}:${tradeQueueUserId}`);localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);localStorage.removeItem(`${LOCAL_ACCOUNT_SNAPSHOT_PREFIX}${tradeQueueUserId}`);}}catch{}}
 function bindLocalDataOwner(userId){
  const id=String(userId||'').trim();if(!id)return;
- try{const previous=localStorage.getItem(LOCAL_DATA_OWNER_KEY);if(previous&&previous!==id){const legacyQueue=localStorage.getItem(LEGACY_TRADE_SYNC_QUEUE_KEY);if(legacyQueue){const previousQueueKey=`${LEGACY_TRADE_SYNC_QUEUE_KEY}:${previous}`;if(!localStorage.getItem(previousQueueKey))localStorage.setItem(previousQueueKey,legacyQueue);localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);}clearLocalAccountData();localStorage.setItem(LOCAL_DATA_OWNER_KEY,id);window.__aureviaUserId=id;window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{previousUserId:previous,userId:id}}));return;}if(!previous&&localStorage.getItem(LEGACY_TRADE_SYNC_QUEUE_KEY))localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);localStorage.setItem(LOCAL_DATA_OWNER_KEY,id);window.__aureviaUserId=id;}catch{}
+ try{
+  const previous=localStorage.getItem(LOCAL_DATA_OWNER_KEY);
+  if(previous&&previous!==id){
+   snapshotLocalAccountData(previous);
+   const legacyQueue=localStorage.getItem(LEGACY_TRADE_SYNC_QUEUE_KEY);if(legacyQueue){const previousQueueKey=`${LEGACY_TRADE_SYNC_QUEUE_KEY}:${previous}`;if(!localStorage.getItem(previousQueueKey))localStorage.setItem(previousQueueKey,legacyQueue);localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);}
+   clearLocalAccountData();restoreLocalAccountData(id);
+   localStorage.setItem(LOCAL_DATA_OWNER_KEY,id);window.__aureviaUserId=id;
+   window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{previousUserId:previous,userId:id}}));return;
+  }
+  if(!previous){
+   const hasUnownedData=LOCAL_ACCOUNT_DATA_KEYS.some(key=>key!=='aurevia_active_session_id'&&localStorage.getItem(key)!==null);
+   if(hasUnownedData){clearLocalAccountData();window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{previousUserId:null,userId:id}}));}
+   if(localStorage.getItem(LEGACY_TRADE_SYNC_QUEUE_KEY))localStorage.removeItem(LEGACY_TRADE_SYNC_QUEUE_KEY);
+  }
+  localStorage.setItem(LOCAL_DATA_OWNER_KEY,id);window.__aureviaUserId=id;
+ }catch{}
 }
 function readAccountSessions(){try{const v=JSON.parse(localStorage.getItem(ACCOUNT_SESSIONS_KEY)||'{}');return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}catch{return {};}}
 function cacheAccountSession(session){const email=String(session?.user?.email||'').trim().toLowerCase();if(!email||!session?.access_token||!session?.refresh_token)return;try{const all=readAccountSessions();all[email]={access_token:session.access_token,refresh_token:session.refresh_token,expires_at:session.expires_at||null,updated_at:Date.now()};const allowed=new Set(getRememberedAccounts().map(x=>x.email));for(const key of Object.keys(all))if(!allowed.has(key))delete all[key];localStorage.setItem(ACCOUNT_SESSIONS_KEY,JSON.stringify(all));}catch{}}
