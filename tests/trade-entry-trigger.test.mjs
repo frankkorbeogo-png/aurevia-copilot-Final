@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateEntryTrigger } from '../netlify/functions/_trade-entry-trigger.mjs';
+import { evaluateEntryTrigger,isPendingOrderExpired } from '../netlify/functions/_trade-entry-trigger.mjs';
 
 const group=(order_type,direction)=>({order_type,direction});
 const pos=(extra={})=>({entry_price:100,trigger_price:110,trigger_seen:false,entry_armed:false,last_observed_price:null,...extra});
@@ -57,4 +57,11 @@ test('SELL STOP LIMIT: stop and limit legs each require their own crossing',()=>
  s=evaluateEntryTrigger(p,group('SELL STOP LIMIT','SELL'),quote(119));
  assert.equal(s.action,'TRACK');assert.equal(s.entry_armed,true);
  assert.equal(evaluateEntryTrigger({...p,...s,trigger_seen:true},group('SELL STOP LIMIT','SELL'),quote(120)).action,'ACTIVATE');
+});
+
+test('pending order expires at or after its expiry timestamp',()=>{
+ const expiry='2026-11-15T12:00:00.000Z';
+ assert.equal(isPendingOrderExpired({expires_at:expiry},Date.parse(expiry)-1),false);
+ assert.equal(isPendingOrderExpired({expires_at:expiry},Date.parse(expiry)),true);
+ assert.equal(isPendingOrderExpired({expires_at:null},Date.parse(expiry)),false);
 });
