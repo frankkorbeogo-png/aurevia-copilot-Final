@@ -15,8 +15,9 @@ export async function handler(event){
   }
   if(action==='create_position'){
    const scenarioId=String(body.id||''),mode=String(body.mode||''),volume=Number(body.volume);
-   const contractSpec=body.contract_spec&&typeof body.contract_spec==='object'&&!Array.isArray(body.contract_spec)?{...body.contract_spec,minLot:0.01,lotStep:0.01,maxLot:null}:null;
-   if(!scenarioId||!['unique','separate'].includes(mode)||!Number.isFinite(volume)||volume<0.01||Math.abs(volume/0.01-Math.round(volume/0.01))>1e-7||!contractSpec||typeof contractSpec!=='object'||Array.isArray(contractSpec))return json(400,{error:'Scénario, mode, lot et paramètres techniques valides requis.'});
+   const contractSpec=body.contract_spec&&typeof body.contract_spec==='object'&&!Array.isArray(body.contract_spec)?{...body.contract_spec}:null;
+   const minLot=Number(contractSpec?.minLot),lotStep=Number(contractSpec?.lotStep),maxLot=contractSpec?.maxLot===null||contractSpec?.maxLot===undefined||contractSpec?.maxLot===''?null:Number(contractSpec.maxLot);
+   if(!scenarioId||!['unique','separate'].includes(mode)||!Number.isFinite(volume)||volume<=0||!contractSpec||!Number.isFinite(minLot)||minLot<=0||!Number.isFinite(lotStep)||lotStep<=0||(maxLot!==null&&(!Number.isFinite(maxLot)||maxLot<minLot))||volume<minLot||(maxLot!==null&&volume>maxLot)||Math.abs(volume/lotStep-Math.round(volume/lotStep))>1e-7)return json(400,{error:'Scénario, mode, volume et limites techniques du broker invalides.'});
    const preferenceRows=await rest(`user_preferences?select=preferences&user_id=eq.${user}&limit=1`);
    const accountCurrency=String(preferenceRows?.[0]?.preferences?.account_currency||'').trim().toUpperCase();
    if(!/^[A-Z]{3}$/.test(accountCurrency))return json(400,{error:'Définissez d’abord la devise de votre compte dans Paramètres.'});
