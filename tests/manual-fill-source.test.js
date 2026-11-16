@@ -15,5 +15,6 @@ test('la base exige que le prix réel du groupe corresponde au prix déclaré da
  assert.match(migration,/new\.contract_spec->>'actualEntryPrice'/);
  assert.match(migration,/new\.actual_entry_price is distinct from v_spec_actual/);
  assert.match(migration,/PENDING_ORDER_ACTUAL_FILL_NOT_ALLOWED/);
+ assert.match(migration,/contract_spec=coalesce\(contract_spec,'\{\}'::jsonb\)\|\|jsonb_build_object\('actualEntryPrice',p_actual_entry_price\)/);
  assert.match(migration,/before insert or update of order_type, actual_entry_price, contract_spec/i);
 });
