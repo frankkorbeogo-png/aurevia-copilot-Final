@@ -37,6 +37,8 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   assert.ok(calls.insert[0].seen_at,'GDELT first-seen time must be retained separately');
   assert.equal(calls.claims,2);assert.equal(calls.telegram.length,2);
   assert.ok(calls.telegram[0].text.includes('ALERTE MACRO'));
+  assert.ok(calls.telegram[0].text.includes('Repéré par GDELT :'));
+  assert.ok(!calls.telegram[0].text.includes('Publié :'));
   assert.ok(calls.telegram[0].text.includes('ne constitue pas, à elle seule, un signal BUY/SELL'));
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
