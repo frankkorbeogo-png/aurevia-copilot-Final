@@ -368,11 +368,12 @@ export async function syncTradeGroupToSupabase(group,expectedUserId=null){
  return {synced:true,journalMappings:Array.isArray(data.journal_mappings)?data.journal_mappings:[]};
 }
 
-export async function syncActualFillPriceToSupabase(groupId,positionId,actualEntryPrice){
+export async function syncActualFillPriceToSupabase(groupId,positionId,actualEntryPrice,expectedUserId=null){
  await ensureClient();
  const {data:{user},error:userError}=await supabase.auth.getUser();
  if(userError)throw new Error(userError.message);
  if(!user)return {synced:false,reason:'not_authenticated'};
+ if(expectedUserId&&user.id!==expectedUserId)return {synced:false,reason:'account_changed'};
  const {data,error}=await supabase.rpc('aurevia_update_actual_fill_price',{
   p_group_id:groupId,p_position_id:positionId||null,p_actual_entry_price:Number(actualEntryPrice)
  });
@@ -481,11 +482,12 @@ export async function markAllAnnouncementsAsRead(ids){
  if(error)throw new Error(error.message);return {success:true,count:unique.length};
 }
 
-export async function syncManualJournalToSupabase(entries=[]){
+export async function syncManualJournalToSupabase(entries=[],expectedUserId=null){
   await ensureClient();
   const {data:{user},error:userError}=await supabase.auth.getUser();
   if(userError)throw new Error(userError.message);
   if(!user)return {synced:false,entries:[]};
+  if(expectedUserId&&user.id!==expectedUserId)return {synced:false,reason:'account_changed',entries:[]};
   const payload=(Array.isArray(entries)?entries:[]).map(row=>({
     id:row.id,instrument:row.instrument,direction:row.direction,result:row.result,date:row.date,note:row.note||''
   }));
