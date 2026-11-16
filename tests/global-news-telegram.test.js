@@ -16,7 +16,7 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id')){calls.insert=JSON.parse(options.body);return response([],201);}
-  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
+  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([{id:'event-1',title:'Central bank announces a rate decision',source_url:'https://news.example.com/central-bank-rates',source_domain:'news.example.com',published_at:null,seen_at:new Date().toISOString(),telegram_broadcast_started_at:null}]);
   if(url.includes('/rest/v1/global_news_events?id=eq.event-1'))return response([]);
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'},{user_id:'u2',chat_id:'456'}]);
   if(url.includes('/rest/v1/telegram_event_deliveries?on_conflict='))return response([],201);
@@ -33,8 +33,12 @@ test('GDELT récupère 90 minutes et le registre Telegram conserve les accusés 
   const result=await syncNews({httpMethod:'POST'}),body=JSON.parse(result.body);
   assert.equal(result.statusCode,200);assert.equal(body.ok,true);assert.equal(body.fetched,1);
   assert.equal(calls.insert.length,1);assert.equal(calls.insert[0].category,'macro_geopolitics');
+  assert.equal(calls.insert[0].published_at,null,'GDELT seendate must not be represented as publisher publication time');
+  assert.ok(calls.insert[0].seen_at,'GDELT first-seen time must be retained separately');
   assert.equal(calls.claims,2);assert.equal(calls.telegram.length,2);
   assert.ok(calls.telegram[0].text.includes('ALERTE MACRO'));
+  assert.ok(calls.telegram[0].text.includes('Repéré par GDELT :'));
+  assert.ok(!calls.telegram[0].text.includes('Publié :'));
   assert.ok(calls.telegram[0].text.includes('ne constitue pas, à elle seule, un signal BUY/SELL'));
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
@@ -65,7 +69,7 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name'))return response([]);
   if(url.includes('/rest/v1/global_news_events?on_conflict=external_id'))return response([],201);
   if(url.includes('/rest/v1/global_news_events?select=id,title,source_url')){
-   return response(completed?[]:[{id:'retry-event',title:'Rate decision follow-up',source_url:'https://news.example.com/rates',source_domain:'news.example.com',published_at:new Date().toISOString(),telegram_broadcast_started_at:'2026-11-15T08:00:00Z'}]);
+   return response(completed?[]:[{id:'retry-event',title:'Rate decision follow-up',source_url:'https://news.example.com/rates',source_domain:'news.example.com',published_at:null,seen_at:new Date().toISOString(),telegram_broadcast_started_at:'2026-11-15T08:00:00Z'}]);
   }
   if(url.includes('/rest/v1/global_news_events?id=eq.retry-event')){if(body.telegram_broadcast_completed_at)completed=true;return response([]);}
   if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'u1',chat_id:'123'},{user_id:'u2',chat_id:'456'}]);
@@ -97,6 +101,33 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
   assert.equal(second.statusCode,200);assert.equal(secondBody.telegram[0].status,'sent');
   assert.equal(sendCount['123'],1);assert.equal(sendCount['456'],2);
   assert.equal(deliveries.get('123').status,'sent');assert.equal(deliveries.get('456').status,'sent');
+ }finally{
+  globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
+ }
+});
+
+
+test('une seule tâche macro en échec renvoie HTTP 502 au scheduler',async()=>{
+ const oldFetch=globalThis.fetch,oldEnv={...process.env};
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',FRED_API_KEY:'fred'});
+ delete process.env.TELEGRAM_BOT_TOKEN;
+ globalThis.fetch=async input=>{
+  const url=String(input);
+  if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('api.stlouisfed.org/fred/release/dates')){
+   const id=new URL(url).searchParams.get('release_id');
+   return id==='10'?response({error_message:'temporary FRED failure'},503):response({release_dates:[]});
+  }
+  if(url.includes('api.gdeltproject.org'))return response({articles:[]});
+  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([]);
+  throw new Error('Unexpected URL '+url);
+ };
+ try{
+  const result=await syncNews({httpMethod:'POST'}),body=JSON.parse(result.body);
+  assert.equal(result.statusCode,502);
+  assert.equal(body.ok,false);
+  assert.match(body.economicCalendarError,/FRED release 10 HTTP 503/);
+  assert.equal(body.fetched,0);
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
  }

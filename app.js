@@ -5,9 +5,10 @@ import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
 import { initEconomicCalendar } from './news.js';
 import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase, deleteOpenTradeGroupFromSupabase, deletePendingTradeFromSupabase, deleteTradePositionFromSupabase, deleteLinkedJournalEntryFromSupabase } from './auth.js';
-import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds } from './trade-management.js';
+import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds, markTradeGroupCloudSyncPending, markTradeCloseCloudSyncPending } from './trade-management.js';
 import { validateContractSpec, calculateEstimatedMargin } from './contract-engine.js';
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
+import { validateMarketQuote } from './market-quote-validation.js';
 
 const $ = id => document.getElementById(id);
 const symbols = Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,{label:item.label,tv:item.tv,provider:item.provider,market:item.market}]));
@@ -15,6 +16,57 @@ let selectedSymbol='XAUUSD', selectedTf='15';
 let accountCurrency=null;
 let tradingViewMountToken=0, tradingViewRetryTimer=null, tradingViewResizeObserver=null;
 let deferredInstallPrompt=null;
+
+const TRADE_SYNC_QUEUE_KEY='aurevia-cloud-sync-retry-v1';
+let tradeSyncFlushBusy=false;
+function readTradeSyncQueue(){
+  try{const value=JSON.parse(localStorage.getItem(TRADE_SYNC_QUEUE_KEY)||'{}');return {groups:Array.isArray(value.groups)?value.groups:[],closes:Array.isArray(value.closes)?value.closes:[]};}
+  catch{return {groups:[],closes:[]};}
+}
+function writeTradeSyncQueue(queue){try{localStorage.setItem(TRADE_SYNC_QUEUE_KEY,JSON.stringify(queue));return true;}catch{return false;}}
+function queueTradeGroupSync(groupId,telegramText=null){
+  const queue=readTradeSyncQueue(),existing=queue.groups.find(item=>item.groupId===groupId);
+  if(existing){if(telegramText)existing.telegramText=telegramText;}else queue.groups.push({groupId,telegramText,queuedAt:new Date().toISOString()});
+  markTradeGroupCloudSyncPending(groupId,true);
+  if(!writeTradeSyncQueue(queue))throw new Error('Impossible de conserver la demande de synchronisation sur cet appareil.');
+}
+function queueTradeCloseSync(groupId,childId,closeId,telegramText=null){
+  const queue=readTradeSyncQueue();if(!queue.closes.some(item=>item.closeId===closeId))queue.closes.push({groupId,childId,closeId,telegramText,queuedAt:new Date().toISOString()});
+  markTradeCloseCloudSyncPending(groupId,childId,closeId,true);
+  if(!writeTradeSyncQueue(queue))throw new Error('Impossible de conserver la clôture en attente de synchronisation.');
+}
+async function flushTradeSyncQueue(){
+  if(tradeSyncFlushBusy||!window.__aureviaAuthenticated)return {synced:0,pending:true};
+  tradeSyncFlushBusy=true;let synced=0;
+  try{
+    let queue=readTradeSyncQueue();
+    for(const item of [...queue.groups]){
+      const group=loadTradeGroups().find(row=>row.id===item.groupId);
+      if(!group){queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue);continue;}
+      try{
+        const result=await syncTradeGroupToSupabase(group);if(!result?.synced)continue;
+        if(result.journalMappings)attachCloudJournalIds(group.id,result.journalMappings);
+        markTradeGroupCloudSyncPending(group.id,false);
+        queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue);synced++;
+        if(item.telegramText)sendTelegramNotification({type:'trade_open',text:item.telegramText}).catch(()=>{});
+        showInAppNotice('Position et journal confirmés dans le cloud AUREVIA.',{type:'success'});
+      }catch(error){console.warn('Synchronisation cloud du trade différée :',error.message);}
+    }
+    queue=readTradeSyncQueue();
+    for(const item of [...queue.closes]){
+      const group=loadTradeGroups().find(row=>row.id===item.groupId),child=group?.children.find(row=>row.id===item.childId),closeEvent=child?.closes?.find(row=>row.id===item.closeId);
+      if(!group||!child||!closeEvent){queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue);continue;}
+      try{
+        const result=await syncTradeCloseToSupabase(group,child,closeEvent);if(!result?.synced)continue;
+        markTradeCloseCloudSyncPending(group.id,child.id,closeEvent.id,false);
+        queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue);synced++;
+        if(item.telegramText)sendTelegramNotification({type:'trade_close',text:item.telegramText}).catch(()=>{});
+        showInAppNotice('Clôture confirmée dans le cloud AUREVIA.',{type:'success'});
+      }catch(error){console.warn('Synchronisation cloud de la clôture différée :',error.message);}
+    }
+    const pending=readTradeSyncQueue();return {synced,pending:pending.groups.length>0||pending.closes.length>0};
+  }finally{tradeSyncFlushBusy=false;}
+}
 async function refreshSelectedQuote(){
   const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
   if(label)label.textContent=symbols[selectedSymbol]?.label||selectedSymbol;
@@ -23,12 +75,13 @@ async function refreshSelectedQuote(){
   try{
     const token=await getAnalysisAccessToken();
     if(!token)throw new Error('Connectez-vous pour consulter le cours.');
-    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].label)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].provider)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
-    const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
+    if(!response.ok)throw new Error(data.error||'Cours indisponible');
+    const checked=validateMarketQuote(data,{maxFetchedAgeMs:45000});if(!checked.ok)throw new Error(checked.error);
+    const value=checked.price,digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
     if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-    if(status)status.textContent=`Twelve Data · ${new Date(data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`;
+    if(status)status.textContent=`Twelve Data · bougie 1 min · ${new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} · ${Number.isFinite(Number(data.ageSeconds))?`${data.ageSeconds}s`:''}`;
   }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
 }
 function initAppInstallation(){
@@ -120,10 +173,10 @@ function mountTickerTape(){
   script.text=JSON.stringify({symbols:[
     {proName:'OANDA:XAUUSD',title:'Or / USD'},{proName:'OANDA:XAGUSD',title:'Argent / USD'},
     {proName:'OANDA:EURUSD',title:'EUR/USD'},{proName:'OANDA:GBPUSD',title:'GBP/USD'},
-    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'PEPPERSTONE:US30',title:'US30'},
-    {proName:'NASDAQ:NDX',title:'NASDAQ 100'},{proName:'SP:SPX',title:'S&P 500'},
-    {proName:'TVC:DXY',title:'Dollar Index'},{proName:'TVC:USOIL',title:'WTI'},
-    {proName:'BITSTAMP:BTCUSD',title:'Bitcoin'},{proName:'NASDAQ:NVDA',title:'NVIDIA'}
+    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'OANDA:EURGBP',title:'EUR/GBP'},
+    {proName:'OANDA:GBPJPY',title:'GBP/JPY'},{proName:'TVC:DXY',title:'Dollar Index'},
+    {proName:'BITSTAMP:BTCUSD',title:'Bitcoin'},{proName:'BITSTAMP:ETHUSD',title:'Ethereum'},
+    {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:AAPL',title:'Apple'}
   ],showSymbolLogo:true,isTransparent:true,displayMode:'adaptive',colorTheme:'dark',locale:'fr'});
   const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';
   const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';wrapper.append(widget,script);
@@ -172,7 +225,7 @@ async function loadAnalysis(){
   $('chartStatus').textContent=state.message||'Données externes';
   $('mtfRows').innerHTML=state.rows?.length?state.rows.map(r=>`<tr><td>${r.tf}</td><td>${r.ema200===null?'—':Number(r.ema200).toFixed(2)}</td><td>${r.rsi14===null?'—':Number(r.rsi14).toFixed(1)}</td><td>${escapeText(r.bias)} · ${escapeText(r.breaks)}</td></tr>`).join(''):`<tr><td colspan="4" class="empty-cell">${state.tableMessage||'Données multi-timeframes indisponibles.'}</td></tr>`;
   const availablePlans=['buy','sell'].filter(side=>['IDENTIFIED','WATCH'].includes(state.scenarios?.[side]?.status));
-  $('signalState').textContent=(state.decision==='WAIT'&&availablePlans.length)?'PLANS CHIFFRÉS':(state.decision||'WAIT');const macro=state.macroContext;const watchText=state.decision==='WAIT'&&Array.isArray(state.watchDirectives)&&state.watchDirectives.length?'\n\nDIRECTIVES À ATTENDRE :\n'+state.watchDirectives.map((x,i)=>`${i+1}. Condition : ${x.condition}\n   Réaction attendue : ${x.expectedReaction}\n   Confirmation : ${x.confirmation}\n   Invalidation : ${x.invalidation}`).join('\n\n'):'';$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+watchText+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`source FRED · dernières observations au ${macro.asOf||'date inconnue'} · DXY, rendements, taux Fed, CPI et chômage transmis au moteur (données retardées).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
+  $('signalState').textContent=(state.decision==='WAIT'&&availablePlans.length)?'PLANS CHIFFRÉS':(state.decision||'WAIT');const macro=state.macroContext;const watchText=state.decision==='WAIT'&&Array.isArray(state.watchDirectives)&&state.watchDirectives.length?'\n\nDIRECTIVES À ATTENDRE :\n'+state.watchDirectives.map((x,i)=>`${i+1}. Condition : ${x.condition}\n   Réaction attendue : ${x.expectedReaction}\n   Confirmation : ${x.confirmation}\n   Invalidation : ${x.invalidation}`).join('\n\n'):'';$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+watchText+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`sources macro chargées · DXY ${macro.dxy?.usableForDirectionalBias?'horodaté et exploitable':'non exploitable ou indisponible'} · FRED ${macro.fred?.availableSeries??0}/${macro.fred?.totalSeries??6} séries disponibles (dernière observation ${macro.fred?.asOf||'inconnue'}).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
   if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
   $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} / 100`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
@@ -227,7 +280,7 @@ async function validationContractSpec(){
   quoteToAccount,quoteCurrency,fxSnapshot,
   pointSize:$('validationPointSize').value.trim()?Number($('validationPointSize').value):null,pointValue:$('validationPointValue').value.trim()?Number($('validationPointValue').value):null,
   tickSize:$('validationTickSize').value.trim()?Number($('validationTickSize').value):null,tickValue:$('validationTickValue').value.trim()?Number($('validationTickValue').value):null,
-  minLot:0.01,lotStep:0.01,maxLot:null,
+  minLot:Number($('validationMinLot').value),lotStep:Number($('validationLotStep').value),maxLot:$('validationMaxLot').value.trim()?Number($('validationMaxLot').value):null,
   feesPerLot:Number($('validationFees').value||0)
  };
 }
@@ -239,8 +292,7 @@ async function confirmTradeValidation(){
  try{
   const s=pendingValidationScenario;if(!s?.id)throw new Error('Aucun scénario confirmé n’est sélectionné.');
   const volume=Number($('validationLot').value),mode=$('validationMode').value;
-  if(!Number.isFinite(volume)||volume<0.01)throw new Error('Le lot minimum autorisé est de 0,01.');
-   if(Math.abs(volume/0.01-Math.round(volume/0.01))>1e-7)throw new Error('Le lot doit être un multiple de 0,01.');
+  if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un volume positif.');
   const rawSpec=await validationContractSpec(),checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
   if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi dépasse les limites indiquées dans les paramètres techniques.');
@@ -450,14 +502,17 @@ function renderAdminUsers(users){
   const online=Boolean(u.online),active=Boolean(u.session_active);
   const lastSeen=u.last_seen?new Date(u.last_seen).toLocaleString():'—';
   const sessionLabel=active?'Session active':'Aucune session active';
-  return `<tr><td>${escapeText(u.display_name||u.email||u.id)}<small>${escapeText(u.email||'')}</small></td><td>${u.created_at?new Date(u.created_at).toLocaleDateString():'—'}</td><td>${u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString():'Jamais'}</td><td>${escapeText(lastSeen)}${u.user_agent?`<small>${escapeText(u.user_agent.slice(0,90))}</small>`:''}</td><td><span class="admin-state ${online?'is-online':'is-offline'}">${online?'En ligne':'Hors ligne'}</span><small>${escapeText(sessionLabel)}</small></td><td>${u.role==='admin'?'Administrateur':'Utilisateur'}</td><td><div class="table-actions">${suspended?`<button class="small-btn" data-admin-action="activate" data-user="${u.id}">Réactiver</button>`:`<button class="small-btn" data-admin-action="suspend" data-user="${u.id}">Suspendre</button>`}${active?`<button class="small-btn" data-admin-action="revoke_session" data-user="${u.id}">Déconnecter</button>`:''}<button class="small-btn danger-btn" data-admin-action="delete_user" data-user="${u.id}" data-email="${escapeText(u.email||'')}">Supprimer</button></div></td></tr>`;
+  return `<tr><td>${escapeText(u.display_name||u.email||u.id)}<small>${escapeText(u.email||'')}</small></td><td>${u.created_at?new Date(u.created_at).toLocaleDateString():'—'}</td><td>${u.last_sign_in_at?new Date(u.last_sign_in_at).toLocaleString():'Jamais'}</td><td>${escapeText(lastSeen)}${u.user_agent?`<small>${escapeText(u.user_agent.slice(0,90))}</small>`:''}</td><td><span class="admin-state ${online?'is-online':'is-offline'}">${online?'En ligne':'Hors ligne'}</span><small>${escapeText(sessionLabel)}</small></td><td>${u.role==='admin'?'Administrateur':'Utilisateur'}</td><td><div class="table-actions">${suspended?`<button class="small-btn" data-admin-action="activate" data-user="${u.id}">Réactiver</button>`:`<button class="small-btn" data-admin-action="suspend" data-user="${u.id}">Suspendre</button>`}${active?`<button class="small-btn" data-admin-action="revoke_session" data-user="${u.id}">Déconnecter</button>`:''}<button class="small-btn danger-btn" data-admin-action="delete_user" data-user="${u.id}" data-email="${escapeText(u.email||'')}">Suppression standard</button><button class="small-btn danger-btn" data-admin-action="permanent_delete_user" data-user="${u.id}" data-email="${escapeText(u.email||'')}">Suppression définitive + blocage e-mail</button></div></td></tr>`;
  }).join(''):'<tr><td colspan="7" class="empty-cell">Aucun compte correspondant.</td></tr>';
  host.querySelectorAll('[data-admin-action]').forEach(btn=>btn.addEventListener('click',async()=>{
   const action=btn.dataset.adminAction,user_id=btn.dataset.user,email=btn.dataset.email||'';
-  const message=action==='delete_user'?`Supprimer définitivement le compte ${email||user_id} et ses données liées ? Cette action est irréversible.`:action==='revoke_session'?`Déconnecter à distance ${email||user_id} ? La session sera refusée lors du prochain contrôle.`:`Confirmer l’action « ${action} » pour ${email||user_id} ?`;
-  if(!await confirmInApp({title:'Confirmer l’action administrateur',message,confirmLabel:'Confirmer'}))return;
+  const permanent=action==='permanent_delete_user';
+  const message=action==='delete_user'?`Supprimer le compte ${email||user_id} et ses données AUREVIA ? L’adresse e-mail pourra être utilisée pour créer un nouveau compte ultérieurement.`:permanent?`SUPPRESSION DÉFINITIVE : le compte ${email||user_id} et ses données seront supprimés. Une empreinte cryptographique de son e-mail sera conservée pour interdire toute nouvelle inscription avec cette adresse. Cette interdiction ne pourra pas être annulée depuis la console.`:action==='revoke_session'?`Déconnecter à distance ${email||user_id} ? La session sera refusée lors du prochain contrôle.`:`Confirmer l’action « ${action} » pour ${email||user_id} ?`;
+  if(permanent){
+   if(!await confirmInApp({title:'Suppression définitive et blocage e-mail',message,phrase:'SUPPRIMER DÉFINITIVEMENT',confirmLabel:'Bloquer et supprimer',danger:true}))return;
+  }else if(!await confirmInApp({title:'Confirmer l’action administrateur',message,confirmLabel:'Confirmer',danger:action==='delete_user'}))return;
   btn.disabled=true;
-  try{await adminRequest({action,user_id});showInAppNotice(({activate:'Compte réactivé.',suspend:'Compte suspendu.',revoke_session:'Session utilisateur révoquée.',delete_user:'Compte utilisateur supprimé.'})[action]||'Action administrateur effectuée.',{type:'success'});await loadAdminConsole(adminPage,adminSearchValue);}
+  try{await adminRequest({action,user_id,...(permanent?{confirmation}:{})});showInAppNotice(({activate:'Compte réactivé.',suspend:'Compte suspendu.',revoke_session:'Session utilisateur révoquée.',delete_user:'Compte supprimé. Son adresse peut être réutilisée.',permanent_delete_user:'Compte supprimé et adresse e-mail définitivement bloquée.'})[action]||'Action administrateur effectuée.',{type:'success'});await loadAdminConsole(adminPage,adminSearchValue);}
   catch(error){showInAppNotice(error.message,{type:'error'});btn.disabled=false;}
  }));
 }
@@ -491,11 +546,11 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
   const query=new URLSearchParams({page:String(adminPage)});if(adminSearchValue)query.set('q',adminSearchValue);
   const data=await adminRequest(null,`?${query.toString()}`);
   adminHasMore=Boolean(data.pagination?.has_more);$('adminUsersPage').textContent=`Page ${adminPage} · ${data.pagination?.total??0} compte(s)`;$('adminUsersPrev').disabled=adminPage<=1;$('adminUsersNext').disabled=!adminHasMore;
-  $('adminUnlocked')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
-  const stats=data.stats||{};$('adminStatProfiles').textContent=stats.profiles??'—';$('adminStatOnline').textContent=stats.users_online??'—';$('adminStatSessions').textContent=stats.active_sessions??'—';$('adminStatSuspended').textContent=stats.suspended??'—';$('adminStatTrades').textContent=stats.trading_journal??'—';$('adminStatPositions').textContent=stats.trading_position_groups??'—';$('adminStatTelegram').textContent=stats.telegram_connections??'—';
+  $('adminUnlocked')?.removeAttribute('hidden');$('adminLicensesPanel')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
+  const stats=data.stats||{};$('adminStatProfiles').textContent=stats.profiles??'—';$('adminStatOnline').textContent=stats.users_online??'—';$('adminStatSessions').textContent=stats.active_sessions??'—';$('adminStatSuspended').textContent=stats.suspended??'—';$('adminStatBlockedEmails').textContent=stats.blocked_emails??'—';$('adminStatTrades').textContent=stats.trading_journal??'—';$('adminStatPositions').textContent=stats.trading_position_groups??'—';$('adminStatTelegram').textContent=stats.telegram_connections??'—';
   adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAnnouncementRecipientPicker();renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();
  }catch(error){
-  $('adminUnlocked')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
+  $('adminUnlocked')?.setAttribute('hidden','');$('adminLicensesPanel')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
   if(error.status===403||error.status===409){window.__aureviaAdminVerified=false;document.querySelector('[data-page="admin"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');if(location.hash==='#admin')history.replaceState(null,'','#accueil');}
   if($('adminUsersNote'))$('adminUsersNote').textContent=error.message;
  }
@@ -508,7 +563,7 @@ function readPositionContractSpec(){
     quoteToAccount:1,
     pointSize:$('posPointSize').value.trim()?Number($('posPointSize').value):null, pointValue:$('posPointValue').value.trim()?Number($('posPointValue').value):null,
     tickSize:$('posTickSize').value.trim()?Number($('posTickSize').value):null, tickValue:$('posTickValue').value.trim()?Number($('posTickValue').value):null,
-    minLot:0.01, lotStep:0.01, maxLot:null,
+    minLot:Number($('posMinLot').value), lotStep:Number($('posLotStep').value), maxLot:$('posMaxLot').value.trim()?Number($('posMaxLot').value):null,
     feesPerLot:Number($('posFees').value||0)
   };
 }
@@ -589,8 +644,8 @@ async function createPositionFromForm(){
       const orderCheck=validatePendingOrderAgainstQuote({orderType:selectedOrderType,direction:$('posDirection').value,entry:Number($('posEntry').value),triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,marketPrice:Number(quoteData.price)});
       if(!orderCheck.ok)throw new Error(orderCheck.error);
     }
-    const contractSpec=readPositionContractSpec();contractSpec.quoteCurrency=inferQuoteCurrency($('posInstrument').value);    if(contractSpec.calculationType==='contract'){      if(!contractSpec.quoteCurrency)throw new Error('Devise de cotation inconnue : marge non calculable.');      if(contractSpec.quoteCurrency!==accountCurrency){        const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous pour récupérer le taux de conversion.');        const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(contractSpec.quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});        const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Conversion de devise indisponible.');        const fxSnapshot=validateFxSnapshot(data,{from:contractSpec.quoteCurrency,to:accountCurrency});contractSpec.quoteToAccount=fxSnapshot.rate;contractSpec.fxSnapshot=fxSnapshot;      }else contractSpec.quoteToAccount=1;    }    const checked=validateContractSpec(contractSpec);if(!checked.ok)throw new Error(checked.error);const enteredLot=Number($('posLot').value);if(!Number.isFinite(enteredLot)||enteredLot<0.01)throw new Error('Le lot minimum autorisé est de 0,01.');if(Math.abs(enteredLot/0.01-Math.round(enteredLot/0.01))>1e-7)throw new Error('Le lot doit être un multiple de 0,01.');const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:enteredLot,lotStep:checked.spec.lotStep,entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,expiresAt:$('posExpiry').value?new Date($('posExpiry').value).toISOString():null,contractSpec:checked.spec,brokerSnapshot:{brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage}});
-    saveTradeGroup(group);renderPositions();showInAppNotice('Position créée localement dans AUREVIA. Synchronisation cloud en cours…',{type:'info',duration:6500});const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];sendTelegramNotification({type:'trade_open',text:tradeLines.join('\n')}).catch(()=>{});syncTradeGroupToSupabase(group).then(r=>{if(r.synced&&r.journalMappings)attachCloudJournalIds(group.id,r.journalMappings);if(r.synced)showInAppNotice(`Position enregistrée et synchronisée : ${group.children.length} trade(s).`,{type:'success'});else showInAppNotice(`Position enregistrée sur cet appareil : connectez-vous à Supabase pour la synchroniser. ${group.autoJournal?'Fiche locale liée au journal créée.':'Journal automatique désactivé.'}`,{type:'success'});}).catch(error=>showInAppNotice(`Position conservée localement, mais synchronisation cloud impossible : ${error.message}`));
+    const contractSpec=readPositionContractSpec();contractSpec.quoteCurrency=inferQuoteCurrency($('posInstrument').value);    if(contractSpec.calculationType==='contract'){      if(!contractSpec.quoteCurrency)throw new Error('Devise de cotation inconnue : marge non calculable.');      if(contractSpec.quoteCurrency!==accountCurrency){        const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous pour récupérer le taux de conversion.');        const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(contractSpec.quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});        const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Conversion de devise indisponible.');        const fxSnapshot=validateFxSnapshot(data,{from:contractSpec.quoteCurrency,to:accountCurrency});contractSpec.quoteToAccount=fxSnapshot.rate;contractSpec.fxSnapshot=fxSnapshot;      }else contractSpec.quoteToAccount=1;    }    const checked=validateContractSpec(contractSpec);if(!checked.ok)throw new Error(checked.error);const enteredLot=Number($('posLot').value);if(!Number.isFinite(enteredLot)||enteredLot<=0)throw new Error('Saisissez un volume positif.');if(enteredLot<checked.spec.minLot||(checked.spec.maxLot!==null&&enteredLot>checked.spec.maxLot)||Math.abs(enteredLot/checked.spec.lotStep-Math.round(enteredLot/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas les limites de volume broker.');const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:enteredLot,lotStep:checked.spec.lotStep,entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,expiresAt:$('posExpiry').value?new Date($('posExpiry').value).toISOString():null,contractSpec:checked.spec,brokerSnapshot:{brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage}});
+    saveTradeGroup(group);renderPositions();showInAppNotice('Position créée localement dans AUREVIA. Synchronisation cloud en cours…',{type:'info',duration:6500});const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];queueTradeGroupSync(group.id,tradeLines.join('\\n'));const sync=await flushTradeSyncQueue();if(sync.pending)showInAppNotice('Position conservée sur cet appareil. Synchronisation cloud en attente ; nouvelle tentative automatique.',{type:'warning'});
   }catch(error){showInAppNotice(error.message);}
 }
 async function closeChildAtCurrentQuote(childId,button=null){
@@ -648,7 +703,7 @@ async function closeChildAtCurrentQuote(childId,button=null){
     const finalLabel=closeEvent.net>0?'gain':closeEvent.net<0?'perte':'résultat nul';
     showInAppNotice(`Clôture enregistrée : ${finalLabel} de ${Number(closeEvent.net).toFixed(2)} ${finalCurrency}. Volume restant sur ce lot : ${closedChild.remainingLot}.`,{type:closeEvent.net<0?'warning':'success',duration:8000});
     sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · CLÔTURE CONFIRMÉE\n${latestGroup.instrument} · ${closedChild.direction} · ${closedChild.tpLabel}\nVolume clôturé : ${closeEvent.volume}\nCours de référence Twelve Data : ${closeEvent.exit}\nRésultat net estimé : ${Number(closeEvent.net).toFixed(2)} ${finalCurrency}\nVolume restant sur ce lot : ${closedChild.remainingLot}\nSuivi interne AUREVIA uniquement · aucun ordre broker envoyé.`}).catch(()=>{});
-    syncTradeCloseToSupabase(latestGroup,closedChild,closeEvent).then(result=>{if(!result?.synced)showInAppNotice('Clôture enregistrée localement, mais synchronisation cloud non confirmée.',{type:'info'});}).catch(error=>showInAppNotice(`Clôture enregistrée localement, mais synchronisation cloud impossible : ${error.message}`,{type:'error'}));
+    const closeTelegramText=`AUREVIA COPILOT · CLÔTURE ENREGISTRÉE\\n${latestGroup.instrument} · ${latestGroup.direction}\\n${closedChild.tpLabel} · ${closeEvent.volume} lot(s)\\nRésultat net : ${closeEvent.net}`;queueTradeCloseSync(latestGroup.id,closedChild.id,closeEvent.id,closeTelegramText);const sync=await flushTradeSyncQueue();if(sync.pending)showInAppNotice('Clôture conservée localement. Synchronisation cloud en attente ; Aucune notification Telegram ne partira avant confirmation cloud.',{type:'warning',duration:9000});
   }catch(error){showInAppNotice(error.message,{type:'error'});}
   finally{if(button)button.disabled=false;}
 }
@@ -662,17 +717,62 @@ async function refreshAccountCurrency(){
  catch(error){if(status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
 }
 async function persistAccountCurrency(){const button=$('saveAccountCurrency');try{const selected=$('profileAccountCurrency').value;if(!selected)throw new Error('Choisissez une devise avant de continuer.');if(!await confirmInApp({title:'Enregistrer la devise du compte ?',message:'La devise '+selected+' sera utilisée pour les calculs de risque et le suivi des positions.',confirmLabel:'Enregistrer la devise'}))return;if(button)button.disabled=true;const value=await saveAccountCurrency(selected);accountCurrency=value;if($('accountCurrency').value!==undefined)$('accountCurrency').value=value;if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=true;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=`Devise enregistrée : ${value}.`;showInAppNotice(`Devise du compte enregistrée : ${value}.`,{type:'success'});}catch(error){if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}finally{if(button)button.disabled=false;}}
+async function adminLicenseRequest(action,payload={}){
+ const token=await getAnalysisAccessToken();if(!token)throw new Error('Session administrateur absente.');
+ const response=await fetch('/api/admin-licenses'+(action==='list'?'':'?'),{method:action==='list'?'GET':'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(action==='list'?{}:{body:JSON.stringify({action,...payload})}),cache:'no-store'});
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok||result.ok!==true)throw new Error(result.error||'Action de licence impossible.');
+ return result;
+}
+async function loadAdminLicenses(){
+ const body=$('adminLicensesRows');if(!body)return;
+ body.innerHTML='<tr><td colspan="7" class="empty-cell">Chargement…</td></tr>';
+ try{
+  const result=await adminLicenseRequest('list');
+  body.replaceChildren();
+  for(const license of result.licenses||[]){
+   const tr=document.createElement('tr');
+   const values=[license.key_prefix,license.plan_code,license.duration_days===null?'Illimitée':`${license.duration_days} jours`,license.status,license.assigned_user_id||'—',license.expires_at?new Date(license.expires_at).toLocaleDateString('fr-FR'):'—'];
+   for(const value of values){const td=document.createElement('td');td.textContent=String(value);tr.append(td);}
+   const action=document.createElement('td');
+   if(['issued','active'].includes(license.status)){
+    const btn=document.createElement('button');btn.type='button';btn.className='small-btn';btn.textContent='Suspendre';btn.addEventListener('click',async()=>{if(!await confirmInApp({title:'Suspendre cette licence ?',message:'L’accès associé sera bloqué immédiatement.',confirmLabel:'Suspendre',danger:true}))return;try{await adminLicenseRequest('set_status',{license_id:license.id,status:'suspended'});await loadAdminLicenses();}catch(error){showInAppNotice(error.message,{type:'error'});}});action.append(btn);
+    const revoke=document.createElement('button');revoke.type='button';revoke.className='small-btn';revoke.textContent='Révoquer';revoke.addEventListener('click',async()=>{if(!await confirmInApp({title:'Révoquer définitivement ?',message:'Cette clé ne pourra plus être utilisée.',confirmLabel:'Révoquer',danger:true}))return;try{await adminLicenseRequest('set_status',{license_id:license.id,status:'revoked'});await loadAdminLicenses();}catch(error){showInAppNotice(error.message,{type:'error'});}});action.append(revoke);
+   }else action.textContent='—';
+   tr.append(action);body.append(tr);
+  }
+  if(!body.children.length)body.innerHTML='<tr><td colspan="7" class="empty-cell">Aucune licence générée.</td></tr>';
+ }catch(error){body.innerHTML=`<tr><td colspan="7" class="empty-cell">${error.message}</td></tr>`;}
+}
+async function issueAdminLicenses(){
+ const button=$('adminIssueLicenses'),status=$('adminLicenseStatus'),output=$('adminIssuedKeys');
+ if(button){button.disabled=true;button.textContent='Génération…';}
+ if(output){output.hidden=true;output.textContent='';}
+ try{
+  const duration=$('adminLicenseDuration').value;
+  const result=await adminLicenseRequest('issue',{count:Number($('adminLicenseCount').value),duration_days:duration==='unlimited'?'unlimited':Number(duration),plan_code:$('adminLicensePlan').value});
+  const keys=(result.issued||[]).map(item=>item.license_key);
+  if(output){output.hidden=false;output.textContent=keys.join('\n');}
+  if(status)status.textContent=`${keys.length} clé(s) créée(s). Copiez-les maintenant : elles ne seront plus affichées intégralement.`;
+  await loadAdminLicenses();
+ }catch(error){if(status)status.textContent=error.message;}
+ finally{if(button){button.disabled=false;button.textContent='Générer les clés';}}
+}
 function bindEvents(){
   let pendingAdminRoute=false;
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
-  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
+  $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
+  $('adminIssueLicenses')?.addEventListener('click',issueAdminLicenses);
+  $('adminRefreshLicenses')?.addEventListener('click',loadAdminLicenses);
   window.addEventListener('aurevia:adminchange',event=>{
     const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
     const announcementsLink=document.querySelector('[data-page="annonces"]');
     if(announcementsLink)announcementsLink.hidden=false;
     const announcementsView=$('page-annonces');
     if(announcementsView)announcementsView.hidden=false;
-    if(allowed)loadAnnouncements();
+    if(allowed){loadAnnouncements();loadAdminLicenses();}
     if(allowed&&pendingAdminRoute){pendingAdminRoute=false;showPage('admin');}
     else if(!allowed){pendingAdminRoute=false;if(location.hash==='#admin')showPage('accueil');}
     else if(allowed&&location.hash==='#admin')loadAdminConsole();
@@ -727,7 +827,7 @@ function bindEvents(){
       const enteredDistance=Number($('slDistance').value);const distance=enteredDistance>0?enteredDistance:(entry>0&&stop>0?Math.abs(entry-stop):NaN);
       const reward=entry>0&&tp>0?Math.abs(tp-entry):null;
       const leverageValue=$('riskLeverage').value.trim()?Number($('riskLeverage').value):null;
-      const result=calculatePositionRisk({balance:Number($('accountBalance').value),riskAmount:Number($('riskAmount').value),stopDistance:distance,unitValuePerLot:Number($('unitValue').value),quoteToAccount,lotStep:0.01,rewardDistance:reward,entryPrice:entry>0?entry:null,leverage:leverageValue});
+      const result=calculatePositionRisk({balance:Number($('accountBalance').value),riskAmount:Number($('riskAmount').value),stopDistance:distance,unitValuePerLot:Number($('unitValue').value),quoteToAccount,lotStep:Number($('riskLotStep').value),minLot:Number($('riskMinLot').value),maxLot:$('riskMaxLot').value.trim()?Number($('riskMaxLot').value):null,rewardDistance:reward,entryPrice:entry>0?entry:null,leverage:leverageValue});
       $('riskResult').textContent=result.error||`Calcul estimatif pour ${instrument} · ${result.lots.toFixed(2)} lot(s) · risque réellement engagé : ${result.riskMoney.toFixed(2)} ${accountCurrency}`;
       $('riskMoneyOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${accountCurrency}`;$('lotsOut').textContent=result.error?'—':result.lots.toFixed(2);$('lossOut').textContent=result.error?'—':`${result.riskMoney.toFixed(2)} ${accountCurrency}`;$('gainOut').textContent=result.error||result.gain===null?'—':`${result.gain.toFixed(2)} ${accountCurrency}`;$('rrOut').textContent=result.error||result.rr===null?'—':`1:${result.rr.toFixed(2)}`;$('riskPctOut').textContent=result.error||result.riskPercentActual===null?'—':`${result.riskPercentActual.toFixed(2)} %`;$('marginOut').textContent=result.error||result.margin===null?'—':`${result.margin.toFixed(2)} ${accountCurrency}`;
     }catch(error){$('riskResult').textContent=error.message;for(const id of ['riskMoneyOut','lotsOut','lossOut','gainOut','rrOut','riskPctOut','marginOut'])$(id).textContent='—';}
@@ -861,7 +961,50 @@ function bindEvents(){
   $('reduceMotion').addEventListener('change',e=>{localStorage.setItem('aurevia_reduce_motion',e.target.checked?'1':'0');document.documentElement.classList.toggle('reduce-motion',e.target.checked);window.dispatchEvent(new CustomEvent('aurevia:motionchange',{detail:{reduced:e.target.checked}}));});
   $('reduceMotion').checked=localStorage.getItem('aurevia_reduce_motion')==='1';document.documentElement.classList.toggle('reduce-motion',$('reduceMotion').checked);initAppInstallation();
 }
+async function refreshLicenseAccess(){
+ const token=await getAnalysisAccessToken();if(!token)return false;
+ try{
+  const response=await fetch('/api/license',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+  const state=await response.json().catch(()=>({}));
+  if(!response.ok||state.ok!==true)throw new Error(state.error||'Vérification de licence indisponible.');
+  window.__aureviaLicense=state;updateLicenseGate(state);return ['trial','licensed'].includes(state.status);
+ }catch(error){updateLicenseGate({status:'unavailable',message:error.message});return false;}
+}
+function updateLicenseGate(state){
+ const gate=$('licenseRequiredGate');if(!gate)return;
+ const active=window.__aureviaAuthenticated&&['trial','licensed'].includes(state?.status);
+ gate.hidden=!window.__aureviaAuthenticated||active;
+ const status=$('licenseGateStatus');
+ if(status){
+  if(state?.status==='expired')status.textContent='Votre période d’essai de 3 jours est terminée. Saisissez une clé de licence fournie par KOMI Group pour retrouver l’accès.';
+  else if(state?.status==='suspended')status.textContent='Votre licence est suspendue. Contactez le support KOMI Group.';
+  else if(state?.status==='revoked')status.textContent='Cette licence a été révoquée. Contactez le support KOMI Group.';
+  else status.textContent=state?.message||'Le statut de votre licence ne peut pas être vérifié pour le moment.';
+ }
+ const trial=$('licenseTrialInfo');
+ if(trial){
+  if(state?.status==='trial'&&state.trial_expires_at)trial.textContent=`Démo gratuite active jusqu’au ${new Date(state.trial_expires_at).toLocaleString('fr-FR')} · ${state.days_remaining??'—'} jour(s) restant(s).`;
+  else if(state?.status==='licensed')trial.textContent=state.plan==='admin'?'Accès administrateur KOMI Group.':`Licence active${state.expires_at?' jusqu’au '+new Date(state.expires_at).toLocaleDateString('fr-FR'): ' sans date d’expiration'}.`;
+  else if(state?.status)trial.textContent=`Statut de licence : ${state.status}.`;
+ }
+}
+async function activateUserLicense(){
+ const button=$('activateLicenseBtn'),input=$('licenseKeyInput'),status=$('licenseGateStatus');
+ const key=String(input?.value||'').trim().toUpperCase();
+ if(!key){if(status)status.textContent='Saisissez votre clé de licence.';return;}
+ const token=await getAnalysisAccessToken();if(!token){if(status)status.textContent='Reconnectez-vous pour activer votre licence.';return;}
+ if(button){button.disabled=true;button.textContent='Vérification…';}
+ try{
+  const response=await fetch('/api/license',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({license_key:key}),cache:'no-store'});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||result.ok!==true)throw new Error(({INVALID_KEY:'Clé invalide ou inconnue.',LICENSE_EXPIRED:'Cette licence a expiré.',LICENSE_SUSPENDED:'Cette licence est suspendue.',LICENSE_REVOKED:'Cette licence a été révoquée.',LICENSE_UNAVAILABLE:'Cette licence n’est pas disponible.'})[result.code]||result.error||'Activation impossible.');
+  window.__aureviaLicense=result;updateLicenseGate(result);if(input)input.value='';
+  if(status)status.textContent='Licence activée. Chargement de votre espace AUREVIA…';
+  location.reload();
+ }catch(error){if(status)status.textContent=error.message;}
+ finally{if(button){button.disabled=false;button.textContent='Activer ma licence';}}
+}
 let authenticatedBooted=false;
-function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
-function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated)bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();renderPositions();renderLinkedJournal();flushTradeSyncQueue();setInterval(()=>{if(window.__aureviaAuthenticated)flushTradeSyncQueue();},30000);setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
+function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();

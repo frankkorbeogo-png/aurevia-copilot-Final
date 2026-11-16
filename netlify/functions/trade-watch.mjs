@@ -1,26 +1,30 @@
 import { calculateContractPnl } from '../../contract-engine.js';
 import { getFxSnapshot, inferQuoteCurrency } from './_fx-rate.mjs';
 import {MARKET_LABELS} from '../../market-catalog.js';
+import {getMarketStatus} from '../../market-hours.js';
 // Scheduled AUREVIA-only position monitor. It never connects to a broker or places orders.
-const BASE=()=>process.env.SUPABASE_URL, KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
+const BASE=()=>String(process.env.SUPABASE_URL||'').replace(/\/+$/,''); const KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${BASE()}/rest/v1/${path}`,{method,headers:{apikey:KEY(),authorization:`Bearer ${KEY()}`,'content-type':'application/json',...(prefer?{prefer}:{})},...(body?{body:JSON.stringify(body)}:{})});const t=await r.text();if(!r.ok)throw new Error(`Supabase ${r.status}: ${t.slice(0,180)}`);return t?JSON.parse(t):null;}
 const SYMBOLS=new Set(MARKET_LABELS);
 async function quote(symbol){
  if(!SYMBOLS.has(symbol))throw new Error('Instrument non pris en charge par le suivi.');
+ const marketStatus=getMarketStatus(symbol);
+ if(!marketStatus.tradable)throw new Error(`Marché fermé : ${marketStatus.closureLabel||marketStatus.status}. Surveillance des déclenchements suspendue jusqu’à la réouverture.`);
  const rows=await rest(`aurevia_market_quotes?select=price,quote_at,source&symbol=eq.${encodeURIComponent(symbol)}`);
  const row=rows?.[0],stored=Number(row?.price),age=Date.now()-Date.parse(row?.quote_at||'');
  if(row&&Number.isFinite(stored)&&stored>0&&Number.isFinite(age)&&age>=0&&age<=90000)return {price:stored,quoteAt:row.quote_at,source:row.source||'flux marché'};
  const key=process.env.TWELVEDATA_API_KEY;if(!key)throw new Error('Prix de marché indisponible : flux absent ou trop ancien.');
- const url=new URL('https://api.twelvedata.com/price');url.searchParams.set('symbol',symbol);url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
- const response=await fetch(url,{signal:AbortSignal.timeout(10000)}),data=await response.json(),price=Number(data.price);
- if(!response.ok||data.status==='error'||!Number.isFinite(price)||price<=0)throw new Error(data.message||'Prix de marché Twelve Data indisponible.');
- const quoteAt=new Date().toISOString();
- await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data REST Last Price',updated_at:quoteAt}});
- return {price,quoteAt,source:'Twelve Data REST Last Price'};
+ // /price has no exchange timestamp. Use the latest 1-minute candle instead,
+ // and reject it when its source timestamp is stale or in the future.
+ const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval','1min');url.searchParams.set('outputsize','1');url.searchParams.set('timezone','UTC');url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
+ const response=await fetch(url,{signal:AbortSignal.timeout(10000)}),data=await response.json(),candle=data.values?.[0],price=Number(candle?.close),quoteAt=candle?.datetime?new Date(candle.datetime.replace(' ','T')+'Z').toISOString():null,quoteAge=quoteAt?Date.now()-Date.parse(quoteAt):Infinity;
+ if(!response.ok||data.status==='error'||!Number.isFinite(price)||price<=0||!Number.isFinite(quoteAge)||quoteAge<0||quoteAge>90000)throw new Error(data.message||'Cotation Twelve Data absente ou trop ancienne : déclenchement suspendu.');
+ await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data 1min candle',updated_at:new Date().toISOString()}});
+ return {price,quoteAt,source:'Twelve Data 1min candle'};
 }
 export {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
-import {evaluateEntryTrigger} from './_trade-entry-trigger.mjs';
+import {evaluateEntryTrigger,isPendingOrderExpired} from './_trade-entry-trigger.mjs';
 export function evaluatePositionThreshold(position,price){
  const observed=Number(price),stop=Number(position?.stop_loss),target=Number(position?.take_profit);
  if(!Number.isFinite(observed)||observed<=0||!Number.isFinite(stop)||stop<=0||!Number.isFinite(target)||target<=0)return null;
@@ -56,10 +60,11 @@ async function deliverPending(){
 export async function handler(event){
  if(!BASE()||!KEY())return json(503,{error:'Surveillance non configurée côté serveur.'});
  try{
-  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
+  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,expires_at,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
   const groups=await rest('trading_position_groups?select=id,user_id,instrument,direction,order_type,mode,status,contract_spec&status=eq.OPEN');const byId=new Map(groups.map(g=>[g.id,g]));
-  let checked=0,activated=0,triggerStages=0,triggered=0,errors=[];const priceCache=new Map();
+  let checked=0,activated=0,triggerStages=0,triggered=0,expired=0,errors=[];const priceCache=new Map();
   for(const p of positions||[]){const g=byId.get(p.group_id);if(!g)continue;try{
+    if(p.status==='PENDING'&&isPendingOrderExpired(p,Date.now())){const result=await rest('rpc/aurevia_expire_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_expired_at:new Date().toISOString()}});if(result?.ok&&result.expired)expired++;continue;}
     let prices=priceCache.get(g.instrument);if(!prices){prices=await quote(g.instrument);priceCache.set(g.instrument,prices);}checked++;
     const observedPrice=prices.price;
     if(p.status==='PENDING'){
@@ -75,7 +80,7 @@ export async function handler(event){
       }
       if(state.action!=='ACTIVATE')continue;
       const activationPrice=observedPrice;
-      await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:new Date().toISOString()}});activated++;continue;
+      const activatedAt=new Date().toISOString();const activation=await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:activatedAt}});if(activation?.ok&&activation.status==='OPEN')activated++;else if(activation?.status==='EXPIRED'){const expiry=await rest('rpc/aurevia_expire_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_expired_at:activatedAt}});if(expiry?.ok&&expiry.expired)expired++;}continue;
     }
     // Internal TP/SL is evaluated against the single observed Last Price. This is not a broker execution price.
     const exitPrice=observedPrice;
@@ -85,10 +90,10 @@ export async function handler(event){
     let pnl,fxSnapshot=null;try{const storedSpec=p.contract_spec||{};if((storedSpec.calculationType||'contract')==='contract'){const quoteCurrency=storedSpec.quoteCurrency||inferQuoteCurrency(g.instrument);if(!quoteCurrency)throw new Error(`Devise de cotation inconnue pour ${g.instrument}; clôture suspendue.`);fxSnapshot=await getFxSnapshot(quoteCurrency,storedSpec.accountCurrency);pnl=calculateInternalClosePnl({...p,contract_spec:{...storedSpec,quoteCurrency,quoteToAccount:fxSnapshot.rate}},g.direction,exitPrice);}else pnl=calculateInternalClosePnl(p,g.direction,exitPrice);}catch(calculationError){await rest(`aurevia_trade_alert_events?id=eq.${alert.id}&status=eq.pending`,{method:'PATCH',body:{status:'cancelled'},prefer:'return=minimal'});throw calculationError;}
     const {volume,gross,fees,net}=pnl;
     if(alert.status==='cancelled'){const reactivated=await rest(`aurevia_trade_alert_events?id=eq.${alert.id}&status=eq.cancelled`,{method:'PATCH',body:{status:'pending',locked_at:null},prefer:'return=representation'});if(!reactivated?.length)continue;alert={...alert,status:'pending'};}
-    await rest('rpc/aurevia_record_position_close_worker',{method:'POST',body:{p_close_id:alert.id,p_position_id:p.id,p_volume:volume,p_exit_price:exitPrice,p_gross_pnl:gross,p_fees:fees,p_net_pnl:net,p_closed_at:new Date().toISOString(),p_user_id:p.user_id}});if(fxSnapshot)await rest(`trading_position_closes?id=eq.${encodeURIComponent(alert.id)}&position_id=eq.${encodeURIComponent(p.id)}`,{method:'PATCH',body:{fx_snapshot:fxSnapshot},prefer:'return=minimal'});triggered++;
+    await rest('rpc/aurevia_record_position_close_worker',{method:'POST',body:{p_close_id:alert.id,p_position_id:p.id,p_volume:volume,p_exit_price:exitPrice,p_gross_pnl:gross,p_fees:fees,p_net_pnl:net,p_closed_at:new Date().toISOString(),p_user_id:p.user_id,p_fx_snapshot:fxSnapshot}});triggered++;
    }catch(e){errors.push({position_id:p.id,error:e.message});}
   }
   const notificationsSent=await deliverPending();const entryNotificationsSent=await deliverEntryNotifications(positions,byId);
-  return json(200,{ok:true,checked,activated,triggerStages,triggered,notificationsSent,entryNotificationsSent,errors});
+  return json(200,{ok:true,checked,activated,triggerStages,triggered,expired,notificationsSent,entryNotificationsSent,errors});
  }catch(e){return json(500,{error:'Surveillance des positions impossible.',detail:e.message});}
 }

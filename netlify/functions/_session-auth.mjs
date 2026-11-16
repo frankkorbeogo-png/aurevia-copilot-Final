@@ -22,6 +22,10 @@ export async function rpc(base,service,name,args){
 export async function assertActiveSession(context){
  const active=await rpc(context.base,context.service,'aurevia_session_is_active_for_user',{p_user_id:context.user.id,p_session_id:context.sessionId});
  if(active!==true)throw Object.assign(new Error('Cette session a été remplacée ou révoquée. Reconnectez-vous avec Google.'),{statusCode:409,code:'SESSION_REPLACED'});
+ const isAdmin=await rpc(context.base,context.service,'aurevia_is_admin',{p_user_id:context.user.id});
+ if(isAdmin===true)return true;
+ const license=await rpc(context.base,context.service,'aurevia_license_status',{p_user_id:context.user.id});
+ if(!license?.ok||!['trial','licensed'].includes(license.status))throw Object.assign(new Error('Votre période de démo est terminée ou votre licence ne permet plus l’accès.'),{statusCode:402,code:'LICENSE_REQUIRED',licenseStatus:license?.status||'unavailable'});
  return true;
 }
 export const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});

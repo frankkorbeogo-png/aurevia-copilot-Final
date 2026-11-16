@@ -10,3 +10,9 @@ test('les contrats tick peuvent utiliser une valeur de tick propre au broker',()
 test('le calcul du lot à risque utilise la même spécification contractuelle',()=>{const r=calculateLotsFromRisk({riskAmount:20,stopDistance:2,contractSpec:contract,balance:1000,rewardDistance:4});assert.equal(r.lots,0.1);assert.equal(r.riskMoney,20);assert.equal(r.gain,40);assert.equal(r.margin,50);});
 test('refuse une spécification incomplète au lieu de deviner la taille du contrat',()=>{assert.equal(validateContractSpec({brokerName:'X',accountCurrency:'USD',calculationType:'contract',minLot:0.01,lotStep:0.01}).ok,false);});
 test('deux brokers peuvent avoir des tailles de contrat différentes pour le même symbole',()=>{const a=calculateContractPnl({direction:'BUY',entry:10,exit:11,volume:1,contractSpec:{...contract,feesPerLot:0}});const b=calculateContractPnl({direction:'BUY',entry:10,exit:11,volume:1,contractSpec:{...contract,contractSize:10,feesPerLot:0}});assert.equal(a.gross,100);assert.equal(b.gross,10);});
+
+
+test('le calcul de lots respecte les incréments broker inférieurs à 0,01',()=>{
+ const r=calculateLotsFromRisk({riskAmount:0.7,stopDistance:1,contractSpec:{accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,minLot:0.001,lotStep:0.001,maxLot:0.02,feesPerLot:0}});
+ assert.equal(r.lots,0.007);
+});

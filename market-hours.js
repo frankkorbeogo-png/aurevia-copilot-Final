@@ -33,9 +33,10 @@ function holidayWindows(y){
   for(const x of EXCEPTIONAL_CLOSURES){const start=new Date(x.start),end=new Date(x.end);if(Number.isFinite(+start)&&Number.isFinite(+end)&&end>start)out.push({start,end,label:x.label||'Fermeture exceptionnelle'});}
   return out;
 }
-function holidayClosure(now){
-  const y=+parts(now).year;
-  return [...holidayWindows(y-1),...holidayWindows(y),...holidayWindows(y+1)].find(x=>now>=x.start&&now<x.end)||null;
+function holidayClosure(_now){
+  // Generic US holiday dates are informational only. They are not proof that
+  // an OTC Forex or broker XAU/USD feed is closed.
+  return null;
 }
 function addDaysFromParts(p,n){return addDay(new Date(Date.UTC(+p.year,+p.month-1,+p.day)),n);}
 function fmtBF(date,withDate=false){return new Intl.DateTimeFormat('fr-FR',{timeZone:BF,...(withDate?{weekday:'long',day:'2-digit',month:'long'}:{}),hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date);}
@@ -69,10 +70,23 @@ function usEquityHolidays(year){
   addObserved(12,25,'Noël');
   return dates;
 }
+function equityEarlyClose(year,month,day){
+  const date=new Date(Date.UTC(year,month-1,day)),weekday=date.getUTCDay();
+  if(weekday===0||weekday===6)return null;
+  if(month===11&&day===nthWeekday(year,11,4,4)+1)return 'lendemain de Thanksgiving';
+  if(month===12&&day===24)return 'veille de Noël';
+  const observedJuly4=new Date(observedDate(year,7,4)+'T00:00:00Z');
+  let previous=addDay(observedJuly4,-1);
+  while(previous.getUTCDay()===0||previous.getUTCDay()===6||usEquityHolidays(year).has(previous.toISOString().slice(0,10)))previous=addDay(previous,-1);
+  if(previous.toISOString().slice(0,10)===date.toISOString().slice(0,10))return 'veille de l’Indépendance';
+  return null;
+}
 function equityClosure(now){
   const p=parts(now,'America/New_York'),day=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[p.weekday];
-  const date=`${p.year}-${p.month}-${p.day}`,holiday=usEquityHolidays(+p.year).get(date);
-  const mins=+p.hour*60 + +p.minute,closed=holiday||day===0||day===6||mins<570||mins>=960;
+  const date=p.year+'-'+p.month+'-'+p.day,holiday=usEquityHolidays(+p.year).get(date);
+  const earlyClose=!holiday?equityEarlyClose(+p.year,+p.month,+p.day):null;
+  const closeMinute=earlyClose?13*60:16*60;
+  const mins=+p.hour*60 + +p.minute,closed=holiday||day===0||day===6||mins<570||mins>=closeMinute;
   if(!closed)return null;
   let next=new Date(Date.UTC(+p.year,+p.month-1,+p.day));
   for(let i=0;i<10;i++){
@@ -83,9 +97,9 @@ function equityClosure(now){
   const reopen=mins<570&&!holiday&&day!==0&&day!==6
     ? instant(+p.year,+p.month,+p.day,9,30)
     : instant(next.getUTCFullYear(),next.getUTCMonth()+1,next.getUTCDate(),9,30);
-  return {label:holiday|| (day===0||day===6?'week-end':mins<570?'avant ouverture de Wall Street':'après clôture de Wall Street'),type:holiday?'HOLIDAY':'SESSION',reopen};
+  const label=holiday||(day===0||day===6?'week-end':mins<570?'avant ouverture de Wall Street':earlyClose?'après clôture anticipée ('+earlyClose+')':'après clôture de Wall Street');
+  return {label,type:holiday?'HOLIDAY':earlyClose&&mins>=closeMinute?'EARLY_CLOSE':'SESSION',reopen};
 }
-
 function weeklySchedule(now,market){
   const rules=market==='METALS'?METALS_SESSION:FOREX_SESSION;
   const p=parts(now),dow=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[p.weekday];
@@ -122,10 +136,10 @@ export function getMarketStatus(symbol,now=new Date()){
   if(CRYPTO.has(code))return {tradable:true,status:'OPEN',market:'CRYPTO',checkedAt:now.toISOString()};
   if(EQUITIES.has(code)){
     const session=equityClosure(now),closed=!!session,reopen=session?.reopen||null,label=session?.label||null;
-    return {tradable:!closed,status:closed?'CLOSED':'OPEN',market:'EQUITY',timezone:'America/New_York',schedule:'NYSE/Nasdaq : lundi–vendredi, 09:30–16:00 (heure de New York)',closureType:session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché actions fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).`:''} Les nouvelles analyses sont suspendues jusqu’à la réouverture.`:null,checkedAt:now.toISOString()};
+    return {tradable:!closed,status:closed?'CLOSED':'OPEN',market:'EQUITY',timezone:'America/New_York',schedule:'NYSE/Nasdaq : lundi–vendredi, 09:30–16:00 (heure de New York), avec clôtures anticipées à 13:00 certains jours fériés',closureType:session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché actions fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).`:''} Les nouvelles analyses sont suspendues jusqu’à la réouverture.`:null,checkedAt:now.toISOString()};
   }
   const market=FX.has(code)?'FOREX':METALS.has(code)?'METALS':'UNKNOWN';
   if(market==='UNKNOWN')return {tradable:true,status:'UNRESTRICTED',market,checkedAt:now.toISOString()};
-  const holiday=holidayClosure(now),session=sessionClosure(now,market),closed=!!(holiday||session),reopen=holiday?.end||session?.reopen||null,label=holiday?.label||session?.label||null;
-  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now,market),closureType:holiday?'HOLIDAY':session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
+  const holiday=holidayClosure(now),session=sessionClosure(now,market),closed=!!session,reopen=session?.reopen||null,label=session?.label||null;
+  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now,market),closureType:session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
 }

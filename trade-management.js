@@ -18,6 +18,7 @@ export function validatePendingOrderAgainstQuote({orderType,direction,entry,trig
   return {ok:true};
 }
 
+const lotPrecision=value=>{const [mantissa,exponent]=String(value).toLowerCase().split('e');return Math.max(0,Math.min(10,(mantissa.split('.')[1]||'').length-Number(exponent||0)));};
 export function splitVolume(total, count, step=0.01) {
   if (![total,count,step].every(Number.isFinite) || total<=0 || count<1 || step<=0) throw new Error('Volume, nombre de TP et pas broker invalides.');
   const scaled=total/step;
@@ -35,10 +36,12 @@ export function createTradeGroup(input) {
   if(!['unique','separate'].includes(mode)) throw new Error('Mode de gestion invalide.');
   if(!Number.isFinite(quoteToAccount)||quoteToAccount<=0||!Number.isFinite(feesPerLot)||feesPerLot<0) throw new Error('Conversion ou frais broker invalides.');
   if(contractSize!==null&&(!Number.isFinite(contractSize)||contractSize<=0)) throw new Error('La taille du contrat doit être positive.');
-  const lotStepFixed=0.01;
-  if(lot<0.01)throw new Error('Le lot minimum autorisé est de 0,01.');
-  if(Math.abs(lot/lotStepFixed-Math.round(lot/lotStepFixed))>1e-7)throw new Error('Le lot doit être un multiple de 0,01.');
-  let snapshot = contractSpec ? normalizeContractSpec({...contractSpec,minLot:0.01,lotStep:lotStepFixed,maxLot:null}) : null;
+  const snapshot = contractSpec ? normalizeContractSpec(contractSpec) : null;
+  const lotMin=snapshot?.minLot??0.01,lotStepFixed=snapshot?.lotStep??lotStep,lotMax=snapshot?.maxLot??null;
+  if(!Number.isFinite(lotMin)||lotMin<=0||!Number.isFinite(lotStepFixed)||lotStepFixed<=0||(lotMax!==null&&(!Number.isFinite(lotMax)||lotMax<lotMin)))throw new Error('Spécifications de volume broker invalides.');
+  if(lot<lotMin)throw new Error(`Le lot minimum autorisé est de ${lotMin}.`);
+  if(lotMax!==null&&lot>lotMax)throw new Error(`Le lot maximum autorisé est de ${lotMax}.`);
+  if(Math.abs(lot/lotStepFixed-Math.round(lot/lotStepFixed))>1e-7)throw new Error(`Le lot doit respecter le pas broker de ${lotStepFixed}.`);
   if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);}
   const allowedOrders=['MARKET','BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'];
   if(!allowedOrders.includes(orderType))throw new Error('Type d’ordre non reconnu.');
@@ -56,7 +59,7 @@ export function createTradeGroup(input) {
   if(tps.some(tp=>direction==='BUY'?tp.price<=entry:tp.price>=entry))throw new Error('Les take-profits doivent être du côté favorable de l’entrée.');
   if (!tps.length) throw new Error('Sélectionnez au moins un take-profit.');
   const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStepFixed) : tps.map(()=>lot);
-  if(volumes.some(volume=>volume<0.01))throw new Error('Chaque TP doit recevoir au moins 0,01 lot.');
+  if(volumes.some(volume=>volume<lotMin||(lotMax!==null&&volume>lotMax)))throw new Error('La répartition des TP ne respecte pas les limites de volume broker.');
   const groupId=id();
   const createdAt=new Date().toISOString();
   const initialStatus=orderType==='MARKET'?'OPEN':'PENDING';
@@ -159,13 +162,15 @@ export function attachCloudJournalIds(groupId,mappings=[]){
 
 export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
   const local=read(STORAGE_KEY),byId=new Map(local.map(g=>[g.id,g]));
-  for(const group of cloudGroups||[])byId.set(group.id,group);
+  const pendingGroupIds=new Set(local.filter(group=>group.cloudSyncPending||group.children?.some(child=>child.closes?.some(close=>close.cloudSyncPending))).map(group=>group.id));
+  for(const group of cloudGroups||[])if(!pendingGroupIds.has(group.id))byId.set(group.id,group);
   const merged=[...byId.values()].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   if(!write(STORAGE_KEY,merged))throw new Error('Impossible de restaurer les positions dans le stockage local.');
-  const journal=read(JOURNAL_KEY),cloudIds=new Set((cloudJournal||[]).map(x=>x.cloudId||x.id));
-  const cloudKeys=new Set((cloudJournal||[]).map(x=>`${x.groupId}:${x.childId||'parent'}`));
-  const localOnly=journal.filter(x=>!cloudIds.has(x.cloudId||x.id)&&!cloudKeys.has(`${x.groupId}:${x.childId||'parent'}`));
-  const mapped=(cloudJournal||[]).map(x=>({...x,id:x.cloudId||x.id}));
+  const visibleCloudJournal=(cloudJournal||[]).filter(row=>!pendingGroupIds.has(row.groupId));
+  const journal=read(JOURNAL_KEY),cloudIds=new Set(visibleCloudJournal.map(x=>x.cloudId||x.id));
+  const cloudKeys=new Set(visibleCloudJournal.map(x=>`${x.groupId}:${x.childId||'parent'}`));
+  const localOnly=journal.filter(x=>pendingGroupIds.has(x.groupId)||(!cloudIds.has(x.cloudId||x.id)&&!cloudKeys.has(`${x.groupId}:${x.childId||'parent'}`)));
+  const mapped=visibleCloudJournal.map(x=>({...x,id:x.cloudId||x.id}));
   if(!write(JOURNAL_KEY,[...mapped,...localOnly]))throw new Error('Positions restaurées, mais le journal local n’a pas pu être restauré.');
   return merged;
 }
@@ -250,4 +255,20 @@ export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
   if(!Array.isArray(takeProfits)||takeProfits.length!==group.children.length||takeProfits.some(v=>!Number.isFinite(v)||v<=0||(group.direction==='BUY'?v<=entry:v>=entry)))throw new Error('Chaque TP doit être valide et rester du côté favorable de l’entrée.');
   group.children.forEach((child,i)=>{child.entry=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
   group.updatedAt=new Date().toISOString();return group;
+}
+
+
+export function markTradeGroupCloudSyncPending(groupId,pending=true){
+  const rows=read(STORAGE_KEY),group=rows.find(row=>row.id===groupId);
+  if(!group)return false;
+  group.cloudSyncPending=Boolean(pending);
+  return write(STORAGE_KEY,rows);
+}
+export function markTradeCloseCloudSyncPending(groupId,childId,closeId,pending=true){
+  const rows=read(STORAGE_KEY),group=rows.find(row=>row.id===groupId);
+  const child=group?.children.find(row=>row.id===childId);
+  const close=child?.closes?.find(row=>row.id===closeId);
+  if(!close)return false;
+  close.cloudSyncPending=Boolean(pending);
+  return write(STORAGE_KEY,rows);
 }

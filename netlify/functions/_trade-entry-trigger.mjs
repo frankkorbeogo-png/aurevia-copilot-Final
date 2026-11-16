@@ -6,7 +6,8 @@ export function evaluateEntryTrigger(position,group,prices){
  const direction=group?.direction,order=group?.order_type||group?.orderType;
  if(!['BUY','SELL'].includes(direction)||!['BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'].includes(order)||((order.startsWith('BUY')&&direction!=='BUY')||(order.startsWith('SELL')&&direction!=='SELL')))return null;
  const buy=direction==='BUY',stopLimit=order.endsWith('STOP LIMIT');
- const threshold=stopLimit&&!position.trigger_seen?trigger:entry;
+ const stopLeg=stopLimit&&!position.trigger_seen;
+ const threshold=stopLeg?trigger:entry;
  if(!Number.isFinite(threshold)||threshold<=0)return null;
  // For LIMIT entries, the safe side is above entry for BUY and below for SELL.
  // For STOP entries, it is below entry for BUY and above for SELL.
@@ -29,4 +30,10 @@ export function evaluateEntryTrigger(position,group,prices){
   return {action:'TRIGGER_SEEN',last_observed_price:observed,entry_armed:limitSafe};
  }
  return {action:'ACTIVATE',last_observed_price:observed,entry_armed:true};
+}
+
+export function isPendingOrderExpired(position,now=Date.now()){
+ const expiresAt=Date.parse(position?.expires_at??position?.expiresAt??'');
+ const current=now instanceof Date?now.getTime():Number(now);
+ return Number.isFinite(expiresAt)&&Number.isFinite(current)&&expiresAt>0&&expiresAt<=current;
 }

@@ -41,3 +41,10 @@ test('le worker transmet bien zone_reached_at au contrôle M5/M1',async()=>{
  assert.match(src,/s\.status==='zone_reached'&&!s\.entry_notified/);
  assert.match(src,/evaluateMitigationEntryConfirmation\(s\.direction,m5,m1,s\.zone_reached_at\)/);
 });
+
+test('les confirmations M5/M1 fonctionnent sans bougie partielle artificielle en tête',()=>{
+ const m5=[bar(10,101,104,100,103),bar(15,99,102,98,100)];
+ const m1=[bar(3,103,106,102,105),bar(4,102,104,101,103)];
+ assert.equal(evaluateMitigationEntryConfirmation('BUY',m5,m1,mitigation,now).confirmed,true);
+});
+

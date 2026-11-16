@@ -1,5 +1,5 @@
--- GDELT ArtList seendate is the time GDELT first observed an article,
--- not necessarily the publisher's publication timestamp.
+-- Distinguish GDELT observation time from publisher publication time.
+-- Safe to run after the original macro-news migration; existing rows are backfilled.
 alter table public.global_news_events
   add column if not exists seen_at timestamptz;
 

@@ -28,11 +28,13 @@ function normalizeArticle(article){
  const url=String(article.url||'').trim(),title=String(article.title||'').replace(/\s+/g,' ').trim();
  let parsed;try{parsed=new URL(url);}catch{return null;}
  if(!['https:','http:'].includes(parsed.protocol)||!title||title.length>500)return null;
- const publishedAt=parseDate(article.seendate||article.datetime||article.date);
- if(!publishedAt||Date.now()-Date.parse(publishedAt)>100*60*1000||Date.parse(publishedAt)>Date.now()+5*60*1000)return null;
+ const seenAt=parseDate(article.seendate||article.datetime||article.date);
+ const publishedAt=parseDate(article.published_at||article.publishdate||article.pubdate);
+ if(!seenAt||Date.now()-Date.parse(seenAt)>100*60*1000||Date.parse(seenAt)>Date.now()+5*60*1000)return null;
+ if(publishedAt&&(Date.parse(publishedAt)>Date.now()+5*60*1000||Date.now()-Date.parse(publishedAt)>30*86400000))return null;
  const externalId=crypto.createHash('sha256').update(url).digest('hex');
  const tone=Number(article.tone);
- return {external_id:externalId,title,source_url:url,source_domain:parsed.hostname.replace(/^www\./,''),source_country:String(article.sourcecountry||'').slice(0,80),source_language:String(article.language||'').slice(0,40),published_at:publishedAt,category:'macro_geopolitics',tone:Number.isFinite(tone)?tone:null,source_provider:SOURCE};
+ return {external_id:externalId,title,source_url:url,source_domain:parsed.hostname.replace(/^www\./,''),source_country:String(article.sourcecountry||'').slice(0,80),source_language:String(article.language||'').slice(0,40),published_at:publishedAt,seen_at:seenAt,category:'macro_geopolitics',tone:Number.isFinite(tone)?tone:null,source_provider:SOURCE};
 }
 async function fetchArticles(){
  const url=new URL('https://api.gdeltproject.org/api/v2/doc/doc');
@@ -134,13 +136,14 @@ async function broadcastDueReleases(){
 }
 function globalNewsMessage(event){
  const safeTitle=String(event.title||'').replace(/[<>]/g,'').slice(0,400),safeDomain=String(event.source_domain||'').replace(/[<>]/g,'').slice(0,120);
- return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\nPublié : '+new Date(event.published_at).toISOString()+'\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
+ const dateLine=event.published_at?'Publié : '+new Date(event.published_at).toISOString():'Repéré par GDELT : '+new Date(event.seen_at).toISOString();
+ return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\n'+dateLine+'\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
 }
 async function syncGlobalNews(){
  const articles=await fetchArticles();
  if(articles.length)await rest('global_news_events?on_conflict=external_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:articles});
  const cutoff=new Date(Date.now()-100*60*1000).toISOString();
- const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(published_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=published_at.desc&limit=75');
+ const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,seen_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(seen_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=seen_at.desc&limit=75');
  const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastToSubscribers('global_news',item,globalNewsMessage(item),'global_news_events')});
  return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
 }
@@ -152,6 +155,7 @@ export async function handler(event){
  try{Object.assign(result,await syncGlobalNews());}
  catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
  result.asOf=new Date().toISOString();
- const failed=Boolean(result.economicCalendarError&&result.globalNewsError);
+ const failed=Boolean(result.economicCalendarError||result.globalNewsError);
+ result.ok=!failed;
  return json(failed?502:200,result);
 }

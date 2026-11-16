@@ -5,12 +5,14 @@ import {handler} from '../netlify/functions/telegram-notify.mjs';
 test('une notification sans compte Telegram lié est ignorée proprement, sans 404',async()=>{
  const oldFetch=globalThis.fetch,old={...process.env};
  Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable',SUPABASE_SERVICE_ROLE_KEY:'service',TELEGRAM_BOT_TOKEN:'bot'});
- const claims=Buffer.from(JSON.stringify({sub:'user-1',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
+ const claims=Buffer.from(JSON.stringify({sub:'3ed0c702-03f1-4264-9e85-746d66401b51',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
  let telegramCalled=false;
  globalThis.fetch=async(input)=>{
   const url=String(input);
-  if(url.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'user-1'}),{status:200});
+  if(url.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});
   if(url.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});
+  if(url.includes('/rpc/aurevia_is_admin'))return new Response('false',{status:200});
+  if(url.includes('/rpc/aurevia_license_status'))return new Response(JSON.stringify({ok:true,status:'trial'}),{status:200});
   if(url.includes('/rest/v1/telegram_connections'))return new Response('[]',{status:200});
   if(url.includes('api.telegram.org')){telegramCalled=true;return new Response(JSON.stringify({ok:true}),{status:200});}
   throw new Error('Unexpected URL '+url);

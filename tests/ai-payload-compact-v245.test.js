@@ -12,7 +12,7 @@ test('le moteur IA limite les bougies transmises aux 40 M15 les plus récentes',
 test('les contextes secondaires sont compactés et la sortie est plafonnée', async () => {
   assert.match(source, /function compactAIContext/);
   assert.match(source, /compactAIContext\(m15\.indicators/);
-  assert.match(source, /compactAIContext\(context\.macro/);
+  assert.ok(source.includes('compactMacroContext(context.macro'));
   const collaboration = await readFile(new URL('../netlify/functions/ai-collaboration.mjs', import.meta.url), 'utf8');
   assert.match(collaboration, /body\.max_tokens=1500/);
 });

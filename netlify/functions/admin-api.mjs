@@ -83,21 +83,23 @@ export async function handler(event){
     const bot=result.result;
     if(!secret||!/^[A-Za-z0-9_-]{1,256}$/.test(secret))return json(200,{ok:true,valid:true,status:'valid_webhook_not_configured',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured:false},message:'Token valide, mais TELEGRAM_WEBHOOK_SECRET est absent ou invalide. Ajoutez un secret de 1 à 256 caractères (A-Z, a-z, 0-9, _ ou -), puis relancez le contrôle.'});
     const webhookUrl='https://aurevia-copilot-ia.netlify.app/.netlify/functions/telegram-webhook';
-    const setResponse=await fetch(`${api}/setWebhook`,{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({url:webhookUrl,secret_token:secret,allowed_updates:['message'],drop_pending_updates:false}),signal:AbortSignal.timeout(12000)});
+    const setResponse=await fetch(`${api}/setWebhook`,{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({url:webhookUrl,secret_token:secret,allowed_updates:['message','callback_query'],drop_pending_updates:false}),signal:AbortSignal.timeout(12000)});
     const setResult=await setResponse.json().catch(()=>null);
     if(!setResponse.ok||!setResult?.ok||setResult?.result!==true)return json(200,{ok:true,valid:true,status:'webhook_setup_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured:false},message:'Token valide, mais Telegram a refusé la configuration du webhook. Vérifiez le secret et réessayez.'});
     const infoResponse=await fetch(`${api}/getWebhookInfo`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
     const infoPayload=await infoResponse.json().catch(()=>null),info=infoPayload?.result||{};
-    const configured=Boolean(infoPayload?.ok&&info.url===webhookUrl);
-    return json(200,{ok:true,valid:true,status:configured?'valid_webhook_ready':'webhook_verification_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured,url_matches:configured,pending_updates:Number(info.pending_update_count)||0,last_error:info.last_error_message?String(info.last_error_message).slice(0,240):null},message:configured?'Token valide et webhook Telegram configuré. Envoyez maintenant /start CODE au bot.':'Le webhook a été demandé, mais sa présence n’a pas pu être confirmée.'});
+    const allowedUpdates=Array.isArray(info.allowed_updates)?info.allowed_updates:[];
+    const callbackQueriesEnabled=allowedUpdates.includes('callback_query');
+    const configured=Boolean(infoPayload?.ok&&info.url===webhookUrl&&callbackQueriesEnabled);
+    return json(200,{ok:true,valid:true,status:configured?'valid_webhook_ready':'webhook_verification_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured,url_matches:info.url===webhookUrl,callback_queries_enabled:callbackQueriesEnabled,allowed_updates:allowedUpdates,pending_updates:Number(info.pending_update_count)||0,last_error:info.last_error_message?String(info.last_error_message).slice(0,240):null},message:configured?'Token valide et webhook Telegram configuré. Envoyez maintenant /start CODE au bot.':'Le webhook a été demandé, mais sa présence n’a pas pu être confirmée.'});
    }catch{
     return json(200,{ok:false,valid:false,status:'unreachable',message:'Impossible de joindre Telegram pour le moment.'});
    }
   }
   const target=String(body.user_id||'');
-  if(['suspend','activate','delete_user','revoke_session'].includes(action)&&!UUID.test(target))return json(400,{error:'Identifiant utilisateur invalide.'});
-  if(['suspend','activate','delete_user','revoke_session'].includes(action)&&target===caller.id)return json(409,{error:'Cette action ne peut pas viser votre propre compte depuis la console.'});
-  if(['suspend','activate','delete_user'].includes(action)){
+  if(['suspend','activate','delete_user','permanent_delete_user','revoke_session'].includes(action)&&!UUID.test(target))return json(400,{error:'Identifiant utilisateur invalide.'});
+  if(['suspend','activate','delete_user','permanent_delete_user','revoke_session'].includes(action)&&target===caller.id)return json(409,{error:'Cette action ne peut pas viser votre propre compte depuis la console.'});
+  if(['suspend','activate','delete_user','permanent_delete_user'].includes(action)){
    const targetIsAdmin=await rpc(base,key,'aurevia_is_admin',{p_user_id:target});
    if(targetIsAdmin===true)return json(409,{error:'Un compte administrateur ne peut pas être suspendu ou supprimé depuis la console utilisateurs.'});
   }
@@ -112,15 +114,20 @@ export async function handler(event){
    const revoked=await rpc(base,key,'aurevia_admin_revoke_session',{p_actor_id:caller.id,p_target_user_id:target});
    return json(200,{ok:true,revoked:Boolean(revoked)});
   }
-  if(action==='delete_user'){
-   // Revoke the AUREVIA session before deleting the Auth identity. This immediately
-   // invalidates the app session; protected APIs also revalidate the Google user.
-   await rpc(base,key,'aurevia_admin_revoke_session',{p_actor_id:caller.id,p_target_user_id:target});
-   // Purge the user's AUREVIA data first; on failure, do not delete the Auth identity.
+  if(action==='delete_user'||action==='permanent_delete_user'){
+   if(action==='permanent_delete_user'&&body.confirmation!=='SUPPRIMER DÉFINITIVEMENT')return json(400,{error:'Confirmation renforcée manquante.'});
+   // For permanent deletion, write the keyed email block first. It survives any later
+   // cleanup/Auth failure, so a retry cannot reopen the registration loophole.
+   if(action==='permanent_delete_user'){
+    const block=await rpc(base,key,'aurevia_admin_permanent_delete_block',{p_actor_id:caller.id,p_target_user_id:target,p_reason:String(body.reason||'').slice(0,500)});
+    if(block?.ok!==true)return json(block?.code==='ADMIN_REQUIRED'?403:409,{error:'Le blocage définitif de cette adresse n’a pas pu être confirmé.',code:block?.code||'EMAIL_BLOCK_FAILED'});
+   }
+   // deleteUserApplicationData revokes every AUREVIA session before cleanup.
+   // Permanent deletion already revoked the active session atomically with the email block.
    const cleanup=await deleteUserApplicationData(base,key,target);
    await request(`${base}/auth/v1/admin/users/${encodeURIComponent(target)}`,{method:'DELETE',headers:adminHeaders(key)});
-   await audit(base,key,caller.id,'delete_user',target,{source:'admin_console',session_revoked:true,application_data_deleted:true});
-   return json(200,{ok:true,deleted:true,application_data_deleted:true,cleaned_tables:cleanup.tables_cleaned,session_revoked:true,reauthentication_required:true});
+   await audit(base,key,caller.id,action,target,{source:'admin_console',session_revoked:true,application_data_deleted:true,email_blocked:action==='permanent_delete_user'});
+   return json(200,{ok:true,deleted:true,application_data_deleted:true,cleaned_tables:cleanup.tables_cleaned,session_revoked:true,email_blocked:action==='permanent_delete_user',reauthentication_required:true});
   }
   if(action==='announcement_create'){
    const title=String(body.title||'').trim().slice(0,120),content=String(body.body||'').trim().slice(0,4000),category=String(body.category||'general').trim().slice(0,40);

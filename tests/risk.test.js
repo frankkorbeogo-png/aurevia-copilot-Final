@@ -78,3 +78,11 @@ test('un même risque économique garde le même lot dans toutes les devises pro
     assert.equal(result.lots, usd.lots, `lot différent pour ${currency.code}`);
   }
 });
+
+
+test('respecte un lot minimum, un pas et un plafond broker personnalisés',()=>{
+ const r=calculatePositionRisk({riskAmount:12,stopDistance:1,unitValuePerLot:100,minLot:0.005,lotStep:0.001,maxLot:0.02});
+ assert.equal(r.lots,0.02);assert.ok(r.riskMoney<=12);
+ const tooSmall=calculatePositionRisk({riskAmount:0.4,stopDistance:1,unitValuePerLot:100,minLot:0.005,lotStep:0.001});
+ assert.ok(tooSmall.error);
+});

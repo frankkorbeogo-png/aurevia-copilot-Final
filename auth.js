@@ -192,7 +192,13 @@ async function activateSession(session,action){
    pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;renderRememberedAccounts();render();
    const message='Deux comptes sont déjà mémorisés sur cet appareil. Retirez-en un avant de connecter un troisième compte.';const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);return;
   }
-  await sessionRequest(action,session.access_token);bindLocalDataOwner(session.user?.id);cacheAccountSession(session);sessionReady=true;pendingSession=null;render();
+  await sessionRequest(action,session.access_token);
+  const licenseResponse=await fetch('/api/license',{headers:{authorization:`Bearer ${session.access_token}`},cache:'no-store'});
+  const licenseState=await licenseResponse.json().catch(()=>({}));
+  if(!licenseResponse.ok||licenseState.ok!==true)throw new Error(licenseState.error||'Impossible de vérifier la licence AUREVIA.');
+  window.__aureviaLicense=licenseState;
+  bindLocalDataOwner(session.user?.id);cacheAccountSession(session);sessionReady=true;pendingSession=null;render();
+  window.dispatchEvent(new CustomEvent('aurevia:licensechange',{detail:licenseState}));
   const retry=$('retrySessionBtn');if(retry)retry.hidden=true;
   startHeartbeat();
  }catch(error){
@@ -322,30 +328,19 @@ export async function restoreTradeGroupsFromSupabase(){
 }
 
 export async function syncTradeGroupToSupabase(group){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
  const {groupRow,positions,journalRows}=buildTradeGroupCloudRows(group,user.id);
- // Position status (including PENDING) stays unchanged. Journal rows use OPEN
- // because the SQL journal constraint does not accept PENDING.
- const g=await supabase.from('trading_position_groups').upsert(groupRow,{onConflict:'id'});if(g.error)throw new Error(g.error.message);
- const p=await supabase.from('trading_positions').upsert(positions,{onConflict:'id'});if(p.error)throw new Error(p.error.message);
- let existingRows=[],created=[];
- if(group.autoJournal){
-  const existing=await supabase.from('trading_journal').select('id,position_id').eq('user_id',user.id).eq('group_id',group.id);if(existing.error)throw new Error(existing.error.message);
-  existingRows=existing.data||[];
-  const missing=journalRows.filter(row=>row.position_id?!existingRows.some(x=>x.position_id===row.position_id):!existingRows.some(x=>!x.position_id));
-  if(missing.length){const j=await supabase.from('trading_journal').insert(missing).select('id,position_id');if(j.error)throw new Error(j.error.message);created=j.data||[];}
-  for(const row of [...existingRows,...created]){
-   const target=row.position_id||null;
-   const q=target?supabase.from('trading_positions').update({journal_id:row.id}).eq('id',target):supabase.from('trading_positions').update({journal_id:row.id}).eq('group_id',group.id);
-   const result=await q;if(result.error)throw new Error(result.error.message);
-   const child=target?group.children.find(item=>item.id===target):group.children[0];
-   if(child){
-    const journalUpdate=target?{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:child.initialLot,volume_remaining:child.remainingLot}:{entry_price:child.entry,stop_loss:child.stopLoss,take_profit:child.takeProfit,volume_initial:group.requestedLot,volume_remaining:group.children.reduce((sum,item)=>sum+Number(item.remainingLot||0),0)};
-    const updatedJournal=await supabase.from('trading_journal').update(journalUpdate).eq('id',row.id).eq('user_id',user.id);if(updatedJournal.error)throw new Error(updatedJournal.error.message);
-   }
-  }
- }
- return {synced:true,journalMappings:[...existingRows,...created].map(row=>({id:row.id,positionId:row.position_id||null}))};
+ // The RPC derives user_id from auth.uid(), checks the active AUREVIA session,
+ // and commits group, positions and linked journal rows in one transaction.
+ const {data,error}=await supabase.rpc('aurevia_sync_trade_group',{
+  p_group:groupRow,p_positions:positions,p_journal:journalRows
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'La synchronisation atomique du trade n’a pas été confirmée.');
+ return {synced:true,journalMappings:Array.isArray(data.journal_mappings)?data.journal_mappings:[]};
 }
 
 export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=null,positionId=null){
@@ -353,56 +348,36 @@ export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=nul
  const {data:{user},error:userError}=await supabase.auth.getUser();
  if(userError)throw new Error(userError.message);
  if(!user)return {synced:false,reason:'not_authenticated'};
- let removed=await supabase.from('trading_journal').delete().eq('id',journalId).eq('user_id',user.id).select('id');
- if(removed.error)throw new Error(removed.error.message);
- if(!(removed.data||[]).length&&groupId){
-  let fallback=supabase.from('trading_journal').delete().eq('user_id',user.id).eq('group_id',groupId);
-  fallback=positionId?fallback.eq('position_id',positionId):fallback.is('position_id',null);
-  removed=await fallback.select('id');
-  if(removed.error)throw new Error(removed.error.message);
- }
- const deleted=(removed.data||[]).length;
- if(!deleted)throw new Error('Fiche introuvable ou suppression non autorisée. Vérifiez la session et les droits du compte.');
- return {synced:true,deleted};
+ const {data,error}=await supabase.rpc('aurevia_delete_linked_journal_entry',{
+  p_journal_id:journalId||null,p_group_id:groupId,p_position_id:positionId
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'La suppression de la fiche journal n’a pas été confirmée.');
+ return {synced:true,deleted:Number(data.deleted||0)};
 }
 
 export async function deleteTradePositionFromSupabase(groupId,positionId){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- const {data:position,error:positionError}=await supabase.from('trading_positions').select('id,group_id,status,volume_remaining').eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id).maybeSingle();
- if(positionError)throw new Error(positionError.message);if(!position)return {synced:false,reason:'not_found'};
- if(position.status!=='CLOSED'||Number(position.volume_remaining)>1e-8)throw new Error('Un trade doit être entièrement clôturé avant de pouvoir être retiré du suivi.');
- const closes=await supabase.from('trading_position_closes').select('id').eq('position_id',positionId).eq('user_id',user.id).limit(1);
- if(closes.error)throw new Error(closes.error.message);if(!(closes.data||[]).length)throw new Error('La clôture de ce trade doit être enregistrée avant son retrait du suivi.');
- const remaining=await supabase.from('trading_positions').select('id').eq('group_id',groupId).eq('user_id',user.id).neq('id',positionId).limit(1);
- if(remaining.error)throw new Error(remaining.error.message);
- if(!(remaining.data||[]).length){
-  const removedGroup=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');
-  if(removedGroup.error)throw new Error(removedGroup.error.message);
- }else{
-  const removed=await supabase.from('trading_positions').delete().eq('id',positionId).eq('group_id',groupId).eq('user_id',user.id);
-  if(removed.error)throw new Error(removed.error.message);
- }
- return {synced:true,journalPreserved:true};
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
+ const {data,error}=await supabase.rpc('aurevia_delete_closed_trade_position',{
+  p_group_id:groupId,p_position_id:positionId
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'Le retrait du trade clôturé n’a pas été confirmé.');
+ return {synced:true,journalPreserved:Boolean(data.journal_preserved),groupDeleted:Boolean(data.group_deleted)};
 }
-
 export async function deleteOpenTradeGroupFromSupabase(groupId){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,status,mode').eq('id',groupId).eq('user_id',user.id).maybeSingle();
- if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};
- if(group.mode!=='unique'||group.status!=='OPEN')throw new Error('Seule une position unique ouverte peut être supprimée par cette action.');
- const {data:positions,error:positionsError}=await supabase.from('trading_positions').select('id,status,volume_initial,volume_remaining').eq('group_id',groupId).eq('user_id',user.id);
- if(positionsError)throw new Error(positionsError.message);if(!positions?.length)throw new Error('Aucun trade lié à cette position n’a été trouvé.');
- if(positions.some(p=>!['OPEN','PENDING'].includes(p.status)||Number(p.volume_remaining)!==Number(p.volume_initial)))throw new Error('Cette position possède déjà une clôture ou un volume modifié : suppression refusée.');
- const ids=positions.map(p=>p.id);
- const {data:closes,error:closesError}=await supabase.from('trading_position_closes').select('id').eq('user_id',user.id).in('position_id',ids).limit(1);
- if(closesError)throw new Error(closesError.message);if((closes||[]).length)throw new Error('Cette position possède déjà une clôture enregistrée et ne peut pas être supprimée.');
- const removedPositions=await supabase.from('trading_positions').delete().eq('group_id',groupId).eq('user_id',user.id).in('id',ids);
- if(removedPositions.error)throw new Error(removedPositions.error.message);
- const removedGroup=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','OPEN');
- if(removedGroup.error)throw new Error(removedGroup.error.message);
- return {synced:true,journalPreserved:true};
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
+ const {data,error}=await supabase.rpc('aurevia_delete_open_trade_group',{p_group_id:groupId});
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'Le retrait de la position ouverte n’a pas été confirmé.');
+ return {synced:true,journalPreserved:Boolean(data.journal_preserved)};
 }
-
 export async function deletePendingTradeFromSupabase(groupId,positionId=null){
  await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
  const {data,error}=await supabase.rpc('aurevia_delete_pending_trade',{
@@ -414,34 +389,30 @@ export async function deletePendingTradeFromSupabase(groupId,positionId=null){
 }
 
 export async function deleteClosedTradeGroupFromSupabase(groupId){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- const {data:group,error:groupError}=await supabase.from('trading_position_groups').select('id,status,mode').eq('id',groupId).eq('user_id',user.id).maybeSingle();
- if(groupError)throw new Error(groupError.message);if(!group)return {synced:false,reason:'not_found'};
- if(group.status!=='CLOSED')throw new Error('La position doit être entièrement clôturée avant son retrait du suivi.');
- const {data:positions,error:positionsError}=await supabase.from('trading_positions').select('id,status,volume_remaining').eq('group_id',groupId).eq('user_id',user.id);
- if(positionsError)throw new Error(positionsError.message);if(!positions?.length)throw new Error('Aucun trade lié à cette position n’a été trouvé.');
- if(positions.some(p=>p.status!=='CLOSED'||Number(p.volume_remaining)>1e-8))throw new Error('Tous les trades de la position doivent être entièrement clôturés.');
- const ids=positions.map(p=>p.id);
- const {data:closes,error:closesError}=await supabase.from('trading_position_closes').select('position_id').eq('user_id',user.id).in('position_id',ids);
- if(closesError)throw new Error(closesError.message);
- const closedIds=new Set((closes||[]).map(c=>c.position_id));
- if(ids.some(id=>!closedIds.has(id)))throw new Error('Chaque trade doit posséder au moins une clôture enregistrée.');
- const removedGroup=await supabase.from('trading_position_groups').delete().eq('id',groupId).eq('user_id',user.id).eq('status','CLOSED');
- if(removedGroup.error)throw new Error(removedGroup.error.message);
- return {synced:true,journalPreserved:true};
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
+ const {data,error}=await supabase.rpc('aurevia_delete_closed_trade_group',{p_group_id:groupId});
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'Le retrait de la position clôturée n’a pas été confirmé.');
+ return {synced:true,journalPreserved:Boolean(data.journal_preserved)};
 }
-
 export async function syncTradeCloseToSupabase(group,child,closeEvent){
- await ensureClient();const {data:{user},error:userError}=await supabase.auth.getUser();if(userError)throw new Error(userError.message);if(!user)return {synced:false,reason:'not_authenticated'};
- // One server transaction inserts the idempotent close event, recomputes totals,
- // and updates the linked journal/group. A retry cannot double-count the close.
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
+ // The close, FX conversion snapshot, remaining volume, cumulative P/L and
+ // linked journal update are committed together by one PostgreSQL transaction.
  const {data,error}=await supabase.rpc('aurevia_record_position_close',{
   p_close_id:closeEvent.id,p_position_id:child.id,p_volume:closeEvent.volume,
   p_exit_price:closeEvent.exit,p_gross_pnl:closeEvent.gross,p_fees:closeEvent.fees,
-  p_net_pnl:closeEvent.net,p_closed_at:closeEvent.closedAt
+  p_net_pnl:closeEvent.net,p_closed_at:closeEvent.closedAt,
+  p_fx_snapshot:closeEvent.fxSnapshot??null
  });
  if(error)throw new Error(error.message);
- if(closeEvent.fxSnapshot){const {error:fxError}=await supabase.from('trading_position_closes').update({fx_snapshot:closeEvent.fxSnapshot}).eq('id',closeEvent.id).eq('position_id',child.id).eq('user_id',user.id);if(fxError)throw new Error(`Clôture enregistrée, mais archivage du taux impossible : ${fxError.message}`);}
+ if(!data?.ok)throw new Error(data?.error||'La clôture cloud n’a pas été confirmée.');
  return {synced:true,...(data||{})};
 }
 

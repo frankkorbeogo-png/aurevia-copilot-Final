@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inferQuoteCurrency,validateFxSnapshot} from '../fx-conversion.js';
+import {validateFxRateTimestamp} from '../netlify/functions/_fx-rate.mjs';
 import {calculateContractPnl,normalizeContractSpec,validateContractSpec} from '../contract-engine.js';
 
 test('devise de cotation reconnue pour forex, métaux, indices et actions',()=>{
@@ -37,4 +38,12 @@ test('les routes FX sont protégées et le watcher ainsi que Telegram utilisent 
  assert.match(watcher,/getFxSnapshot\(quoteCurrency,storedSpec\.accountCurrency\)/);
  assert.match(telegram,/inferQuoteCurrency\(scenario\.instrument\)/);
  assert.match(app,/\/api\/fx-rate\?from=/);assert.match(app,/validateFxSnapshot/);
+});
+
+test('le taux FX exige un timestamp réel et récent',()=>{
+ const now=Date.UTC(2026,10,16,3,30,0);
+ assert.equal(validateFxRateTimestamp(Math.floor((now-60*60000)/1000),now),new Date(now-60*60000).toISOString());
+ assert.throws(()=>validateFxRateTimestamp(null,now),/absent ou invalide/);
+ assert.throws(()=>validateFxRateTimestamp(Math.floor((now+10*60000)/1000),now),/futur/);
+ assert.throws(()=>validateFxRateTimestamp(Math.floor((now-49*3600000)/1000),now),/plus de 48 heures/);
 });
