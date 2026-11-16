@@ -14,7 +14,7 @@ test('une réponse 429 déclenche une temporisation locale avant une nouvelle te
   assert.match(source,/if\(r\.status===429\)/);
   assert.match(source,/Temporisation du fournisseur/);
 });
-test('M15 est chargé en priorité et les unités H4/H1/M30 restent optionnelles',()=>{
+test('M15 et M30 sont requis, H4 et H1 restent optionnels',()=>{
   assert.match(source,/frames\.M15=await fetchFrame/);
   assert.match(source,/if\(frames\.M15\)/);
   assert.match(source,/Promise\.allSettled/);
