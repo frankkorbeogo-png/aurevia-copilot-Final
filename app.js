@@ -406,8 +406,8 @@ async function notifyLatestAnalysis(state,symbol){
     if(Array.isArray(details.takeProfits)&&details.takeProfits.length)lines.push(`Take Profits : ${details.takeProfits.join(' · ')}`);
     if(details.invalidation)lines.push(`Invalidation : ${details.invalidation}`);
   }
-  const result=await sendTelegramNotification({type:state.decision==='BUY'||state.decision==='SELL'?'signal':'analysis',text:lines.join('\n')});
-  if(result.sent||result.reason==='disabled_by_user')localStorage.setItem('aurevia_last_telegram_analysis',key);
+  const result=await sendTelegramNotification({type:state.decision==='BUY'||state.decision==='SELL'?'signal':'analysis',text:lines.join('\n')},ownerId);
+  if(String(window.__aureviaUserId||'').trim()===ownerId&&(result.sent||result.reason==='disabled_by_user'))localStorage.setItem('aurevia_last_telegram_analysis',key);
 }
 
 function updateScenarioEditorMeta(){
