@@ -1,4 +1,6 @@
 import { validateContractSpec } from '../../contract-engine.js';
+import {getMarketInstrument} from '../../market-catalog.js';
+import {getMarketStatus} from '../../market-hours.js';
 import { inferQuoteCurrency, getFxSnapshot } from './_fx-rate.mjs';
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const now=()=>new Date().toISOString();
@@ -14,7 +16,7 @@ const keyboard=rows=>({inline_keyboard:rows});
 async function getOwner(chatId){const owners=await rest(`telegram_connections?select=user_id&chat_id=eq.${encodeURIComponent(chatId)}&limit=2`);if(!owners?.length)return null;if(owners.length!==1)throw new Error('Association Telegram ambiguë.');return owners[0].user_id;}
 async function getPreferences(userId){const rows=await rest(`user_preferences?select=preferences&user_id=eq.${encodeURIComponent(userId)}&limit=1`);return rows?.[0]?.preferences||{};}
 async function saveSetup(userId,setup){const prefs=await getPreferences(userId);const next={...prefs};if(setup)next.telegram_trade_setup=setup;else delete next.telegram_trade_setup;await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:next,updated_at:now()}});}
-async function getScenario(userId,code){const rows=await rest(`aurevia_analysis_scenarios?select=id,instrument,direction,entry,last_price,stop_loss,take_profits,lot_confirmation_expires_at,trade_group_id&user_id=eq.${encodeURIComponent(userId)}&lot_confirmation_code=eq.${encodeURIComponent(code)}&status=eq.entry_confirmed&limit=2`);if(rows?.length!==1)return null;const s=rows[0];if(s.trade_group_id||!s.lot_confirmation_expires_at||Date.parse(s.lot_confirmation_expires_at)<Date.now())return null;return s;}
+async function getScenario(userId,code){const rows=await rest(`aurevia_analysis_scenarios?select=id,instrument,direction,entry,last_price,last_price_at,stop_loss,take_profits,lot_confirmation_expires_at,trade_group_id&user_id=eq.${encodeURIComponent(userId)}&lot_confirmation_code=eq.${encodeURIComponent(code)}&status=eq.entry_confirmed&limit=2`);if(rows?.length!==1)return null;const s=rows[0];if(s.trade_group_id||!s.lot_confirmation_expires_at||Date.parse(s.lot_confirmation_expires_at)<Date.now())return null;return s;}
 const numberInput=value=>{const n=Number(String(value).trim().replace(',','.'));return Number.isFinite(n)?n:null;};
 const ask=(token,chatId,text,buttons)=>telegramSend(token,chatId,text,buttons?keyboard(buttons):undefined);
 async function beginSetup(token,chatId,userId,code,mode){
@@ -69,6 +71,9 @@ function summary(setup,scenario){
 async function finishSetup(token,chatId,userId,setup){
  const scenario=await getScenario(userId,setup.code);
  if(!scenario){await saveSetup(userId,null);await telegramSend(token,chatId,'Le scénario a expiré ou a déjà été enregistré.');return false;}
+ const marketInstrument=getMarketInstrument(scenario.instrument);if(!marketInstrument){await telegramSend(token,chatId,'Cet instrument n’est plus pris en charge par AUREVIA. Aucun trade n’a été enregistré.');return false;}
+ const marketStatus=getMarketStatus(marketInstrument.label);if(!marketStatus.tradable){await telegramSend(token,chatId,marketStatus.reason||'Marché fermé : validation suspendue. Aucun trade n’a été enregistré.');return false;}
+ const quoteAt=Date.parse(scenario.last_price_at||''),quoteAge=Date.now()-quoteAt;if(!Number.isFinite(quoteAge)||quoteAge< -5000||quoteAge>120000){await telegramSend(token,chatId,'La dernière cotation est trop ancienne. Attends la prochaine mise à jour de surveillance puis confirme à nouveau.');return false;}
  const quoteCurrency=inferQuoteCurrency(scenario.instrument);
  if(setup.spec.calculationType==='contract'&&!quoteCurrency){await telegramSend(token,chatId,`La devise de cotation de ${scenario.instrument} n’est pas reconnue. La position n’a pas été enregistrée pour éviter un calcul financier incorrect.`);return false;}
  let fxSnapshot=null,quoteToAccount=1;
