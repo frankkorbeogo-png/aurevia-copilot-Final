@@ -6,7 +6,8 @@ const read=async()=>readFile(new URL('../netlify/functions/scenario-watch.mjs',i
 test('le worker lance la validation M5 après que la zone a été atteinte',async()=>{
  const s=await read();
  assert.match(s,/s\.status==='zone_reached'&&!s\.entry_notified/);
- assert.match(s,/runAureviaM5Confirmation\(\{/);\n assert.match(s,/last_m5_analysis_at/);
+ assert.match(s,/runAureviaM5Confirmation\(\{/);
+ assert.match(s,/last_m5_analysis_at/);
 });
 test('la confirmation d’entrée utilise uniquement M5, jamais une séquence M5/M1',async()=>{
  const s=await read();
@@ -21,5 +22,7 @@ test('la validation M5 explique le score et les facteurs techniques',()=>{
 });
 test('le worker utilise les fournisseurs IA configurés pour le contrôle M5',async()=>{
  const s=await read();
- assert.match(s,/runAureviaM5Confirmation/);\n const ai=await readFile(new URL('../netlify/functions/ai-collaboration.mjs',import.meta.url),'utf8');\n assert.match(ai,/configuredAIProviders\(\)/);
+ assert.match(s,/runAureviaM5Confirmation/);
+ const ai=await readFile(new URL('../netlify/functions/ai-collaboration.mjs',import.meta.url),'utf8');
+ assert.match(ai,/configuredAIProviders\(\)/);
 });
