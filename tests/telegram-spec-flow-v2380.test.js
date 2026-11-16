@@ -41,3 +41,19 @@ test('Telegram refuse la configuration d’un trade si la licence AUREVIA est ex
  globalThis.fetch=async(input,options={})=>{const url=String(input);if(url.includes('/rpc/aurevia_telegram_access_status'))return response({allowed:false,code:'LICENSE_REQUIRED'});if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'user-1'}]);if(url.includes('/rest/v1/user_preferences')){if(options.method==='PATCH'){prefs=JSON.parse(options.body).preferences;return response({},200);}return response([{preferences:prefs}]);}if(url.includes('/rpc/aurevia_create_position_from_scenario'))created=true;if(url.includes('api.telegram.org')){messages.push(JSON.parse(options.body));return response({ok:true,result:{message_id:1}});}throw new Error('Unexpected URL '+url);};
  try{const r=await handler(callback('start:ABCD1234:unique'));assert.equal(r.statusCode,200);assert.equal(created,false);assert.equal(prefs.telegram_trade_setup,undefined);assert.ok(messages.some(x=>x.text?.includes('licence n’est pas active')));}finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}
 });
+
+test('Telegram refuse « M5 » comme substitut au prix réel d’exécution manuelle',async()=>{
+ const oldFetch=globalThis.fetch,oldEnv={...process.env};Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',TELEGRAM_BOT_TOKEN:'bot',TELEGRAM_WEBHOOK_SECRET:'secret'});
+ let prefs={account_currency:'USD'},rpcCalled=false,messages=[];
+ const scenario={id:'scenario-1',instrument:'XAU/USD',direction:'BUY',entry:4000,last_price_at:new Date().toISOString(),stop_loss:3990,take_profits:[4010],lot_confirmation_expires_at:new Date(Date.now()+600000).toISOString(),trade_group_id:null};
+ globalThis.fetch=async(input,options={})=>{const url=String(input);if(url.includes('/rpc/aurevia_telegram_access_status'))return response({allowed:true,status:'trial'});if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'user-1'}]);if(url.includes('/rest/v1/user_preferences')){if(options.method==='PATCH'){prefs=JSON.parse(options.body).preferences;return response({},200);}return response([{preferences:prefs}]);}if(url.includes('/rest/v1/aurevia_analysis_scenarios'))return response([scenario]);if(url.includes('/rpc/aurevia_create_position_from_scenario')){rpcCalled=true;return response('00000000-0000-4000-8000-000000000001');}if(url.includes('api.telegram.org')){messages.push(JSON.parse(options.body));return response({ok:true,result:{message_id:1}});}throw new Error('Unexpected URL '+url);};
+ try{
+  await handler(callback('start:ABCD1234:unique'));
+  await handler(message('0.05'));
+  assert.equal(prefs.telegram_trade_setup.step,'actualEntryPrice');
+  await handler(message('M5'));
+  assert.equal(prefs.telegram_trade_setup.step,'actualEntryPrice');
+  assert.equal(rpcCalled,false);
+  assert.ok(messages.some(x=>x.text?.includes('Le prix réel est obligatoire')));
+ }finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}
+});
