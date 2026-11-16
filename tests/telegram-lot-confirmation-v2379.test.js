@@ -40,7 +40,7 @@ test('V2.3.80 stocke le snapshot de calcul et prend en charge contrat, point et 
 
 test('Telegram permet de saisir les limites de volume propres au broker',async()=>{
  const source=await read('../netlify/functions/telegram-webhook.mjs');
- assert.match(source,/minLot:0\.01,lotStep:0\.01,maxLot:null/);
+ assert.match(source,/minLot:savedSpecs\.minLot\?\?0\.01,lotStep:savedSpecs\.lotStep\?\?0\.01,maxLot:savedSpecs\.maxLot\?\?null/);
  assert.match(source,/minLot:'Quel est le lot minimum/);
  assert.match(source,/lotStep:'Quel est le pas de volume/);
  assert.match(source,/maxLot:'Quel est le lot maximum/);
