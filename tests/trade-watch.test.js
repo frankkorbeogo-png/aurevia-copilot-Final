@@ -187,10 +187,11 @@ test('le P/L privilégie le prix réellement exécuté au prix d’activation ob
  const result=calculateInternalClosePnl({volume_remaining:0.1,entry_price:1999,activation_price:2000,actual_entry_price:2005,contract_size:100,quote_to_account:1,fees_per_lot:2},'BUY',2010);
  assert.deepEqual(result,{gross:50,fees:0.2,net:49.8,volume:0.1});
 });
-test('un ordre conditionnel sans prix réel manuel suspend le calcul P/L automatique',async()=>{
+test('un ordre conditionnel sans prix réel manuel utilise le prix d’activation comme référence P/L',async()=>{
  const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
- assert.match(source,/!\['MARKET','BUY MARKET','SELL MARKET'\]\.includes\(g\.order_type\)&&!\(Number\(p\.actual_entry_price\)>0\)\)continue/);
- assert.match(source,/calcul du résultat reste suspendu/);
+ assert.doesNotMatch(source,/Conditional orders remain observed-only/);
+ assert.match(source,/actual_entry_price\?\?position\.activation_price\?\?position\.entry_price/);
+ assert.match(source,/prix observé au déclenchement/);
 });
 
 test('une position unique ne génère qu’une notification d’activation pour tous ses TP',async()=>{
@@ -198,5 +199,5 @@ test('une position unique ne génère qu’une notification d’activation pour 
  assert.match(source,/attemptedUniqueGroups=new Set\(\)/);
  assert.match(source,/g\.mode==='unique'&&attemptedUniqueGroups\.has\(g\.id\)/);
  assert.match(source,/trading_positions\?group_id=eq\.\$\{g\.id\}&status=eq\.OPEN/);
- assert.match(source,/Prix réellement exécuté confirmé/);
+ assert.match(source,/Prix réel confirmé/);
 });
