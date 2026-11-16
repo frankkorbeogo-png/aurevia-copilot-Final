@@ -78,7 +78,7 @@ async function refreshSelectedQuote(){
     const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].provider)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||'Cours indisponible');
-    const checked=validateMarketQuote(data,{maxFetchedAgeMs:45000});if(!checked.ok)throw new Error(checked.error);
+    const checked=validateMarketQuote(data,{maxFetchedAgeMs:45000});if(!checked.ok)throw new Error(checked.error);\n  checked.spec.actualEntryPrice=actualEntryPrice;
     const value=checked.price,digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
     if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
     if(status)status.textContent=`Twelve Data · bougie 1 min · ${new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} · ${Number.isFinite(Number(data.ageSeconds))?`${data.ageSeconds}s`:''}`;
@@ -255,7 +255,7 @@ async function openTradeValidation(scenario){
  $('validationScenarioTitle').textContent=`${scenario.instrument} · ${scenario.direction}`;
  $('validationScenarioStatus').textContent='Entrée validée par M5';
  $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Référence d’entrée M5 <b>${escapeText(scenario.entry_confirmation_price??scenario.entry??scenario.last_price)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
- $('validationLot').value='';
+ $('validationLot').value='';$('validationActualFill').value='';\n const isMarketOrder=!String(scenario.order_type||'').includes('LIMIT')&&!String(scenario.order_type||'').includes('STOP');$('validationActualFillField').hidden=!isMarketOrder;
  $('validationLeverage').value='';$('validationMinLot').value='0.01';$('validationLotStep').value='0.01';$('validationMaxLot').value='';
  $('validationCalcType').value='contract';$('validationContractSize').value='';$('validationPointSize').value='';$('validationPointValue').value='';$('validationTickSize').value='';$('validationTickValue').value='';$('validationFees').value='0';
  try{
@@ -299,7 +299,7 @@ async function confirmTradeValidation(){
  const button=$('confirmTradeValidation'),status=$('validationTradeStatus');
  try{
   const s=pendingValidationScenario;if(!s?.id)throw new Error('Aucun scénario confirmé n’est sélectionné.');
-  const volume=Number($('validationLot').value),mode=$('validationMode').value;
+  const volume=Number($('validationLot').value),mode=$('validationMode').value;\n  const isMarketOrder=!String(s.order_type||'').includes('LIMIT')&&!String(s.order_type||'').includes('STOP');\n  const actualEntryPrice=isMarketOrder?Number($('validationActualFill').value):null;\n  if(isMarketOrder&&(!Number.isFinite(actualEntryPrice)||actualEntryPrice<=0||(s.direction==='BUY'?(actualEntryPrice<=Number(s.stop_loss)||actualEntryPrice>=Number(s.take_profits?.[0])):(actualEntryPrice>=Number(s.stop_loss)||actualEntryPrice<=Number(s.take_profits?.[0])))))throw new Error('Saisissez le prix réellement exécuté sur votre broker, cohérent avec le SL et le TP1.');
   if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un volume positif.');
   const rawSpec=await validationContractSpec(),checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
