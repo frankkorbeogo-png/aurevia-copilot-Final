@@ -326,8 +326,9 @@ export async function getNotificationSession(){
  const session=data.session;
  return session?.access_token&&session.user?.id?{userId:session.user.id,accessToken:session.access_token}:null;
 }
-export async function sendTelegramNotification({type='analysis',text}){
+export async function sendTelegramNotification({type='analysis',text},expectedUserId=null){
  const session=await getNotificationSession();if(!session)return {sent:false,reason:'not_authenticated'};
+ if(expectedUserId&&session.userId!==expectedUserId)return {sent:false,reason:'account_changed'};
  const response=await fetch('/api/telegram-notify',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${session.accessToken}`},body:JSON.stringify({type,text})});
  const result=await response.json().catch(()=>({error:'Réponse de notification illisible.'}));
  if(!response.ok)throw new Error(result.error||'Notification Telegram indisponible.');
@@ -350,11 +351,12 @@ export async function restoreTradeGroupsFromSupabase(){
  return {restored:true,groups,journal};
 }
 
-export async function syncTradeGroupToSupabase(group){
+export async function syncTradeGroupToSupabase(group,expectedUserId=null){
  await ensureClient();
  const {data:{user},error:userError}=await supabase.auth.getUser();
  if(userError)throw new Error(userError.message);
  if(!user)return {synced:false,reason:'not_authenticated'};
+ if(expectedUserId&&user.id!==expectedUserId)return {synced:false,reason:'account_changed'};
  const {groupRow,positions,journalRows}=buildTradeGroupCloudRows(group,user.id);
  // The RPC derives user_id from auth.uid(), checks the active AUREVIA session,
  // and commits group, positions and linked journal rows in one transaction.
@@ -434,11 +436,12 @@ export async function deleteClosedTradeGroupFromSupabase(groupId){
  if(!data?.ok)throw new Error(data?.error||'Le retrait de la position clôturée n’a pas été confirmé.');
  return {synced:true,journalPreserved:Boolean(data.journal_preserved)};
 }
-export async function syncTradeCloseToSupabase(group,child,closeEvent){
+export async function syncTradeCloseToSupabase(group,child,closeEvent,expectedUserId=null){
  await ensureClient();
  const {data:{user},error:userError}=await supabase.auth.getUser();
  if(userError)throw new Error(userError.message);
  if(!user)return {synced:false,reason:'not_authenticated'};
+ if(expectedUserId&&user.id!==expectedUserId)return {synced:false,reason:'account_changed'};
  // The close, FX conversion snapshot, remaining volume, cumulative P/L and
  // linked journal update are committed together by one PostgreSQL transaction.
  const {data,error}=await supabase.rpc('aurevia_record_position_close',{
