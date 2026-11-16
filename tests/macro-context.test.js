@@ -30,3 +30,31 @@ test('DXY sans last_quote_at est exclu même si timestamp de bougie est récent'
  globalThis.fetch=async input=>{const u=String(input);if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'macro-user'}),{status:200});if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});if(u.includes('api.twelvedata.com/quote'))return new Response(JSON.stringify({symbol:'DXY',close:'104.25',timestamp:Math.floor(Date.now()/1000)}),{status:200});if(u.includes('showmytrades.com'))return new Response(JSON.stringify({events:[]}),{status:200});throw new Error('URL inattendue '+u);};
  try{const r=await handler({httpMethod:'GET',headers:{authorization:`Bearer header.${claims}.signature`}});const data=parse(r);assert.equal(r.statusCode,200);assert.equal(data.dxy.configured,false);assert.equal(data.dxy.price,null);assert.equal(data.dxy.freshness,'unknown');}finally{globalThis.fetch=original;for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];Object.assign(process.env,old);}
 });
+
+
+test('macro-context dégrade proprement si seen_at manque encore dans Supabase',async()=>{
+ const old={...process.env};
+ delete process.env.FRED_API_KEY;delete process.env.TWELVEDATA_API_KEY;
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable',SUPABASE_SERVICE_ROLE_KEY:'service'});
+ const original=globalThis.fetch,claims=Buffer.from(JSON.stringify({sub:'macro-user',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
+ globalThis.fetch=async input=>{
+  const u=String(input);
+  if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'macro-user'}),{status:200});
+  if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});
+  if(u.includes('showmytrades.com'))return new Response(JSON.stringify({events:[]}),{status:200});
+  if(u.includes('/rest/v1/global_news_events'))return new Response(JSON.stringify({code:'PGRST204',message:"Column 'seen_at' was not found in the schema cache"}),{status:400});
+  if(u.includes('/rest/v1/economic_release_events'))return new Response('[]',{status:200});
+  throw new Error('URL inattendue '+u);
+ };
+ try{
+  const r=await handler({httpMethod:'GET',headers:{authorization:`Bearer header.${claims}.signature`}});
+  const data=parse(r);
+  assert.equal(r.statusCode,200);
+  assert.equal(data.globalNews.configured,false);
+  assert.match(data.globalNews.notice,/colonne seen_at/);
+ }finally{
+  globalThis.fetch=original;
+  for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];
+  Object.assign(process.env,old);
+ }
+});
