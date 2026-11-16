@@ -785,7 +785,8 @@ function renderRiskControls(){
  });
  if(result.error){if($('riskControlStatus'))$('riskControlStatus').textContent=result.error;return result;}
  const money=value=>Number(value).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(currency?' '+currency:'');
- if($('riskFreeMarginOut'))$('riskFreeMarginOut').textContent=money(result.freeMargin);
+ const equity=Number($('riskEquity')?.value||0);
+ if($('riskFreeMarginOut'))$('riskFreeMarginOut').textContent=equity>0?money(result.freeMargin):'—';
  if($('riskDailyPnlOut'))$('riskDailyPnlOut').textContent=money(result.dailyPnl);
  if($('riskDailyRemainingOut'))$('riskDailyRemainingOut').textContent=result.dailyLimitEnabled?money(result.dailyLossRemaining):'Désactivée';
  if($('riskWeeklyPnlOut'))$('riskWeeklyPnlOut').textContent=money(result.weeklyPnl);
@@ -795,7 +796,7 @@ function renderRiskControls(){
  if(result.freeMargin<0)warnings.push('La marge utilisée dépasse l’equity.');
  if(result.dailyLimitReached)warnings.push('Limite de perte quotidienne atteinte.');
  if(result.weeklyLimitReached)warnings.push('Limite de perte hebdomadaire atteinte.');
- if($('riskControlStatus'))$('riskControlStatus').textContent=warnings.length?'ATTENTION · '+warnings.join(' '):'Contrôles actifs · P/L réalisé calculé sur les clôtures enregistrées. Les limites à 0 sont désactivées.';
+ if($('riskControlStatus'))$('riskControlStatus').textContent=equity<=0?'Renseignez votre equity actuelle pour activer le suivi de la marge libre et du drawdown.':warnings.length?'ATTENTION · '+warnings.join(' '):'Contrôles actifs · P/L réalisé calculé sur les clôtures enregistrées. Les limites à 0 sont désactivées.';
  return result;
 }
 async function refreshRiskManagement(){
