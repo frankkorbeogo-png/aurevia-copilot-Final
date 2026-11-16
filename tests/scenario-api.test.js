@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {handler} from '../netlify/functions/scenario-api.mjs';
 const SESSION_ID='9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0';
 const jwt=`header.${Buffer.from(JSON.stringify({sub:'3ed0c702-03f1-4264-9e85-746d66401b51',session_id:SESSION_ID})).toString('base64url')}.signature`;
