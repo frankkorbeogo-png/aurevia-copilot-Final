@@ -12,6 +12,20 @@ function compactAIContext(value, depth=0) {
  if (typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0,18).map(([k,v])=>[k,compactAIContext(v,depth+1)]));
  return String(value).slice(0,180);
 }
+export function compactMacroContext(value) {
+ if (!value || typeof value !== 'object' || Array.isArray(value)) return compactAIContext(value);
+ const ordered = { ...value };
+ if (value.globalNews && Array.isArray(value.globalNews.articles)) {
+  ordered.globalNews = { ...value.globalNews, articles: value.globalNews.articles.slice(0, 8) };
+ }
+ if (value.calendar && Array.isArray(value.calendar.events)) {
+  ordered.calendar = { ...value.calendar, events: value.calendar.events.slice(0, 8) };
+ }
+ if (value.economicReleaseSchedule && Array.isArray(value.economicReleaseSchedule.events)) {
+  ordered.economicReleaseSchedule = { ...value.economicReleaseSchedule, events: value.economicReleaseSchedule.events.slice(0, 8) };
+ }
+ return compactAIContext(ordered);
+}
 const allowed=new Set(MARKET_IDS);
 export function cleanScenario(x,side,price){
  if(!x||x.direction!==side||!['BUY','SELL'].includes(x.direction))return null;
@@ -31,7 +45,7 @@ export async function handler(event){
  const candles=m15.candles.slice(-40).map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
  if(candles.some(c=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)))return json(400,{error:'Bougies M15 invalides.'});
  const last=candles.at(-1),prior=candles.at(-2);if(Date.now()-Date.parse(last.t)>35*60*1000||Date.parse(last.t)>Date.now()+5*60*1000)return json(409,{error:'Dernière bougie M15 trop ancienne ou horodatage invalide.'});
- const payload={instrument,decisionTimeframe:'M15',candles,indicators:compactAIContext(m15.indicators||{}),structure:compactAIContext(m15.structure||{}),patterns:compactAIContext((m15.patterns||[]).slice(-8)),volumeProfile:compactAIContext(m15.volumeProfile||null),fibonacci:compactAIContext(m15.fibonacci||null),price:last.c,previousClose:prior.c,context:{timeframes:compactAIContext(context.timeframes||{}),macro:compactAIContext(context.macro||'non disponible')}};
+ const payload={instrument,decisionTimeframe:'M15',candles,indicators:compactAIContext(m15.indicators||{}),structure:compactAIContext(m15.structure||{}),patterns:compactAIContext((m15.patterns||[]).slice(-8)),volumeProfile:compactAIContext(m15.volumeProfile||null),fibonacci:compactAIContext(m15.fibonacci||null),price:last.c,previousClose:prior.c,context:{timeframes:compactAIContext(context.timeframes||{}),macro:compactMacroContext(context.macro||'non disponible')}};
   const system=`AUREVIA COPILOT — analyste multi-actifs. Réponds en français, uniquement en JSON valide. Aucune exécution d'ordre.
 OBJECTIF: décider BUY, SELL ou WAIT à partir d'une lecture réelle du marché, sans exiger une confluence parfaite.
 HIÉRARCHIE MULTI-UNITÉS: confronte H4 (biais majeur), H1 (confirmation intermédiaire), M30 (structure et préparation) et M15 (validation du scénario). M15 reste l'unité qui décide si un scénario est défendable; H4/H1/M30 ne doivent jamais imposer mécaniquement WAIT ni être ignorés. Explique explicitement les accords, divergences et leur signification (correction, continuation ou retournement). Les unités indisponibles sont neutres, jamais inventées. L'entrée n'est PAS immédiate: propose une zone d'opportunité et attends sa mitigation; après mitigation, la surveillance séparée vérifie M5 puis M1 avant de notifier une entrée. Ne prétends pas que M5/M1 ont été confirmés dans cette analyse si leurs données ne sont pas fournies.
