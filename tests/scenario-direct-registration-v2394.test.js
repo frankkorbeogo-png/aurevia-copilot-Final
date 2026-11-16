@@ -102,7 +102,7 @@ test('les données privées sont réinitialisées lorsqu’un autre compte devie
  assert.match(app,/window\.addEventListener\('aurevia:localownerchange'/);
  assert.match(app,/restoreMyAnalysis\(\);restoreScenarioDraft\(\)/);
  assert.match(app,/renderPositions\(\);renderLinkedJournal\(\);restoreMyAnalysis\(\)/);
- assert.match(app,/syncManualJournalToSupabase\(loadJournalTrades\(\)\)/);
+ assert.match(app,/syncManualJournalToSupabase\(loadJournalTrades\(\),/);
  assert.match(app,/Aucune analyse personnelle enregistrée sur cet appareil/);
  assert.match(app,/Aucun brouillon local à restaurer/);
  assert.match(app,/event\.detail\?\.event==='SIGNED_IN'&&wasBooted/);
