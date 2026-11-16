@@ -32,3 +32,11 @@ test('the ordinary account deletion endpoint remains independent from the email 
  const endpoint=await readFile(new URL('../netlify/functions/account-delete.mjs',import.meta.url),'utf8');
  assert.doesNotMatch(endpoint,/aurevia_admin_permanent_delete_block|aurevia_blocked_emails/);
 });
+
+test('le blocage définitif et la révocation de session sont atomiques côté SQL',async()=>{
+ const atomic=await readFile(new URL('../supabase/migrations/20261116112000_aurevia_permanent_delete_atomic_session_revoke.sql',import.meta.url),'utf8');
+ assert.match(atomic,/update app_private\.aurevia_user_sessions/i);
+ assert.match(atomic,/revoked_at=now\(\)/i);
+ assert.match(atomic,/insert into app_private\.admin_audit_log/i);
+ assert.match(atomic,/return jsonb_build_object\('ok',true,'email_blocked',true,'new_block',v_inserted,'session_revoked',v_session_revoked\)/i);
+});
