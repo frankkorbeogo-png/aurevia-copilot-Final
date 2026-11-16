@@ -30,7 +30,7 @@ test('service-status distinguishes general AI configuration from full three-prov
   const response=await handler(event),body=JSON.parse(response.body);
   assert.equal(response.statusCode,200);
   assert.equal(body.services.ai.configured,true);
-  assert.equal(body.services.ai.m5ConsensusReady,true);
+  assert.equal(body.services.ai.m5ConsensusConfigured,true);
   assert.deepEqual(body.services.ai.m5MissingProviders,[]);
   assert.deepEqual(new Set(body.services.ai.providers.map(x=>x.id)),new Set(['gemini','groq','openrouter','cloudflare']));
  }finally{restoreFetch();restoreEnv();}
@@ -42,7 +42,7 @@ test('service-status reports the missing provider that blocks M5 consensus',asyn
   const response=await handler(event),body=JSON.parse(response.body);
   assert.equal(response.statusCode,200);
   assert.equal(body.services.ai.configured,true);
-  assert.equal(body.services.ai.m5ConsensusReady,false);
+  assert.equal(body.services.ai.m5ConsensusConfigured,false);
   assert.deepEqual(body.services.ai.m5MissingProviders,['Cloudflare']);
  }finally{restoreFetch();restoreEnv();}
 });
