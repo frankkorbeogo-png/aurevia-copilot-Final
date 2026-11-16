@@ -8,6 +8,7 @@ import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loa
 import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds, markTradeGroupCloudSyncPending, markTradeCloseCloudSyncPending } from './trade-management.js';
 import { validateContractSpec, calculateEstimatedMargin } from './contract-engine.js';
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
+import { validateMarketQuote } from './market-quote-validation.js';
 
 const $ = id => document.getElementById(id);
 const symbols = Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,{label:item.label,tv:item.tv,provider:item.provider,market:item.market}]));
@@ -74,12 +75,13 @@ async function refreshSelectedQuote(){
   try{
     const token=await getAnalysisAccessToken();
     if(!token)throw new Error('Connectez-vous pour consulter le cours.');
-    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].label)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+    const response=await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbols[selectedSymbol].provider)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
     const data=await response.json().catch(()=>({}));
-    if(!response.ok||!Number.isFinite(Number(data.price)))throw new Error(data.error||'Cours indisponible');
-    const value=Number(data.price),digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
+    if(!response.ok)throw new Error(data.error||'Cours indisponible');
+    const checked=validateMarketQuote(data,{maxFetchedAgeMs:45000});if(!checked.ok)throw new Error(checked.error);
+    const value=checked.price,digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
     if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-    if(status)status.textContent=`Twelve Data · bougie 1 min · ${new Date(data.quoteAt||data.fetchedAt||Date.now()).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} · ${Number.isFinite(Number(data.ageSeconds))?`${data.ageSeconds}s`:''}`;
+    if(status)status.textContent=`Twelve Data · bougie 1 min · ${new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} · ${Number.isFinite(Number(data.ageSeconds))?`${data.ageSeconds}s`:''}`;
   }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
 }
 function initAppInstallation(){
