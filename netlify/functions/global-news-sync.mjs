@@ -36,13 +36,35 @@ function normalizeArticle(article){
  const tone=Number(article.tone);
  return {external_id:externalId,title,source_url:url,source_domain:parsed.hostname.replace(/^www\./,''),source_country:String(article.sourcecountry||'').slice(0,80),source_language:String(article.language||'').slice(0,40),published_at:publishedAt,seen_at:seenAt,category:'macro_geopolitics',tone:Number.isFinite(tone)?tone:null,source_provider:SOURCE};
 }
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function gdeltRetryDelay(response){
+ const raw=String(response.headers.get('retry-after')||'').trim(),seconds=Number(raw),date=Date.parse(raw);
+ const requested=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?Math.max(0,date-Date.now()):5000;
+ return Math.max(5000,requested);
+}
 async function fetchArticles(){
  const url=new URL('https://api.gdeltproject.org/api/v2/doc/doc');
  url.searchParams.set('query',QUERY);url.searchParams.set('mode','ArtList');url.searchParams.set('format','json');
  url.searchParams.set('maxrecords','75');url.searchParams.set('timespan','90min');url.searchParams.set('sort','DateDesc');
- const response=await fetch(url,{headers:{accept:'application/json','user-agent':'AUREVIA-COPILOT/1.0 (global macro news; https://github.com/frankkorbeogo-png/aurevia-copilot-Final)'},signal:AbortSignal.timeout(15000)});
- if(!response.ok)throw new Error('GDELT HTTP '+response.status);
- const type=response.headers.get('content-type')||'';if(!type.includes('json'))throw new Error('GDELT a retourné un contenu non JSON.');
+ const headers={accept:'application/json','user-agent':'AUREVIA-COPILOT/1.0 (global macro news; https://github.com/frankkorbeogo-png/aurevia-copilot-Final)'};
+ let response;
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   response=await fetch(url,{headers,signal:AbortSignal.timeout(10000)});
+  }catch(error){
+   if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(1500);continue;}
+   throw error;
+  }
+  if(response.status===429&&attempt===0){
+   const delay=gdeltRetryDelay(response);await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] rate limited; retrying after '+delay+'ms');await wait(delay);continue;
+  }
+  if(response.status>=500&&attempt===0){
+   await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] upstream HTTP '+response.status+'; retrying once');await wait(1500);continue;
+  }
+  break;
+ }
+ if(!response?.ok)throw new Error('GDELT HTTP '+(response?.status||'unavailable'));
+ const type=response.headers.get('content-type')||'';if(!type.toLowerCase().includes('json'))throw new Error('GDELT a retourné un contenu non JSON.');
  const data=await response.json();const articles=Array.isArray(data.articles)?data.articles:[];
  return articles.map(normalizeArticle).filter(Boolean);
 }
