@@ -18,6 +18,7 @@ export function validatePendingOrderAgainstQuote({orderType,direction,entry,trig
   return {ok:true};
 }
 
+const lotPrecision=value=>{const [mantissa,exponent]=String(value).toLowerCase().split('e');return Math.max(0,Math.min(10,(mantissa.split('.')[1]||'').length-Number(exponent||0)));};
 export function splitVolume(total, count, step=0.01) {
   if (![total,count,step].every(Number.isFinite) || total<=0 || count<1 || step<=0) throw new Error('Volume, nombre de TP et pas broker invalides.');
   const scaled=total/step;
