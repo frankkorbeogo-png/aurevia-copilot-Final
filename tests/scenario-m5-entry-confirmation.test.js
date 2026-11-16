@@ -77,6 +77,7 @@ test('le worker limite les appels M5 IA et mutualise les cotations pour respecte
 });
 
 test('la contre-analyse OpenRouter et le veto Cloudflare M5 sont parallélisés après la proposition Groq',async()=>{
+ const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('../netlify/functions/ai-collaboration.mjs',import.meta.url),'utf8');
  const i=source.indexOf('export async function runAureviaM5Confirmation');
  const j=source.indexOf('\n}',i);
