@@ -55,3 +55,27 @@ test('CME scheduler retries one transient upstream 503 and then stores the offic
   if(old.key===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=old.key;
  }
 });
+
+test('CME scheduler falls back to the alternate official URL after repeated upstream 502 responses',async()=>{
+ const old={url:process.env.SUPABASE_URL,key:process.env.SUPABASE_SERVICE_ROLE_KEY};const original=globalThis.fetch,oldTimeout=globalThis.setTimeout;
+ process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service-test';
+ let primary=0,fallback=0,saved=null;
+ globalThis.setTimeout=callback=>{queueMicrotask(callback);return 0;};
+ const html=('<html><h1>CME Group Holiday and Trading Hours</h1><h2>2026 CME Globex Trading Schedule</h2><table><tr><th>Holiday</th><th>Dates</th></tr><tr><td>Thanksgiving</td><td>26 - 28 November 2026</td></tr></table></html>').padEnd(1200,' ');
+ globalThis.fetch=async(input,options={})=>{
+  const url=String(input);
+  if(url==='https://www.cmegroup.com/trading-hours.html'){primary++;return new Response('upstream unavailable',{status:502});}
+  if(url==='https://www.cmegroup.com/trading-hours.html?redirect=%2Ftrading_hours%2Findex.html'){fallback++;return new Response(html,{status:200});}
+  if(url.startsWith('https://example.supabase.co/rest/v1/cme_calendar_sync')){saved=JSON.parse(options.body);return new Response(null,{status:201});}
+  throw new Error('URL inattendue '+url);
+ };
+ try{
+  const response=await scheduledCmeCalendarSync(),body=JSON.parse(response.body);
+  assert.equal(response.statusCode,200);assert.equal(primary,2);assert.equal(fallback,1);
+  assert.equal(body.automaticMarketClosuresApplied,false);assert.ok(saved.content_hash);
+ }finally{
+  globalThis.fetch=original;globalThis.setTimeout=oldTimeout;
+  if(old.url===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=old.url;
+  if(old.key===undefined)delete process.env.SUPABASE_SERVICE_ROLE_KEY;else process.env.SUPABASE_SERVICE_ROLE_KEY=old.key;
+ }
+});
