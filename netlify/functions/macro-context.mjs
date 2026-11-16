@@ -11,9 +11,10 @@ async function latestSeries(apiKey,id){
  const d=await r.json();if(d.error_message)throw new Error(d.error_message);
  const rows=(d.observations||[]).filter(x=>x.value!=='.'&&Number.isFinite(Number(x.value))).map(x=>({date:x.date,value:Number(x.value)}));
  if(!rows.length)throw new Error(`FRED ${id}: aucune observation exploitable`);
- const latest=rows[0],previous=rows[1]||null,ageDays=Math.max(0,Math.floor((Date.now()-Date.parse(`${latest.date}T00:00:00Z`))/86400000));
+ const latest=rows[0],previous=rows[1]||null,ageMs=Date.now()-Date.parse(`${latest.date}T00:00:00Z`),ageDays=Math.floor(ageMs/86400000);
  const maxAgeDays=({DTWEXBGS:14,DGS10:7,DFII10:7,FEDFUNDS:45,CPIAUCSL:75,UNRATE:75})[id]||45;
- return {latest,previous,ageDays,maxAgeDays,freshness:ageDays<=maxAgeDays?'recent':'stale'};
+ const freshness=ageMs< -5*60*1000?'future':ageDays<=maxAgeDays?'recent':'stale';
+ return {latest,previous,ageDays,maxAgeDays,freshness};
 }
 export function assessDxyQuote(data, now = Date.now()) {
  const price=Number(data?.close??data?.price);
@@ -112,7 +113,7 @@ export async function handler(event){if(event.httpMethod!=='GET')return json(405
  const key=process.env.FRED_API_KEY;let series={},fredConfigured=Boolean(key),fredNotice='';
  if(key&&usdRelevant){
   const entries=await Promise.all(Object.entries(SERIES).map(async([name,id])=>{
-   try{return [name,{seriesId:id,...await latestSeries(key,id),available:true}];}
+   try{const result=await latestSeries(key,id);return [name,{seriesId:id,...result,available:result.freshness!=='future'}];}
    catch(error){return [name,{seriesId:id,available:false,error:error.message||'Série indisponible.'}];}
   }));
   series=Object.fromEntries(entries);fredConfigured=Object.values(series).some(x=>x.available);
