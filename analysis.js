@@ -7,6 +7,7 @@ import {getAnalysisAccessToken} from './auth.js';
 import {generateOpportunityScenarios} from './opportunity-engine.js';
 import {getMarketStatus} from './market-hours.js';
 import {MARKET_INSTRUMENTS} from './market-catalog.js';
+import {selectClosedMarketCandles} from './market-candle-validation.js';
 const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
 // H4/H1/M30 restent des contextes optionnels ; M5/M1 sont consultés sur TradingView
@@ -29,7 +30,7 @@ export function parseProviderTime(value,zone){
  if(zone==='UTC'||zone==='Etc/UTC'||zone==='GMT')return utc;
  try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc));const got=Object.fromEntries(parts.map(p=>[p.type,Number(p.value)]));const represented=Date.UTC(got.year,got.month-1,got.day,got.hour,got.minute,got.second);return utc-(represented-utc);}catch{return NaN;}
 }
-function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=(Date.now()-stamp)/60000;return age>=-intervalMinutes*1.5&&age<=intervalMinutes*2.5;}
+function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=Date.now()-(stamp+intervalMinutes*60000);return age>=0&&age<=intervalMinutes*2.5*60000;}
 async function fetchMacroContext(instrument){try{const token=await getAnalysisAccessToken();if(!token)return {configured:false,notice:'Connexion requise pour les données macro.'};const r=await fetch(`/api/macro-context?instrument=${encodeURIComponent(instrument)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return {configured:false,notice:'Flux macro indisponible.'};return await r.json();}catch{return {configured:false,notice:'Flux macro indisponible.'};}}
 
 async function requestAureviaAnalysis(symbol,m15,context){
@@ -64,7 +65,13 @@ async function fetchFrame(symbol,interval){
    const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(16000)});
    const data=await r.json().catch(()=>({}));
    if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);const limited=new Error(data.error||'Limite de requêtes atteinte. Réessayez dans une minute.');limited.code='MARKET_RATE_LIMIT';throw limited;}
-   if(r.ok){if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');return data;}
+   if(r.ok){
+    if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');
+    const minutes=({ '15min':15,'30min':30,'1h':60,'4h':240 })[interval];
+    const closed=selectClosedMarketCandles(data.candles,data.timezone||'UTC',minutes,Date.now());
+    if(!closed.ok)throw new Error(closed.reason);
+    return {...data,candles:closed.candles,excludedUnclosedCandles:closed.excludedUnclosed};
+   }
    lastError=new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
    if(![408,425,500,502,503,504].includes(r.status))throw lastError;
   }catch(error){lastError=error;if(error.code==='MARKET_RATE_LIMIT')throw error;}
