@@ -107,6 +107,8 @@ export async function handler(event){
       const activationPrice=observedPrice;
       const activatedAt=new Date().toISOString();const activation=await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:activatedAt}});if(activation?.ok&&activation.status==='OPEN')activated++;else if(activation?.status==='EXPIRED'){const expiry=await rest('rpc/aurevia_expire_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_expired_at:activatedAt}});if(expiry?.ok&&expiry.expired)expired++;}continue;
     }
+    // Conditional orders remain observed-only until the user records the actual manual broker fill.
+    if(g.order_type&&!['MARKET','BUY MARKET','SELL MARKET'].includes(g.order_type)&&!(Number(p.actual_entry_price)>0))continue;
     // Internal TP/SL is evaluated against the single observed Last Price. This is not a broker execution price.
     const exitPrice=observedPrice;
     const eventType=evaluatePositionThreshold({...p,direction:g.direction},exitPrice);if(!eventType)continue;
