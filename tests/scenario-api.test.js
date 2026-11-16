@@ -15,3 +15,14 @@ test('scenario-api refuse les instruments retirés du catalogue, dont les indice
  globalThis.fetch=async url=>{const u=String(url);if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});databaseCalled=true;return new Response('[]',{status:200});};
  try{const r=await handler(req({action:'save',instrument:'US30',direction:'BUY',entry:100,entry_low:99,entry_high:101,stop_loss:95,take_profits:[110],summary:'Synthèse technique valide',source:'synthesis'}));assert.equal(r.statusCode,400);assert.equal(databaseCalled,false);assert.match(parse(r).error,/Instrument non pris en charge/);}finally{globalThis.fetch=old;for(const k of ['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SERVICE_ROLE_KEY'])delete process.env[k];}
 });
+
+test('scenario-watch respecte le catalogue actif, les horaires et la fraîcheur des cotations',async()=>{
+ const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/getMarketInstrument/);
+ assert.doesNotMatch(source,/'US30'|'NAS100'|'NDX'/);
+ assert.match(source,/getMarketStatus/);
+ assert.match(source,/if\(!marketStatus\.tradable\)continue/);
+ assert.match(source,/interval','1min'/);
+ assert.match(source,/age>90000/);
+ assert.doesNotMatch(source,/api\.twelvedata\.com\/price/);
+});
