@@ -47,7 +47,7 @@ async function beginSetup(token,chatId,userId,code,mode){
 function nextPrompt(setup){
  const prompts={
   lot:'Quel volume souhaites-tu utiliser ? Exemple : 0.05.',
-  actualEntryPrice:'Si tu connais ton prix réel d’exécution, saisis-le pour affiner le suivi. Sinon, réponds « M5 » pour conserver automatiquement le prix d’entrée proposé par l’IA M5.',
+  actualEntryPrice:'Saisis obligatoirement le prix réellement exécuté manuellement. Le prix indicatif de l’IA M5 ne peut pas servir de prix réel.',
   leverage:'Quel est ton levier ? Exemple : 200 ou 2000. Tu peux répondre « ignorer » si tu ne souhaites pas le renseigner.',
   contractSize:'Quelle est la taille du contrat pour 1 lot sur cet instrument ? Exemple : 100 pour 100 oz. Ne devine pas cette valeur.',
   pointSize:'Quelle est la taille d’un point ?',
@@ -76,7 +76,7 @@ function summary(setup,scenario){
  const orderType=String(scenario.order_type||(scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();
  const orderDetails=orderType.endsWith('STOP LIMIT')?`\nDéclenchement : ${scenario.trigger_price??'—'}\nPrix limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' STOP')?`\nDéclenchement : ${scenario.trigger_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' LIMIT')?`\nPrix limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:'';
  const isPendingOrder=orderType.includes('LIMIT')||orderType.includes('STOP');
- const fillLabel=isPendingOrder?'non applicable avant activation':(setup.actualEntryPrice??'non renseigné — référence IA M5 utilisée');
+ const fillLabel=isPendingOrder?'non applicable avant activation':(setup.actualEntryPrice??'non renseigné — enregistrement refusé');
  const calc=s.calculationType==='contract'
   ?`Taille du contrat : ${s.contractSize}\nDevise de cotation : ${s.quoteCurrency||'Non identifiée'}\nConversion vers ${s.accountCurrency} : ${s.quoteToAccount}`
   :s.calculationType==='point'
@@ -103,7 +103,8 @@ async function finishSetup(token,chatId,userId,setup){
  if(!checked.ok){await telegramSend(token,chatId,`Paramètres incomplets : ${checked.error}`);return false;}
  const spec=checked.spec,volume=Number(setup.volume);
  const isMarket=!String(scenario.order_type||'').includes('LIMIT')&&!String(scenario.order_type||'').includes('STOP');
- if(isMarket&&setup.actualEntryPrice!=null){const actual=Number(setup.actualEntryPrice);const tp1=Number(scenario.take_profits?.[0]),sl=Number(scenario.stop_loss);if(!Number.isFinite(actual)||actual<=0||(scenario.direction==='BUY'?(actual<=sl||actual>=tp1):(actual>=sl||actual<=tp1))){await telegramSend(token,chatId,'Prix réel invalide ou incohérent avec le SL/TP1. Saisis un prix valide ou réponds « M5 ».');setup.step='actualEntryPrice';await saveSetup(userId,setup);await promptStep(token,chatId,setup);return false;}spec.actualEntryPrice=actual;}else spec.actualEntryPrice=null;
+ if(isMarket&&setup.actualEntryPrice==null){await telegramSend(token,chatId,'Le prix réel d’exécution manuelle est obligatoire pour enregistrer un ordre au marché.');setup.step='actualEntryPrice';await saveSetup(userId,setup);await promptStep(token,chatId,setup);return false;}
+ if(isMarket){const actual=Number(setup.actualEntryPrice);const tp1=Number(scenario.take_profits?.[0]),sl=Number(scenario.stop_loss);if(!Number.isFinite(actual)||actual<=0||(scenario.direction==='BUY'?(actual<=sl||actual>=tp1):(actual>=sl||actual<=tp1))){await telegramSend(token,chatId,'Prix réel invalide ou incohérent avec le SL/TP1. Saisis le prix réellement exécuté.');setup.step='actualEntryPrice';await saveSetup(userId,setup);await promptStep(token,chatId,setup);return false;}spec.actualEntryPrice=actual;}else spec.actualEntryPrice=null;
  if(!Number.isFinite(volume)||volume<spec.minLot||(spec.maxLot!==null&&volume>spec.maxLot)||Math.abs(volume/spec.lotStep-Math.round(volume/spec.lotStep))>1e-7){
   setup.step='lot';await saveSetup(userId,setup);
   await telegramSend(token,chatId,`Le lot doit respecter le minimum ${spec.minLot}, le pas ${spec.lotStep}${spec.maxLot!==null?` et le maximum ${spec.maxLot}`:''}. Saisis un autre volume.`);return false;
@@ -176,8 +177,8 @@ async function handleGuidedMessage(token,chatId,userId,text){
   if(n===null||n<=0){await telegramSend(token,chatId,'Saisis un volume positif. Exemple : 0.05.');return true;}
   setup.volume=n;setup.step=String(setup.orderType||'').includes('LIMIT')||String(setup.orderType||'').includes('STOP')?(setup.spec.calculationType?'review':'leverage'):'actualEntryPrice';
  }else if(step==='actualEntryPrice'){
-  if(!skip&&(n===null||n<=0)){await telegramSend(token,chatId,'Saisis un prix réel positif ou réponds « M5 » pour conserver le prix proposé par l’IA.');return true;}
-  setup.actualEntryPrice=skip?null:n;setup.step=setup.spec.calculationType?'review':'leverage';
+  if(skip||n===null||n<=0){await telegramSend(token,chatId,'Le prix réel est obligatoire. Saisis le prix exact auquel tu as exécuté manuellement le trade. Le prix M5 reste indicatif.');return true;}
+  setup.actualEntryPrice=n;setup.step=setup.spec.calculationType?'review':'leverage';
  }else if(step==='leverage'){
   if(!skip&&(n===null||n<1||n>100000)){await telegramSend(token,chatId,'Saisis un levier valide, par exemple 2000, ou « ignorer ».');return true;}
   setup.spec.leverage=skip?null:n;setup.step=setup.spec.calculationType?'review':'calculationType';
