@@ -45,11 +45,12 @@ export function formatTradeAlertMessage(event,position,group){
 }
 async function telegram(userId,text){const rows=await rest(`telegram_connections?select=chat_id,notify_validated_signals&user_id=eq.${encodeURIComponent(userId)}`);const c=rows?.[0];if(!c?.chat_id||!c.notify_validated_signals)return {sent:false,suppressed:true,reason:!c?.chat_id?'chat_not_connected':'notifications_disabled'};const token=process.env.TELEGRAM_BOT_TOKEN;if(!token)throw new Error('Telegram non configuré');const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:c.chat_id,text,disable_web_page_preview:true})});const d=await r.json();if(!r.ok||!d.ok)throw new Error('Telegram send failed');return {sent:true};}
 async function deliverEntryNotifications(positions,groups){
- let sent=0;const notifiedUniqueGroups=new Set();
+ let sent=0;const attemptedUniqueGroups=new Set();
  for(const p of positions.filter(x=>x.status==='OPEN'&&x.activated_at&&!x.activation_notified)){
   try{
    const g=groups.get(p.group_id);if(!g)continue;
-   if(g.mode==='unique'&&notifiedUniqueGroups.has(g.id))continue;
+   if(g.mode==='unique'&&attemptedUniqueGroups.has(g.id))continue;
+   if(g.mode==='unique')attemptedUniqueGroups.add(g.id);
    const actual=Number(p.actual_entry_price);
    const fillKnown=Number.isFinite(actual)&&actual>0;
    const message=`AUREVIA COPILOT · ENTRÉE DÉCLENCHÉE
@@ -63,7 +64,6 @@ Aucun ordre broker n’a été exécuté.`;
    if(result.sent||result.suppressed){
     if(g.mode==='unique'){
      await rest(`trading_positions?group_id=eq.${g.id}&status=eq.OPEN&activation_notified=eq.false`,{method:'PATCH',body:{activation_notified:true},prefer:'return=minimal'});
-     notifiedUniqueGroups.add(g.id);
     }else await rest(`trading_positions?id=eq.${p.id}&activation_notified=eq.false`,{method:'PATCH',body:{activation_notified:true},prefer:'return=minimal'});
    }
   }catch{/* Retry at the next scheduled pass. */}
