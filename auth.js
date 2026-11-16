@@ -441,3 +441,27 @@ export async function markAllAnnouncementsAsRead(ids){
  const {error}=await supabase.from('announcement_reads').upsert(rows,{onConflict:'user_id,announcement_id',ignoreDuplicates:true});
  if(error)throw new Error(error.message);return {success:true,count:unique.length};
 }
+
+export async function syncManualJournalToSupabase(entries=[]){
+  await ensureClient();
+  const {data:{user},error:userError}=await supabase.auth.getUser();
+  if(userError)throw new Error(userError.message);
+  if(!user)return {synced:false,entries:[]};
+  const payload=(Array.isArray(entries)?entries:[]).map(row=>({
+    id:row.id,instrument:row.instrument,direction:row.direction,result:row.result,date:row.date,note:row.note||''
+  }));
+  const {data,error}=await supabase.rpc('aurevia_sync_manual_journal',{p_entries:payload});
+  if(error)throw new Error(error.message);
+  if(!data?.ok)throw new Error(data?.error||'La synchronisation du journal manuel a échoué.');
+  return {synced:true,entries:Array.isArray(data.entries)?data.entries:[]};
+}
+export async function deleteManualJournalFromSupabase(entryId){
+  await ensureClient();
+  const {data:{user},error:userError}=await supabase.auth.getUser();
+  if(userError)throw new Error(userError.message);
+  if(!user)return {synced:false};
+  const {data,error}=await supabase.rpc('aurevia_delete_manual_journal_entry',{p_entry_id:entryId});
+  if(error)throw new Error(error.message);
+  if(!data?.ok)throw new Error(data?.error||'La suppression cloud du journal a échoué.');
+  return {synced:true,deleted:Number(data.deleted||0)};
+}
