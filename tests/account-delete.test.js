@@ -57,7 +57,9 @@ test('la suppression locale efface aussi le jeton mémorisé sur cet appareil', 
   assert.ok(auth.includes('Une nouvelle inscription sera nécessaire.'));
   for (const key of ['aurevia-copilot-journal-v1','aurevia-position-groups-v2','aurevia-linked-journal-v2','aurevia_analysis_history','aurevia_my_analysis']) assert.ok(auth.includes(key));
   assert.ok(auth.includes('bindLocalDataOwner(session.user?.id)'));
-  assert.ok(auth.includes('if(previous&&previous!==id)clearLocalAccountData()')); 
+  assert.ok(auth.includes('snapshotLocalAccountData(previous)'));
+  assert.ok(auth.includes('clearLocalAccountData();restoreLocalAccountData(id)'));
+  assert.ok(auth.includes('LOCAL_ACCOUNT_SNAPSHOT_PREFIX')); 
 });
 
 
