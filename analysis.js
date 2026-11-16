@@ -10,7 +10,7 @@ import {selectClosedMarketCandles} from './market-candle-validation.js';
 import {buildMacroContextForAI} from './macro-context-forwarding.js';
 const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
-// H4/H1/M30 restent des contextes optionnels. M5 est réservé au surveillant
+// H4/H1 sont des contextes optionnels ; M30 est requis pour la préparation structurelle. M5 est réservé au surveillant
 // de scénario : il valide l'entrée après mitigation, sans être chargé à chaque analyse initiale.
 const FRAMES={H4:'4h',H1:'1h',M30:'30min',M15:'15min'};
 const FRAME_MINUTES={H4:240,H1:60,M30:30,M15:15,M5:5};
@@ -104,7 +104,7 @@ async function runInstrumentAnalysis(symbol){
    const settled=await Promise.allSettled(optional.map(async([tf,interval])=>[tf,await fetchFrame(pair,interval)]));
    settled.forEach((item,index)=>{const tf=optional[index][0];if(item.status==='fulfilled')frames[item.value[0]]=item.value[1];else unavailable.push({tf,error:item.reason?.message||'Données indisponibles'});});
   }
-  const requiredMissing=unavailable.filter(x=>x.tf==='M15');
+  const requiredMissing=unavailable.filter(x=>['M15','M30'].includes(x.tf));
   const stale=Object.entries(frames).filter(([tf,d])=>!isFresh(d.candles,d.timezone,FRAME_MINUTES[tf])).map(([tf])=>tf);
   const analyses={};
   for(const [tf,data] of Object.entries(frames)){
@@ -114,12 +114,12 @@ async function runInstrumentAnalysis(symbol){
    const structure=detectMarketStructure(candles);
    analyses[tf]={indicators:calculateIndicators(candles),structure,patterns:[...detectCandlestickPatterns(candles),...detectChartPatterns(candles)],fibonacci:calculateFibonacciRetracements(structure.swings,structure.bias),volumeProfile:calculateFixedRangeVolumeProfile(candles),last:candles.at(-1)};
   }
-  const requiredStale=stale.filter(tf=>tf==='M15');
+  const requiredStale=stale.filter(tf=>['M15','M30'].includes(tf));
   const allRequiredAvailable=!requiredMissing.length&&!requiredStale.length&&analyses.M15?.last;
   if(!allRequiredAvailable){
    const details=[...requiredMissing.map(x=>`${x.tf}: ${x.error}`),...requiredStale.map(tf=>`${tf}: données périmées ou horodatage non vérifiable`)];
    const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
-   latest={message:'Données opérationnelles incomplètes',tableMessage:'L’analyse directionnelle exige uniquement des données M15 valides.',rows,signalReason:`WAIT — analyse suspendue : ${details.join(' ; ')||'M15 indisponible'}. Réessayez lorsque le flux sera rétabli.`,decision:'WAIT',probability:null,score:null,unavailableFrames:unavailable,staleFrames:stale,frames};
+   latest={message:'Données opérationnelles incomplètes',tableMessage:'L’analyse directionnelle exige des données M15 et M30 valides.',rows,signalReason:`WAIT — analyse suspendue : ${details.join(' ; ')||'M15 indisponible'}. Réessayez lorsque le flux sera rétabli.`,decision:'WAIT',probability:null,score:null,unavailableFrames:unavailable,staleFrames:stale,frames};
    return null;
   }
   const macroContext=await fetchMacroContext(symbol);
