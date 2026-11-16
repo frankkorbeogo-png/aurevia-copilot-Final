@@ -20,6 +20,11 @@
 - Les limites utilisent le P/L réalisé des clôtures enregistrées et du journal manuel. Le P/L flottant n'est pas importé sans connexion broker.
 - Le montant risqué reste la donnée principale du calcul de lot.
 
+
+## Données GDELT et validation devise
+- Les anciens timestamps d'observation GDELT ne sont plus conservés comme dates de publication : la migration de nettoyage les reporte dans seen_at et remet published_at à NULL pour GDELT DOC 2.0.
+- La RPC de création de position exige une devise de compte valide dans le snapshot et vérifie la cohérence avec la spécification contractuelle; aucun nom de broker ou type de compte n'est requis.
+
 ## Calendrier et données
 - Les décisions et minutes FOMC sont générées depuis le calendrier officiel de la Réserve fédérale, et non depuis le FRED release 101.
 - Une migration désactive les anciennes alertes FOMC quotidiennes erronées.
