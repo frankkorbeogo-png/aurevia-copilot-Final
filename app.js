@@ -345,12 +345,12 @@ async function confirmTradeValidation(){
  finally{button.disabled=false;}
 }
 async function refreshScenarioWatchList(){
- const host=$('scenarioWatchList');if(!host||!window.__aureviaAuthenticated)return;
+ const ownerId=String(window.__aureviaUserId||'').trim();const host=$('scenarioWatchList');if(!host||!window.__aureviaAuthenticated||!ownerId)return;
  host.textContent='Chargement des scénarios surveillés…';
  try{
-  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise.');
+  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion requise.');if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'list'}),cache:'no-store'});
-  const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Chargement des scénarios impossible.');
+  const data=await response.json().catch(()=>({}));if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!response.ok)throw new Error(data.error||'Chargement des scénarios impossible.');
   const rows=data.scenarios||[];
   if(!rows.length){host.innerHTML='<div class="empty-cell">Aucun scénario enregistré. Après confrontation de ta zone d’entrée, valide la synthèse pour lancer la surveillance.</div>';return;}
   const statusLabel={monitoring:'Suivi du scénario · attente de la zone',zone_reached:'Zone mitigée · validation M5 en cours',entry_confirmed:'Entrée confirmée',stopped:'Surveillance arrêtée',invalidated:'Scénario invalidé'};
