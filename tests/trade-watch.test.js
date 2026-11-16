@@ -36,7 +36,7 @@ test('identifiant d’alerte réutilisé comme identifiant de clôture pour rend
 });
 test('les alertes Telegram sont réservées atomiquement avec SKIP LOCKED et bail expirant',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261112110000_atomic_telegram_claims_v233.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261112095023_atomic_telegram_claims_v233.sql',import.meta.url),'utf8');
  const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
  assert.match(sql,/for update skip locked/i);
  assert.match(sql,/interval '5 minutes'/i);
@@ -49,7 +49,7 @@ test('les alertes Telegram sont réservées atomiquement avec SKIP LOCKED et bai
 test('la clôture TP/SL planifiée utilise une transaction SQL service_role pour position, journal et groupe',async()=>{
  const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
- const sql=await readFile(new URL('../supabase/migrations/20261112120000_atomic_worker_position_close_v234.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261112095025_atomic_worker_position_close_v234.sql',import.meta.url),'utf8');
  assert.match(source,/rpc\/aurevia_record_position_close_worker/);
  assert.doesNotMatch(source,/trading_positions\?id=eq\.\$\{p\.id\}[^\n]*PATCH[^\n]*body:\{status:'CLOSED'/s);
  assert.match(sql,/auth\.role\(\).*service_role/s);
@@ -150,7 +150,7 @@ test('le P/L refuse le prix d’activation observé tant que le prix réel manue
 });
 test('la migration autorise PENDING et réserve l’activation au worker service_role',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261112180000_trade_entry_price_activation.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261112181635_trade_entry_price_activation.sql',import.meta.url),'utf8');
  assert.match(sql,/PENDING.*OPEN.*CLOSED.*CANCELLED/s);
  assert.match(sql,/aurevia_activate_pending_position_worker/);
  assert.match(sql,/grant execute .* to service_role/i);
@@ -174,7 +174,7 @@ test('la surveillance vérifie l’expiration avant de demander une cotation',as
 });
 test('la migration d’expiration synchronise expires_at et expose un worker service_role',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261116144833_aurevia_pending_order_expiry.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116154534_aurevia_pending_order_expiry.sql',import.meta.url),'utf8');
  assert.match(sql,/add column if not exists expires_at/);
  assert.match(sql,/add column if not exists expired_at/);
  assert.match(sql,/aurevia_expire_pending_position_worker/);
