@@ -7,8 +7,8 @@ export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitVal
   const accountUnitValuePerLot=unitValuePerLot*quoteToAccount;
   const rawLots=riskAmount/(stopDistance*accountUnitValuePerLot);
   const precision=Math.max(0,Math.min(8,(String(lotStep).split('.')[1]||'').length));
-  const lots=Number((Math.floor((rawLots+1e-10)/lotStep)*lotStep).toFixed(precision));
-  if(lots<minLot)return {error:`Le risque saisi est trop faible pour atteindre le lot minimum de ${minLot}.`};
+  let lots=Number((Math.floor((rawLots+1e-10)/lotStep)*lotStep).toFixed(precision));
+  if(lots<minLot)return {error:`Le risque saisi est trop faible pour atteindre le lot minimum de ${Number(minLot).toLocaleString('fr-FR')}.`};
   if(maxLot!==null&&lots>maxLot)lots=Number((Math.floor((maxLot+1e-10)/lotStep)*lotStep).toFixed(precision));
   if(lots<minLot)return {error:'Le lot maximum ne permet pas de respecter le lot minimum et le pas de volume.'};
   const riskMoney=lots*stopDistance*accountUnitValuePerLot;
