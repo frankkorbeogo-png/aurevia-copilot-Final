@@ -83,13 +83,15 @@ export async function handler(event){
     const bot=result.result;
     if(!secret||!/^[A-Za-z0-9_-]{1,256}$/.test(secret))return json(200,{ok:true,valid:true,status:'valid_webhook_not_configured',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured:false},message:'Token valide, mais TELEGRAM_WEBHOOK_SECRET est absent ou invalide. Ajoutez un secret de 1 à 256 caractères (A-Z, a-z, 0-9, _ ou -), puis relancez le contrôle.'});
     const webhookUrl='https://aurevia-copilot-ia.netlify.app/.netlify/functions/telegram-webhook';
-    const setResponse=await fetch(`${api}/setWebhook`,{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({url:webhookUrl,secret_token:secret,allowed_updates:['message'],drop_pending_updates:false}),signal:AbortSignal.timeout(12000)});
+    const setResponse=await fetch(`${api}/setWebhook`,{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({url:webhookUrl,secret_token:secret,allowed_updates:['message','callback_query'],drop_pending_updates:false}),signal:AbortSignal.timeout(12000)});
     const setResult=await setResponse.json().catch(()=>null);
     if(!setResponse.ok||!setResult?.ok||setResult?.result!==true)return json(200,{ok:true,valid:true,status:'webhook_setup_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured:false},message:'Token valide, mais Telegram a refusé la configuration du webhook. Vérifiez le secret et réessayez.'});
     const infoResponse=await fetch(`${api}/getWebhookInfo`,{headers:{accept:'application/json'},signal:AbortSignal.timeout(10000)});
     const infoPayload=await infoResponse.json().catch(()=>null),info=infoPayload?.result||{};
-    const configured=Boolean(infoPayload?.ok&&info.url===webhookUrl);
-    return json(200,{ok:true,valid:true,status:configured?'valid_webhook_ready':'webhook_verification_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured,url_matches:configured,pending_updates:Number(info.pending_update_count)||0,last_error:info.last_error_message?String(info.last_error_message).slice(0,240):null},message:configured?'Token valide et webhook Telegram configuré. Envoyez maintenant /start CODE au bot.':'Le webhook a été demandé, mais sa présence n’a pas pu être confirmée.'});
+    const allowedUpdates=Array.isArray(info.allowed_updates)?info.allowed_updates:[];
+    const callbackQueriesEnabled=allowedUpdates.includes('callback_query');
+    const configured=Boolean(infoPayload?.ok&&info.url===webhookUrl&&callbackQueriesEnabled);
+    return json(200,{ok:true,valid:true,status:configured?'valid_webhook_ready':'webhook_verification_failed',bot:{id:bot.id,first_name:String(bot.first_name||'').slice(0,64),username:String(bot.username||'').slice(0,64)},webhook:{configured,url_matches:info.url===webhookUrl,callback_queries_enabled:callbackQueriesEnabled,allowed_updates:allowedUpdates,pending_updates:Number(info.pending_update_count)||0,last_error:info.last_error_message?String(info.last_error_message).slice(0,240):null},message:configured?'Token valide et webhook Telegram configuré. Envoyez maintenant /start CODE au bot.':'Le webhook a été demandé, mais sa présence n’a pas pu être confirmée.'});
    }catch{
     return json(200,{ok:false,valid:false,status:'unreachable',message:'Impossible de joindre Telegram pour le moment.'});
    }
