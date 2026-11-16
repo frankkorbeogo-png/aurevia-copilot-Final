@@ -14,7 +14,7 @@ test('le contexte macro expose les actualités GDELT stockées sans inventer de 
   if(url.includes('/rpc/aurevia_session_is_active_for_user'))return response(true);
   if(url.includes('showmytrades.com/api/public/calendar/v1'))return response({events:[]});
   if(url.includes('/rest/v1/economic_release_events'))return response([]);
-  if(url.includes('/rest/v1/global_news_events'))return response([{title:'Central bank announces a rate decision',source_url:'https://news.example.com/rates',source_domain:'news.example.com',source_country:'US',source_language:'English',published_at:new Date().toISOString(),category:'macro_geopolitics',tone:-1.2,source_provider:'GDELT DOC 2.0'}]);
+  if(url.includes('/rest/v1/global_news_events'))return response([{title:'Central bank announces a rate decision',source_url:'https://news.example.com/rates',source_domain:'news.example.com',source_country:'US',source_language:'English',published_at:null,seen_at:new Date().toISOString(),category:'macro_geopolitics',tone:-1.2,source_provider:'GDELT DOC 2.0'}]);
   throw new Error('Unexpected URL '+url);
  };
  try{
@@ -23,6 +23,9 @@ test('le contexte macro expose les actualités GDELT stockées sans inventer de 
   assert.equal(result.statusCode,200);assert.equal(data.globalNews.configured,true);
   assert.equal(data.globalNews.source,'GDELT DOC 2.0');assert.equal(data.globalNews.articles.length,1);
   assert.equal(data.globalNews.articles[0].title,'Central bank announces a rate decision');
+  assert.equal(data.globalNews.articles[0].publishedAt,null);
+  assert.ok(data.globalNews.articles[0].seenAt);
+  assert.equal(data.globalNews.articles[0].dateBasis,'gdelt_first_seen');
   assert.match(data.globalNews.notice,/ni des signaux de trading/);
  }finally{
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
