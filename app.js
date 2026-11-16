@@ -456,8 +456,9 @@ function renderAdminUsers(users){
   const action=btn.dataset.adminAction,user_id=btn.dataset.user,email=btn.dataset.email||'';
   const permanent=action==='permanent_delete_user';
   const message=action==='delete_user'?`Supprimer le compte ${email||user_id} et ses données AUREVIA ? L’adresse e-mail pourra être utilisée pour créer un nouveau compte ultérieurement.`:permanent?`SUPPRESSION DÉFINITIVE : le compte ${email||user_id} et ses données seront supprimés. Une empreinte cryptographique de son e-mail sera conservée pour interdire toute nouvelle inscription avec cette adresse. Cette interdiction ne pourra pas être annulée depuis la console.`:action==='revoke_session'?`Déconnecter à distance ${email||user_id} ? La session sera refusée lors du prochain contrôle.`:`Confirmer l’action « ${action} » pour ${email||user_id} ?`;
-  const confirmation=permanent?'SUPPRIMER DÉFINITIVEMENT':null;
-  if(!await confirmInApp({title:permanent?'Suppression définitive et blocage e-mail':'Confirmer l’action administrateur',message,phrase:confirmation,confirmLabel:permanent?'Bloquer et supprimer':'Confirmer',danger:permanent||action==='delete_user'}))return;
+  if(permanent){
+   if(!await confirmInApp({title:'Suppression définitive et blocage e-mail',message,phrase:'SUPPRIMER DÉFINITIVEMENT',confirmLabel:'Bloquer et supprimer',danger:true}))return;
+  }else if(!await confirmInApp({title:'Confirmer l’action administrateur',message,confirmLabel:'Confirmer',danger:action==='delete_user'}))return;
   btn.disabled=true;
   try{await adminRequest({action,user_id,...(permanent?{confirmation}:{})});showInAppNotice(({activate:'Compte réactivé.',suspend:'Compte suspendu.',revoke_session:'Session utilisateur révoquée.',delete_user:'Compte supprimé. Son adresse peut être réutilisée.',permanent_delete_user:'Compte supprimé et adresse e-mail définitivement bloquée.'})[action]||'Action administrateur effectuée.',{type:'success'});await loadAdminConsole(adminPage,adminSearchValue);}
   catch(error){showInAppNotice(error.message,{type:'error'});btn.disabled=false;}
