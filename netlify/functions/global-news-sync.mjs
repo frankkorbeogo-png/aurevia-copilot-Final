@@ -12,7 +12,8 @@ const RELEASES=[
 const FED_FOMC_URL='https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm';
 const FOMC_POLICY_DECISION_DATES=[
  '2026-01-28','2026-03-18','2026-04-29','2026-06-17','2026-07-29','2026-09-16','2026-10-28','2026-12-09',
- '2027-01-27','2027-03-17','2027-04-28','2027-06-09','2027-07-28','2027-09-15','2027-11-17'
+ '2027-01-27','2027-03-17','2027-04-28','2027-06-09','2027-07-28','2027-09-15','2027-11-17',
+ '2028-01-26'
 ];
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const env=name=>(process.env[name]||'').trim();
