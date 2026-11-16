@@ -51,7 +51,7 @@ test('la migration SQL valide la devise du profil sans exiger de broker ni de ty
  assert.doesNotMatch(migration,/brokerName|accountType|BROKER_ACCOUNT_SETTINGS_REQUIRED/);
  assert.match(migration,/p_auto_journal boolean/);
  assert.match(migration,/p_broker_snapshot jsonb,\s*p_auto_journal boolean\s*\)\s*returns uuid/);
- assert.match(migration,/p_scenario_id uuid,\\s*p_user_id uuid,\\s*p_mode text,\\s*p_volume numeric/);
+ assert.match(migration,/p_scenario_id uuid,\s*p_user_id uuid,\s*p_mode text,\s*p_volume numeric/);
  assert.match(migration,/grant execute on function public\.aurevia_create_position_from_scenario/);
  assert.match(migration,/revoke all on function public\.aurevia_create_position_from_scenario\(uuid,uuid,text,numeric\) from public, anon, authenticated, service_role/i);
  assert.match(migration,/revoke all on function public\.aurevia_create_position_from_scenario\(uuid,uuid,text,numeric,jsonb,jsonb\) from public, anon, authenticated, service_role/i);
