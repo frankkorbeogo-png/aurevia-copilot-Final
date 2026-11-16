@@ -100,6 +100,37 @@ function equityClosure(now){
   const label=holiday||(day===0||day===6?'week-end':mins<570?'avant ouverture de Wall Street':earlyClose?'après clôture anticipée ('+earlyClose+')':'après clôture de Wall Street');
   return {label,type:holiday?'HOLIDAY':earlyClose&&mins>=closeMinute?'EARLY_CLOSE':'SESSION',reopen};
 }
+function weeklySchedule(now,market){
+  const rules=market==='METALS'?METALS_SESSION:FOREX_SESSION;
+  const p=parts(now),dow=({Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6})[p.weekday];
+  const daysToSunday=(7-dow)%7,base=addDaysFromParts(p,daysToSunday);
+  const sunday=instant(base.getUTCFullYear(),base.getUTCMonth()+1,base.getUTCDate(),rules.openSunday,0);
+  const fridayDay=addDay(base,5),friday=instant(fridayDay.getUTCFullYear(),fridayDay.getUTCMonth()+1,fridayDay.getUTCDate(),rules.closeFriday,0);
+  let schedule=`Ouverture dimanche ${fmtBF(sunday)} – fermeture vendredi ${fmtBF(friday)} (heure du Burkina Faso)`;
+  if(market==='METALS'){
+    const monday=addDay(base,1);
+    const pauseStart=instant(monday.getUTCFullYear(),monday.getUTCMonth()+1,monday.getUTCDate(),rules.dailyBreakStart,0);
+    const pauseEnd=instant(monday.getUTCFullYear(),monday.getUTCMonth()+1,monday.getUTCDate(),rules.dailyBreakEnd,0);
+    schedule+=`; pause quotidienne ${fmtBF(pauseStart)}–${fmtBF(pauseEnd)}`;
+  }
+  return schedule;
+}
+function sessionClosure(now,market){
+  const rules=market==='METALS'?METALS_SESSION:FOREX_SESSION;
+  const p=parts(now),mins=+p.hour*60 + +p.minute,dow=p.weekday;
+  if(market==='METALS'&&['Mon','Tue','Wed','Thu'].includes(dow)&&mins>=rules.dailyBreakStart*60&&mins<rules.dailyBreakEnd*60){
+    const reopen=instant(+p.year,+p.month,+p.day,rules.dailyBreakEnd,0);
+    return {label:'pause quotidienne des métaux',type:'DAILY_BREAK',reopen};
+  }
+  const openMin=rules.openSunday*60,closeMin=rules.closeFriday*60;
+  if(dow==='Fri'&&mins>=closeMin||dow==='Sat'||dow==='Sun'&&mins<openMin){
+    const daysToSunday=dow==='Fri'?2:dow==='Sat'?1:0;
+    const day=addDaysFromParts(p,daysToSunday);
+    const reopen=instant(day.getUTCFullYear(),day.getUTCMonth()+1,day.getUTCDate(),rules.openSunday,0);
+    return {label:'week-end',type:'WEEKEND',reopen};
+  }
+  return null;
+}
 export function getMarketStatus(symbol,now=new Date()){
   const code=String(symbol||'').toUpperCase().replace(/[^A-Z]/g,'');
   if(CRYPTO.has(code))return {tradable:true,status:'OPEN',market:'CRYPTO',checkedAt:now.toISOString()};
