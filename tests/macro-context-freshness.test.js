@@ -35,3 +35,9 @@ test('DXY datetime with explicit timezone is parsed without altering its instant
   assert.equal(result.usableForDirectionalBias, true);
   assert.equal(result.asOf, '2026-11-16T11:59:00.000Z');
 });
+
+test('even a slightly future DXY timestamp is not used for directional bias', () => {
+  const result = assessDxyQuote({ close: '100.25', timestamp: (NOW + 10_000) / 1000 }, NOW);
+  assert.equal(result.freshness, 'future');
+  assert.equal(result.usableForDirectionalBias, false);
+});
