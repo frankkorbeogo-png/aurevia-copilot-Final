@@ -769,7 +769,7 @@ async function persistBrokerProfile(){
   const value=id=>$(id)?.value?.trim()||null;
   const spec={calculationType:value('brokerProfileCalculationType'),leverage:value('brokerProfileLeverage'),minLot:value('brokerProfileMinLot'),lotStep:value('brokerProfileLotStep'),maxLot:value('brokerProfileMaxLot'),contractSize:value('brokerProfileContractSize'),pointSize:value('brokerProfilePointSize'),pointValue:value('brokerProfilePointValue'),tickSize:value('brokerProfileTickSize'),tickValue:value('brokerProfileTickValue'),feesPerLot:value('brokerProfileFees')};
   if(button)button.disabled=true;
-  await saveBrokerSettings(instrument,spec);
+  await saveBrokerSettings(instrument,spec,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   if(status)status.textContent='Spécifications enregistrées pour '+instrument+'. Elles seront réutilisées dans AUREVIA et Telegram.';
   showInAppNotice('Paramètres techniques enregistrés pour '+instrument+'.',{type:'success'});
  }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){if(status)status.textContent=error.message;showInAppNotice(error.message,{type:'error'});}}
