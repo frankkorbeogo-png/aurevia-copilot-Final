@@ -1,7 +1,7 @@
 export function parseMarketTimestamp(value,timezone){
  const raw=String(value||'').trim();if(!raw)return NaN;
- if(/(?:Z|[+-]\\d{2}:?\\d{2})$/i.test(raw)){const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:NaN;}
- const m=raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})[ T](\\d{2}):(\\d{2})(?::(\\d{2}))?(?:\\.\\d+)?$/);
+ if(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)){const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:NaN;}
+ const m=raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
  if(!m||!timezone)return NaN;
  const [y,mo,d,h,mi,se]=[m[1],m[2],m[3],m[4],m[5],m[6]||'0'].map(Number);
  const target=Date.UTC(y,mo-1,d,h,mi,se);
