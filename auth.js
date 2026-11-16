@@ -348,17 +348,12 @@ export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=nul
  const {data:{user},error:userError}=await supabase.auth.getUser();
  if(userError)throw new Error(userError.message);
  if(!user)return {synced:false,reason:'not_authenticated'};
- let removed=await supabase.from('trading_journal').delete().eq('id',journalId).eq('user_id',user.id).select('id');
- if(removed.error)throw new Error(removed.error.message);
- if(!(removed.data||[]).length&&groupId){
-  let fallback=supabase.from('trading_journal').delete().eq('user_id',user.id).eq('group_id',groupId);
-  fallback=positionId?fallback.eq('position_id',positionId):fallback.is('position_id',null);
-  removed=await fallback.select('id');
-  if(removed.error)throw new Error(removed.error.message);
- }
- const deleted=(removed.data||[]).length;
- if(!deleted)throw new Error('Fiche introuvable ou suppression non autorisée. Vérifiez la session et les droits du compte.');
- return {synced:true,deleted};
+ const {data,error}=await supabase.rpc('aurevia_delete_linked_journal_entry',{
+  p_journal_id:journalId||null,p_group_id:groupId,p_position_id:positionId
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'La suppression de la fiche journal n’a pas été confirmée.');
+ return {synced:true,deleted:Number(data.deleted||0)};
 }
 
 export async function deleteTradePositionFromSupabase(groupId,positionId){
