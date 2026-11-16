@@ -60,7 +60,7 @@ test('M5 refuses insufficient history and invalid direction',()=>{
   assert.equal(evaluateM5EntryConfirmation('WAIT',candlesFor('BUY',now),now-60000,now).confirmed,false);
 });
 
-test('the M5-confirmed close becomes the proposed entry and is shown in the app',async()=>{
+test('the AI-proposed M5 entry price is stored and shown separately',async()=>{
   const {readFile}=await import('node:fs/promises');
   const watch=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
   const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
