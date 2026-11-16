@@ -97,8 +97,8 @@ async function runInstrumentAnalysis(symbol){
   // Prioriser l'historique M15 : si le fournisseur est limité, le moteur
   // tente d'abord de récupérer les données réellement nécessaires au moteur IA.
   try{frames.M15=await fetchFrame(pair,FRAMES.M15);}catch(error){unavailable.push({tf:'M15',error:error?.message||'Données indisponibles'});}
-  // Les unités supérieures ne sont que du contexte. Leur panne ne bloque
-  // jamais l'analyse M15 et elles sont demandées seulement après le M15.
+  // H4/H1 restent des contextes optionnels ; M30 est requis pour la préparation.
+  // Les trois unités sont demandées après le M15 pour maîtriser les appels fournisseur.
   if(frames.M15){
    const optional=Object.entries(FRAMES).filter(([tf])=>tf!=='M15');
    const settled=await Promise.allSettled(optional.map(async([tf,interval])=>[tf,await fetchFrame(pair,interval)]));
@@ -115,7 +115,7 @@ async function runInstrumentAnalysis(symbol){
    analyses[tf]={indicators:calculateIndicators(candles),structure,patterns:[...detectCandlestickPatterns(candles),...detectChartPatterns(candles)],fibonacci:calculateFibonacciRetracements(structure.swings,structure.bias),volumeProfile:calculateFixedRangeVolumeProfile(candles),last:candles.at(-1)};
   }
   const requiredStale=stale.filter(tf=>['M15','M30'].includes(tf));
-  const allRequiredAvailable=!requiredMissing.length&&!requiredStale.length&&analyses.M15?.last;
+  const allRequiredAvailable=!requiredMissing.length&&!requiredStale.length&&analyses.M15?.last&&analyses.M30?.last;
   if(!allRequiredAvailable){
    const details=[...requiredMissing.map(x=>`${x.tf}: ${x.error}`),...requiredStale.map(tf=>`${tf}: données périmées ou horodatage non vérifiable`)];
    const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
