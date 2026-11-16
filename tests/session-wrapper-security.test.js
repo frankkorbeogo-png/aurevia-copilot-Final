@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const migration=await readFile(new URL('../supabase/migrations/20261111180000_single_session_and_admin_console_v229.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261111232136_aurevia_single_session_admin_console_v229.sql',import.meta.url),'utf8');
 
 test('RLS session wrapper can only inspect the caller JWT session',()=>{
  const wrapper=migration.match(/create or replace function public\.aurevia_session_is_active\(\)[\s\S]*?\$\$;/i)?.[0]||'';
