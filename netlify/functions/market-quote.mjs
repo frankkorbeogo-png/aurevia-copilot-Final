@@ -1,5 +1,6 @@
 import {verifyBearerUser,assertActiveSession} from './_session-auth.mjs';
 import {MARKET_PROVIDER_SYMBOLS} from '../../market-catalog.js';
+import {getMarketStatus} from '../../market-hours.js';
 const ALLOWED=new Set(MARKET_PROVIDER_SYMBOLS);
 const cache=new Map();
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'same-origin'},body:JSON.stringify(body)});
@@ -9,6 +10,7 @@ export async function handler(event){
  try{const context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Connexion requise.',code:error.code||null});}
  const symbol=(new URLSearchParams(event.rawQuery||'').get('symbol')||'').toUpperCase();
  if(!ALLOWED.has(symbol))return json(400,{error:'Instrument non autorisé.'});
+ const marketStatus=getMarketStatus(symbol);if(!marketStatus.tradable)return json(409,{error:marketStatus.reason||'Marché fermé.',code:'MARKET_CLOSED',marketStatus});
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux Twelve Data non configuré côté serveur.'});
  const cached=cache.get(symbol);if(cached&&Date.now()-cached.at<30000)return json(200,{...cached.value,cached:true});
  try{
