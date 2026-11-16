@@ -89,3 +89,14 @@ test('la validation manuelle affiche le type d’ordre et les niveaux Stop/Limit
  assert.match(app,/Prix limite/);
  assert.match(app,/Prix proposé par l’IA M5/);
 });
+
+
+test('les données privées sont réinitialisées lorsqu’un autre compte devient propriétaire du stockage local',async()=>{
+ const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
+ assert.match(auth,/aurevia:localownerchange/);
+ assert.match(app,/window\.addEventListener\('aurevia:localownerchange'/);
+ assert.match(app,/restoreMyAnalysis\(\);restoreScenarioDraft\(\)/);
+ assert.match(app,/Aucune analyse personnelle enregistrée sur cet appareil/);
+ assert.match(app,/Aucun brouillon local à restaurer/);
+ assert.match(app,/event\.detail\?\.event==='SIGNED_IN'&&wasBooted/);
+});
