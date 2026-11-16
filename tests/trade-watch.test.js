@@ -181,3 +181,14 @@ test('la migration d’expiration synchronise expires_at et expose un worker ser
  assert.match(sql,/grant execute .* to service_role/i);
  assert.match(sql,/EXPIRED/);
 });
+
+test('le P/L privilégie le prix réellement exécuté au prix d’activation observé',async()=>{
+ const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
+ const result=calculateInternalClosePnl({volume_remaining:0.1,entry_price:1999,activation_price:2000,actual_entry_price:2005,contract_size:100,quote_to_account:1,fees_per_lot:2},'BUY',2010);
+ assert.deepEqual(result,{gross:50,fees:0.2,net:49.8,volume:0.1});
+});
+test('un ordre conditionnel sans prix réel manuel suspend le calcul P/L automatique',async()=>{
+ const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/actual_entry_price\)>0\)\)continue/);
+ assert.match(source,/calcul du résultat reste suspendu/);
+});
