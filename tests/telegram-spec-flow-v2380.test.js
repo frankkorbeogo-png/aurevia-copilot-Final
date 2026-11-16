@@ -29,7 +29,7 @@ test('Telegram applique les limites broker saisies au lieu d’imposer un pas fi
 
 test('Telegram exige la devise déjà enregistrée dans les paramètres sans la redemander à chaque trade',async()=>{
  const oldFetch=globalThis.fetch,oldEnv={...process.env};Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',TELEGRAM_BOT_TOKEN:'bot',TELEGRAM_WEBHOOK_SECRET:'secret'});let prefs={},messages=[];
- globalThis.fetch=async(input,options={})=>{const url=String(input);if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'user-1'}]);if(url.includes('/rest/v1/user_preferences'))return response([{preferences:prefs}]);if(url.includes('api.telegram.org')){messages.push(JSON.parse(options.body));return response({ok:true,result:{message_id:1}});}throw new Error('Unexpected URL '+url);};
+ globalThis.fetch=async(input,options={})=>{const url=String(input);if(url.includes('/rpc/aurevia_telegram_access_status'))return response({allowed:true,status:'trial'});if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'user-1'}]);if(url.includes('/rest/v1/user_preferences'))return response([{preferences:prefs}]);if(url.includes('api.telegram.org')){messages.push(JSON.parse(options.body));return response({ok:true,result:{message_id:1}});}throw new Error('Unexpected URL '+url);};
  try{await handler(callback('start:ABCD1234:unique'));assert.equal(prefs.telegram_trade_setup,undefined);assert.ok(messages.some(x=>x.text?.includes('Paramètres → Devise du compte')));}finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}
 });
 
