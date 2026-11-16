@@ -68,11 +68,11 @@ function installCreatePositionMocks({orderType='BUY MARKET'}={}){
  return {restore(){globalThis.fetch=old;for(const k of ['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SERVICE_ROLE_KEY'])delete process.env[k];},get createCalled(){return createCalled;},get createdPayload(){return createdPayload;}};
 }
 const validContractSpec={calculationType:'contract',contractSize:1,quoteToAccount:1,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0};
-test('scenario-api accepte le prix IA M5 comme référence sans prix réel saisi',async()=>{
+test('scenario-api refuse un ordre MARKET sans prix réel d’exécution manuelle',async()=>{
  const mock=installCreatePositionMocks();
  try{
   const r=await handler(req({action:'create_position',id:'s1',mode:'unique',volume:0.05,contract_spec:{...validContractSpec},auto_journal:true}));
-  assert.equal(r.statusCode,201,parse(r).error);assert.equal(mock.createCalled,true);assert.equal(mock.createdPayload.p_contract_spec.actualEntryPrice,null);
+  assert.equal(r.statusCode,400);assert.match(parse(r).error,/prix réel d’exécution manuelle est obligatoire/i);assert.equal(mock.createCalled,false);
  }finally{mock.restore();}
 });
 test('scenario-api transmet le prix réellement exécuté validé au RPC',async()=>{
@@ -89,11 +89,11 @@ test('scenario-api refuse un prix réel pour un ordre conditionnel non exécuté
   assert.equal(r.statusCode,400);assert.match(parse(r).error,/ordre conditionnel/);assert.equal(mock.createCalled,false);
  }finally{mock.restore();}
 });
-test('le RPC utilise le prix réel facultatif ou le prix de confirmation M5 comme référence',async()=>{
- const sql=await readFile(new URL('../supabase/migrations/20261116190500_aurevia_actual_manual_fill_price.sql',import.meta.url),'utf8');
+test('le RPC et l’API exigent le prix réel manuel pour une entrée MARKET',async()=>{
+ const sql=await readFile(new URL('../supabase/migrations/20261116230200_aurevia_require_manual_actual_fill_for_market_pnl.sql',import.meta.url),'utf8');
  const api=await readFile(new URL('../netlify/functions/scenario-api.mjs',import.meta.url),'utf8');
- assert.doesNotMatch(sql,/ACTUAL_FILL_PRICE_REQUIRED/);
- assert.match(sql,/coalesce\(v_actual_entry,s\.entry_confirmation_price,s\.entry\)/);
- assert.match(api,/if\(marketOrder&&actualEntry!==null\)/);
- assert.doesNotMatch(api,/prix réel saisi est obligatoire/i);
+ assert.match(sql,/ACTUAL_FILL_PRICE_REQUIRED/);
+ assert.match(sql,/before insert or update of order_type, actual_entry_price/i);
+ assert.match(api,/marketOrder&&actualEntry===null/);
+ assert.match(api,/prix réel d’exécution manuelle est obligatoire/i);
 });
