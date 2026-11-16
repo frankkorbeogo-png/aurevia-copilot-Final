@@ -10,12 +10,12 @@ test('macro-context marks future DXY and FRED timestamps as future, not recent',
  process.env.SUPABASE_PUBLISHABLE_KEY='publishable';
  process.env.SUPABASE_SERVICE_ROLE_KEY='service';
  const original=globalThis.fetch;
- const claims=Buffer.from(JSON.stringify({sub:'future-user',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
+ const claims=Buffer.from(JSON.stringify({sub:'3ed0c702-03f1-4264-9e85-746d66401b51',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
  const tomorrow=new Date(Date.now()+36*60*60*1000).toISOString().slice(0,10);
  const futureEpoch=Math.floor((Date.now()+60*60*1000)/1000);
  globalThis.fetch=async input=>{
   const u=String(input);
-  if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'future-user'}),{status:200});
+  if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});
   if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});
   if(u.includes('/rpc/aurevia_is_admin'))return new Response('false',{status:200});
   if(u.includes('/rpc/aurevia_license_status'))return new Response(JSON.stringify({ok:true,status:'trial'}),{status:200});
