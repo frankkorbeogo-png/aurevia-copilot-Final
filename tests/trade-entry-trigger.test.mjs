@@ -65,3 +65,23 @@ test('pending order expires at or after its expiry timestamp',()=>{
  assert.equal(isPendingOrderExpired({expires_at:expiry},Date.parse(expiry)),true);
  assert.equal(isPendingOrderExpired({expires_at:null},Date.parse(expiry)),false);
 });
+
+test('le worker WebSocket persiste TRACK et TRIGGER_SEEN et n’active que ACTIVATE',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../workers/market-quote-stream.mjs',import.meta.url),'utf8');
+ assert.match(source,/state\.action==='TRACK'/);
+ assert.match(source,/state\.action==='TRIGGER_SEEN'/);
+ assert.match(source,/state\.action!=='ACTIVATE'/);
+ assert.match(source,/last_observed_price:state\.last_observed_price/);
+ assert.match(source,/entry_armed:Boolean\(state\.entry_armed\)/);
+ assert.match(source,/trigger_seen:true/);
+ assert.match(source,/processingBySymbol/);
+ assert.match(source,/isPendingOrderExpired\(p,now\)/);
+ assert.doesNotMatch(source,/if\(result\?\.ok\)\{p\.status='OPEN'/);
+});
+
+test('le worker recharge entry_armed, last_observed_price et expires_at au redémarrage',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../workers/market-quote-stream.mjs',import.meta.url),'utf8');
+ assert.match(source,/entry_armed,last_observed_price,expires_at/);
+});
