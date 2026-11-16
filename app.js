@@ -285,14 +285,15 @@ function updateValidationContractFields(){
  const type=$('validationCalcType')?.value||'contract';
  document.querySelectorAll('[data-validation-contract]').forEach(field=>{field.hidden=field.dataset.validationContract!==type;});
 }
-async function validationContractSpec(){
+async function validationContractSpec(ownerId=String(window.__aureviaUserId||'').trim()){
+ if(!ownerId||String(window.__aureviaUserId||'').trim()!==ownerId)return null;
  const quoteCurrency=inferQuoteCurrency(pendingValidationScenario?.instrument);
  if(!accountCurrency)throw new Error('La devise du compte est absente du profil. Configurez-la dans Paramètres.');
  let quoteToAccount=1,fxSnapshot=null;
  if(quoteCurrency&&quoteCurrency!==accountCurrency){
-  const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!token)throw new Error('Session expirée. Reconnectez-vous.');
+  const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
-  const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);
+  const data=await response.json().catch(()=>({}));if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);
   fxSnapshot=validateFxSnapshot(data,{from:quoteCurrency,to:accountCurrency});quoteToAccount=fxSnapshot.rate;
  }
  return {
@@ -317,7 +318,7 @@ async function confirmTradeValidation(){
   const actualEntryPrice=isMarketOrder?Number($('validationActualFill').value):null;
   if(isMarketOrder&&(!Number.isFinite(actualEntryPrice)||actualEntryPrice<=0||(s.direction==='BUY'?(actualEntryPrice<=Number(s.stop_loss)||actualEntryPrice>=Number(s.take_profits?.[0])):(actualEntryPrice>=Number(s.stop_loss)||actualEntryPrice<=Number(s.take_profits?.[0])))))throw new Error('Saisissez le prix réellement obtenu lors de votre exécution manuelle, cohérent avec le SL et le TP1.');
   if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un volume positif.');
-  const rawSpec=await validationContractSpec(),checked=validateContractSpec(rawSpec);
+  const rawSpec=await validationContractSpec(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!rawSpec)return;const checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
   checked.spec.actualEntryPrice=actualEntryPrice;
   if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi dépasse les limites indiquées dans les paramètres techniques.');
