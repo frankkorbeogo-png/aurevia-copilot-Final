@@ -4,7 +4,7 @@ import { getMarketStatus } from './market-hours.js';
 import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade, mergeJournalTrades } from './journal.js';
 import { initEconomicCalendar } from './news.js';
-import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase, deleteOpenTradeGroupFromSupabase, deletePendingTradeFromSupabase, deleteTradePositionFromSupabase, deleteLinkedJournalEntryFromSupabase, deleteManualJournalFromSupabase, syncManualJournalToSupabase } from './auth.js';
+import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, loadBrokerSettings, saveBrokerSettings, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase, deleteOpenTradeGroupFromSupabase, deletePendingTradeFromSupabase, deleteTradePositionFromSupabase, deleteLinkedJournalEntryFromSupabase, deleteManualJournalFromSupabase, syncManualJournalToSupabase } from './auth.js';
 import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds, markTradeGroupCloudSyncPending, markTradeCloseCloudSyncPending } from './trade-management.js';
 import { validateContractSpec, calculateEstimatedMargin } from './contract-engine.js';
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
@@ -250,7 +250,7 @@ function renderAITradePlan(state){
 
 
 let pendingValidationScenario=null;
-function openTradeValidation(scenario){
+async function openTradeValidation(scenario){
  pendingValidationScenario=scenario;
  $('validationScenarioTitle').textContent=`${scenario.instrument} · ${scenario.direction}`;
  $('validationScenarioStatus').textContent='Entrée validée par M5';
@@ -716,6 +716,36 @@ async function refreshAccountCurrency(){
  try{accountCurrency=await loadAccountCurrency();if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.';return accountCurrency;}
  catch(error){if(status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
 }
+function updateBrokerProfileFields(){
+ const type=$('brokerProfileCalculationType')?.value||'contract';
+ document.querySelectorAll('[data-broker-profile]').forEach(field=>{field.hidden=field.dataset.brokerProfile!==type;});
+}
+async function refreshBrokerProfile(){
+ const select=$('brokerProfileInstrument'),status=$('brokerProfileStatus');if(!select)return;
+ if(!select.options.length)select.innerHTML=Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>`<option value="${escapeText(item.label)}">${escapeText(item.label)}</option>`).join('');
+ try{
+  const spec=await loadBrokerSettings(select.value);const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
+  set('brokerProfileCalculationType',spec?.calculationType||'contract');set('brokerProfileLeverage',spec?.leverage);
+  set('brokerProfileMinLot',spec?.minLot??0.01);set('brokerProfileLotStep',spec?.lotStep??0.01);set('brokerProfileMaxLot',spec?.maxLot);
+  set('brokerProfileContractSize',spec?.contractSize);set('brokerProfilePointSize',spec?.pointSize);set('brokerProfilePointValue',spec?.pointValue);
+  set('brokerProfileTickSize',spec?.tickSize);set('brokerProfileTickValue',spec?.tickValue);set('brokerProfileFees',spec?.feesPerLot??0);
+  if(status)status.textContent=spec?'Spécifications enregistrées chargées pour '+select.value+'.':'Aucune fiche enregistrée pour '+select.value+'.';
+  updateBrokerProfileFields();
+ }catch(error){if(status)status.textContent='Chargement impossible : '+error.message;}
+}
+async function persistBrokerProfile(){
+ const button=$('saveBrokerProfile'),status=$('brokerProfileStatus');
+ try{
+  const instrument=$('brokerProfileInstrument').value;
+  const value=id=>$(id)?.value?.trim()||null;
+  const spec={calculationType:value('brokerProfileCalculationType'),leverage:value('brokerProfileLeverage'),minLot:value('brokerProfileMinLot'),lotStep:value('brokerProfileLotStep'),maxLot:value('brokerProfileMaxLot'),contractSize:value('brokerProfileContractSize'),pointSize:value('brokerProfilePointSize'),pointValue:value('brokerProfilePointValue'),tickSize:value('brokerProfileTickSize'),tickValue:value('brokerProfileTickValue'),feesPerLot:value('brokerProfileFees')};
+  if(button)button.disabled=true;
+  await saveBrokerSettings(instrument,spec);
+  if(status)status.textContent='Spécifications enregistrées pour '+instrument+'. Elles seront réutilisées dans AUREVIA et Telegram.';
+  showInAppNotice('Paramètres broker enregistrés pour '+instrument+'.',{type:'success'});
+ }catch(error){if(status)status.textContent=error.message;showInAppNotice(error.message,{type:'error'});}
+ finally{if(button)button.disabled=false;}
+}
 async function persistAccountCurrency(){const button=$('saveAccountCurrency');try{const selected=$('profileAccountCurrency').value;if(!selected)throw new Error('Choisissez une devise avant de continuer.');if(!await confirmInApp({title:'Enregistrer la devise du compte ?',message:'La devise '+selected+' sera utilisée pour les calculs de risque et le suivi des positions.',confirmLabel:'Enregistrer la devise'}))return;if(button)button.disabled=true;const value=await saveAccountCurrency(selected);accountCurrency=value;if($('accountCurrency').value!==undefined)$('accountCurrency').value=value;if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=true;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=`Devise enregistrée : ${value}.`;showInAppNotice(`Devise du compte enregistrée : ${value}.`,{type:'success'});}catch(error){if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}finally{if(button)button.disabled=false;}}
 async function adminLicenseRequest(action,payload={}){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Session administrateur absente.');
@@ -760,8 +790,8 @@ async function issueAdminLicenses(){
 }
 function bindEvents(){
   let pendingAdminRoute=false;
-  $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
-  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);\n  $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);\n  $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);\n  $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshBrokerProfile();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
   $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
   $('adminIssueLicenses')?.addEventListener('click',issueAdminLicenses);
@@ -1006,5 +1036,5 @@ async function activateUserLicense(){
 }
 let authenticatedBooted=false;
 function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();syncManualJournalToSupabase(loadJournalTrades()).then(cloud=>{mergeJournalTrades(cloud.entries);renderJournal();renderJournalStats();}).catch(error=>console.warn('Synchronisation du journal manuel différée :',error.message));renderPositions();renderLinkedJournal();flushTradeSyncQueue();setInterval(()=>{if(window.__aureviaAuthenticated)flushTradeSyncQueue();},30000);setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15. Après mitigation de la zone, AUREVIA analyse M5 pour valider l’entrée.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
-function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
+function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();refreshAccountCurrency();refreshBrokerProfile();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();
