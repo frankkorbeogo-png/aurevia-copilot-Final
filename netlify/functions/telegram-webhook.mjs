@@ -113,7 +113,7 @@ async function finishSetup(token,chatId,userId,setup){
  const groupId=typeof result==='string'?result:result?.[0]?.aurevia_create_position_from_scenario||result?.aurevia_create_position_from_scenario;
  if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
  await saveSetup(userId,null);
- await telegramSend(token,chatId,`✅ POSITION ENREGISTRÉE\n${scenario.instrument} · ${scenario.direction}\nEntrée de référence IA M5 : ${scenario.entry_confirmation_price??scenario.entry??'—'} · Prix réel saisi : ${setup.actualEntryPrice??'non renseigné — référence M5 utilisée'} · SL : ${scenario.stop_loss??'—'}\nLot : ${volume}\nMéthode : ${spec.calculationType}\nDevise : ${spec.accountCurrency}\nJournal automatique : ${setup.autoJournal!==false?'activé':'désactivé'}\n\nLe suivi interne AUREVIA est activé. AUREVIA n’a exécuté aucun ordre.`);
+ await telegramSend(token,chatId,`✅ POSITION ENREGISTRÉE\n${scenario.instrument} · ${scenario.direction}\nEntrée de référence IA M5 : ${scenario.entry_confirmation_price??scenario.entry??'—'} · Prix réel saisi : ${fillLabel} · SL : ${scenario.stop_loss??'—'}\nLot : ${volume}\nMéthode : ${spec.calculationType}\nDevise : ${spec.accountCurrency}\nJournal automatique : ${setup.autoJournal!==false?'activé':'désactivé'}\n\nLe suivi interne AUREVIA est activé. AUREVIA n’a exécuté aucun ordre.`);
  return true;
 }
 
