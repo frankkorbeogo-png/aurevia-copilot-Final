@@ -10,12 +10,10 @@ const RELEASES=[
  {id:9,name:'US Advance Retail Sales',hour:8,minute:30,url:'https://www.census.gov/retail/index.html'}
 ];
 const FED_FOMC_URL='https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm';
-const FED_FOMC_REVISED_2027_URL='https://www.federalreserve.gov/newsevents/pressreleases/monetary20261112a.htm';
 const FOMC_POLICY_DECISION_DATES=[
  '2026-01-28','2026-03-18','2026-04-29','2026-06-17','2026-07-29','2026-09-16','2026-10-28','2026-12-09',
  '2027-01-27','2027-03-17','2027-04-28','2027-06-09','2027-07-28','2027-09-15','2027-11-17'
 ];
-const FOMC_STRATEGY_MEETINGS=[{date:'2027-10-27',name:'FOMC monetary policy strategy meeting (no rate decision expected)'}];
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const env=name=>(process.env[name]||'').trim();
 async function rest(path,{method='GET',body,prefer}={}){
@@ -109,7 +107,6 @@ export function buildOfficialFomcEvents(now=new Date()){
   const month=new Intl.DateTimeFormat('en-US',{month:'long',timeZone:'UTC'}).format(new Date(minutesDate+'T12:00:00Z'));
   add(102,minutesDate,'FOMC Minutes',`https://www.federalreserve.gov/newsevents/${minutesDate.slice(0,4)}-${month}.htm`,'medium','MINUTES');
  }
- for(const meeting of FOMC_STRATEGY_MEETINGS)add(103,meeting.date,meeting.name,FED_FOMC_REVISED_2027_URL,'medium','STRATEGY');
  return events;
 }
 async function syncEconomicCalendar(){
