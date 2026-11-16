@@ -32,7 +32,8 @@ test('la suppression administrative purge aussi les données personnelles et ré
   const start = admin.indexOf("if(action==='delete_user'||action==='permanent_delete_user')");
   const end = admin.indexOf("if(action==='announcement_create')", start);
   const block = admin.slice(start, end);
-  assert.ok(block.includes('aurevia_admin_revoke_session'));
+  assert.ok(cleanup.includes('aurevia_account_revoke_all_sessions'));
+  assert.ok(cleanup.includes('revokeAllAureviaSessions(base, serviceKey, userId)'));
   assert.ok(block.includes('application_data_deleted:true'));
   assert.ok(block.includes("action==='permanent_delete_user'"));
   assert.ok(block.includes('aurevia_admin_permanent_delete_block'));
