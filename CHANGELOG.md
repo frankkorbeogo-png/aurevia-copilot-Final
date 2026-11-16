@@ -1,3 +1,16 @@
+# V2.4.19 — Audit général, M5 IA et gestion du capital
+
+- Confirmation d'entrée M5 dédiée : Groq propose le prix, OpenRouter le contre-vérifie et Cloudflare réalise le contrôle de risque indépendant en parallèle; toute IA obligatoire indisponible bloque la confirmation.
+- Les fonctions planifiées bornent les appels M5 et les requêtes de marché pour respecter le budget Netlify.
+- Prix réel manuel exigé pour MARKET; les références M15/M5 et prix observés ne sont jamais promus en prix exécuté. Les ordres LIMIT/STOP attendent le prix réel après activation avant P/L/clôture.
+- Synchronisation SQL protégée par un contrôle de cohérence entre actual_entry_price et le snapshot contractuel.
+- Gestionnaire de capital : broker/type, solde, equity, marge utilisée/libre, levier, drawdown et limites de pertes quotidiennes/hebdomadaires persistés par utilisateur.
+- Calendrier FOMC rapproché des dates officielles; anciennes alertes quotidiennes FRED désactivées par migration.
+- FRED et GDELT synchronisés en parallèle avec délais bornés; rappels économiques limités à 60 minutes avant l'événement.
+- CME : retry et URL officielle alternative après erreurs upstream 502; aucune fermeture automatique de marché.
+- Guide d'aide corrigé : M1 reste une vue facultative et ne confirme pas l'entrée.
+- Tests automatisés et build CI à actualiser sur le dernier commit de cette version.
+
 # V2.3.98 — Suppression définitive des comptes AUREVIA
 
 - Suppression des données utilisateur côté serveur avant suppression de l’identité Supabase Auth : journal, positions, clôtures, scénarios surveillés, alertes, préférences, annonces ciblées, liaison Telegram et profil.
