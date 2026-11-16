@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const migration=await readFile(new URL('../supabase/migrations/20261116100500_aurevia_trial_claim_persists_after_account_deletion.sql',import.meta.url),'utf8');
-const activation=await readFile(new URL('../supabase/migrations/20261116100600_aurevia_license_activation_requires_verified_email.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261116101934_aurevia_trial_claim_persists_after_account_deletion.sql',import.meta.url),'utf8');
+const activation=await readFile(new URL('../supabase/migrations/20261116102634_aurevia_license_activation_requires_verified_email.sql',import.meta.url),'utf8');
 
 test('trial claim is permanent per normalized verified email',()=>{
  assert.match(migration,/create table public\.aurevia_trial_claims/i);
