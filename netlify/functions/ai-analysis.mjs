@@ -2,6 +2,7 @@ import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
 import {getMarketStatus} from '../../market-hours.js';
 import {runAureviaCollaboration} from './ai-collaboration.mjs';
 import {MARKET_IDS} from '../../market-catalog.js';
+import {selectClosedMarketCandles,validateLatestClosedCandle} from '../../market-candle-validation.js';
 const finite=n=>Number.isFinite(Number(n));
 // Réduit les blocs de contexte facultatifs sans supprimer les données techniques utiles.
 function compactAIContext(value, depth=0) {
@@ -28,9 +29,14 @@ export async function handler(event){
  const {instrument,m15,context={}}=body;
  if(!allowed.has(instrument)||!m15||!Array.isArray(m15.candles)||m15.candles.length<60)return json(400,{error:'Données M15 insuffisantes pour le raisonnement.'});
  const marketStatus=getMarketStatus(instrument);if(!marketStatus.tradable)return json(409,{error:'Marché fermé pour le week-end. Aucune directive de trading ne peut être générée avant la réouverture.',code:'MARKET_CLOSED',marketStatus});
- const candles=m15.candles.slice(-40).map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
+ const timezone=String(m15.timezone||'UTC');
+ const closed=selectClosedMarketCandles(m15.candles,timezone,15,Date.now());
+ if(!closed.ok||closed.candles.length<60)return json(409,{error:closed.reason||'Historique M15 clôturé insuffisant.',code:'M15_CANDLES_INVALID'});
+ const freshness=validateLatestClosedCandle(closed.candles,timezone,15,{now:Date.now(),maxAgeIntervals:2.5});
+ if(!freshness.ok)return json(409,{error:freshness.error,code:'M15_CANDLE_NOT_FRESH'});
+ const candles=closed.candles.slice(-40).map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
  if(candles.some(c=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)))return json(400,{error:'Bougies M15 invalides.'});
- const last=candles.at(-1),prior=candles.at(-2);if(Date.now()-Date.parse(last.t)>35*60*1000||Date.parse(last.t)>Date.now()+5*60*1000)return json(409,{error:'Dernière bougie M15 trop ancienne ou horodatage invalide.'});
+ const last=candles.at(-1),prior=candles.at(-2);
  const payload={instrument,decisionTimeframe:'M15',candles,indicators:compactAIContext(m15.indicators||{}),structure:compactAIContext(m15.structure||{}),patterns:compactAIContext((m15.patterns||[]).slice(-8)),volumeProfile:compactAIContext(m15.volumeProfile||null),fibonacci:compactAIContext(m15.fibonacci||null),price:last.c,previousClose:prior.c,context:{timeframes:compactAIContext(context.timeframes||{}),macro:compactAIContext(context.macro||'non disponible')}};
   const system=`AUREVIA COPILOT — analyste multi-actifs. Réponds en français, uniquement en JSON valide. Aucune exécution d'ordre.
 OBJECTIF: décider BUY, SELL ou WAIT à partir d'une lecture réelle du marché, sans exiger une confluence parfaite.
