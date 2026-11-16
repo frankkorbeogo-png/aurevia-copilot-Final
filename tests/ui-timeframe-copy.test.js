@@ -17,3 +17,8 @@ test('le guide décrit les trois rôles IA de la confirmation M5',()=>{
  assert.match(html,/OpenRouter le contre-vérifie/);
  assert.match(html,/Cloudflare contrôle le risque/);
 });
+
+test('les estimations de réussite ne sont pas présentées comme des probabilités statistiques calibrées',()=>{
+ assert.doesNotMatch(app,/Probabilité statistique/);
+ assert.match(app,/Estimation IA non calibrée/);
+});
