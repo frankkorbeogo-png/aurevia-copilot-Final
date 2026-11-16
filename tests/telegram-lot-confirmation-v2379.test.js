@@ -24,7 +24,7 @@ test('la confirmation M15 propose les deux modes avec des boutons Telegram',asyn
 });
 
 test('la création atomique est réservée au service_role et valide les paramètres instrument',async()=>{
- const sql=await read('../supabase/migrations/20261113140000_telegram_scenario_lot_confirmation_v2379.sql');
+ const sql=await read('../supabase/migrations/20261113140542_telegram_scenario_lot_confirmation_v2379.sql');
  assert.match(sql,/for update/i);
  assert.match(sql,/auth\.role\(\) <> 'service_role'/);
  assert.match(sql,/BROKER_INSTRUMENT_SETTINGS_REQUIRED/);
