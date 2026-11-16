@@ -21,7 +21,7 @@ test('le calendrier principal est un widget TradingView autonome, distinct du co
 test('la reconnexion Telegram réactive les commandes après une déliaison',async()=>{
  const source=await readFile(new URL('../app.js',import.meta.url),'utf8');
  assert.match(source,/generate\.disabled=true/);
- assert.match(source,/loadTelegramPreferences\(\)/);
+ assert.match(source,/loadTelegramPreferences\(ownerId\)/);
  assert.match(source,/save\.disabled=false/);
  assert.match(source,/test\.disabled=false/);
 });
