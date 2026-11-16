@@ -12,6 +12,8 @@ test('WebSocket quote requires a valid provider timestamp', () => {
   const quote = normalizeWebSocketQuote({ symbol: 'XAU/USD', price: 4000, timestamp: (NOW - 1000) / 1000 }, NOW);
   assert.equal(quote.price, 4000);
   assert.equal(quote.ageMs, 1000);
+  const millisecondTimestamp = normalizeWebSocketQuote({ symbol: 'XAU/USD', price: 4000, timestamp: NOW - 1000 }, NOW);
+  assert.equal(millisecondTimestamp.ageMs, 1000);
 });
 
 test('WebSocket quote processing respects Forex and metals market hours', () => {
@@ -37,4 +39,14 @@ test('pending entry activates only after a safe-side to trigger-side crossing', 
     { price: 3999 }
   );
   assert.equal(state.action, 'ACTIVATE');
+});
+
+test('stop-limit pending entry moves to the limit leg only after trigger crossing', () => {
+  const state = evaluateEntryTrigger(
+    { entry_price: 4000, trigger_price: 4020, trigger_seen: false, last_observed_price: 4010, entry_armed: true },
+    { direction: 'BUY', order_type: 'BUY STOP LIMIT' },
+    { price: 4021 }
+  );
+  assert.equal(state.action, 'TRIGGER_SEEN');
+  assert.equal(state.entry_armed, true);
 });
