@@ -34,8 +34,8 @@ export function assessDxyQuote(data, now = Date.now()) {
  if(asOfMs===null||!Number.isFinite(asOfMs)){
   return {available:true,price,asOf:null,ageMinutes:null,freshness:'unknown',usableForDirectionalBias:false,notice:'Horodatage DXY absent ou illisible : cette valeur ne doit pas orienter le biais directionnel.'};
  }
- const ageMs=now-asOfMs,ageMinutes=Math.floor(ageMs/60000);
- const freshness=ageMs < -5*60000 ? 'future' : ageMs<=20*60000 ? 'recent' : 'stale';
+ const ageMs=now-asOfMs,ageMinutes=Math.max(0,Math.floor(ageMs/60000));
+ const freshness=ageMs < -5_000 ? 'future' : ageMs<=20*60000 ? 'recent' : 'stale';
  const usableForDirectionalBias=freshness==='recent';
  const notice=freshness==='recent'
   ? 'Dernière cotation DXY horodatée; flux REST indicatif, non tick temps réel.'
