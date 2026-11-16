@@ -90,3 +90,14 @@ test('AI M15 rejects malformed STOP LIMIT geometry',()=>{
  const candidate={direction:'BUY',entryZone:{low:99,high:102},entry:100,stopLoss:98,takeProfits:[105],orderType:'BUY STOP LIMIT',triggerPrice:99.5,limitPrice:100,confirmationScore:80,scoreComponents:[{label:'Structure',passed:true,weight:100}]};
  assert.equal(cleanScenario(candidate,'BUY',100),null);
 });
+
+test('manual fill corrections update the real entry price in Supabase without broker access',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
+ const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116191000_aurevia_update_manual_fill_price.sql',import.meta.url),'utf8');
+ assert.match(auth,/aurevia_update_actual_fill_price/);
+ assert.match(app,/syncActualFillPriceToSupabase/);
+ assert.match(sql,/ACTUAL_FILL_PRICE_OUTSIDE_SL_TP/);
+ assert.match(sql,/actual_entry_price=p_actual_entry_price/);
+});
