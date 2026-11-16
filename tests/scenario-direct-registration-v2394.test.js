@@ -110,3 +110,11 @@ test('les données privées sont réinitialisées lorsqu’un autre compte devie
  assert.match(app,/Aucun brouillon local à restaurer/);
  assert.match(app,/event\.detail\?\.event==='SIGNED_IN'&&wasBooted/);
 });
+
+test('le formulaire de validation ne contient qu’un seul champ de prix réel et l’exige pour MARKET',()=>{
+ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+ assert.equal((html.match(/id="validationActualFillField"/g)||[]).length,1);
+ assert.equal((html.match(/id="validationActualFill"/g)||[]).length,1);
+ assert.match(app,/validationActualFill'\)\.required=isMarketOrder/);
+ assert.match(app,/isMarketOrder&&actualEntryPrice===null/);
+});
