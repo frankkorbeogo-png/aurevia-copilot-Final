@@ -88,7 +88,7 @@ test('AI M15 scenario normalizes transparent score components and preserves orde
  assert.equal(Math.round(result.scoreComponents.reduce((sum,x)=>sum+x.weight,0)),100);
 });
 test('AI M15 rejects malformed STOP LIMIT geometry',()=>{
- const candidate={direction:'BUY',entryZone:{low:99,high:102},entry:100,stopLoss:98,takeProfits:[105],orderType:'BUY STOP LIMIT',triggerPrice:99.5,limitPrice:100,confirmationScore:80,scoreComponents:[{label:'Structure',passed:true,weight:100}]};
+ const candidate={direction:'BUY',entryZone:{low:99,high:102},entry:100,stopLoss:98,takeProfits:[105],orderType:'BUY STOP LIMIT',triggerPrice:99.5,limitPrice:100,confirmationScore:80,scoreComponents:[{label:'Structure',passed:true,weight:20},{label:'EMA20',passed:true,weight:20},{label:'RSI',passed:true,weight:20},{label:'MACD',passed:true,weight:20},{label:'Liquidity',passed:true,weight:20}]};
  assert.equal(cleanScenario(candidate,'BUY',100),null);
 });
 
