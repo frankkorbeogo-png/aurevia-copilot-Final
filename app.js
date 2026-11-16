@@ -255,8 +255,7 @@ async function openTradeValidation(scenario){
  $('validationScenarioTitle').textContent=`${scenario.instrument} · ${scenario.direction}`;
  $('validationScenarioStatus').textContent='Proposition M5 validée par les trois IA';
  $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Prix proposé par l’IA M5 <b>${escapeText(scenario.entry_confirmation_price??scenario.entry??scenario.last_price)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
- $('validationLot').value='';$('validationActualFill').value='';
- const isMarketOrder=!String(scenario.order_type||'').includes('LIMIT')&&!String(scenario.order_type||'').includes('STOP');$('validationActualFillField').hidden=!isMarketOrder;
+ $('validationLot').value='';
  $('validationLeverage').value='';$('validationMinLot').value='0.01';$('validationLotStep').value='0.01';$('validationMaxLot').value='';
  $('validationCalcType').value='contract';$('validationContractSize').value='';$('validationPointSize').value='';$('validationPointValue').value='';$('validationTickSize').value='';$('validationTickValue').value='';$('validationFees').value='0';
  try{
@@ -301,20 +300,16 @@ async function confirmTradeValidation(){
  try{
   const s=pendingValidationScenario;if(!s?.id)throw new Error('Aucun scénario confirmé n’est sélectionné.');
   const volume=Number($('validationLot').value),mode=$('validationMode').value;
-  const isMarketOrder=!String(s.order_type||'').includes('LIMIT')&&!String(s.order_type||'').includes('STOP');
-  const actualEntryPrice=isMarketOrder?Number($('validationActualFill').value):null;
-  if(isMarketOrder&&(!Number.isFinite(actualEntryPrice)||actualEntryPrice<=0||(s.direction==='BUY'?(actualEntryPrice<=Number(s.stop_loss)||actualEntryPrice>=Number(s.take_profits?.[0])):(actualEntryPrice>=Number(s.stop_loss)||actualEntryPrice<=Number(s.take_profits?.[0])))))throw new Error('Saisissez le prix réellement exécuté sur votre broker, cohérent avec le SL et le TP1.');
   if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un volume positif.');
   const rawSpec=await validationContractSpec(),checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
-  checked.spec.actualEntryPrice=actualEntryPrice;
   if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi dépasse les limites indiquées dans les paramètres techniques.');
   if(Math.abs(volume/checked.spec.lotStep-Math.round(volume/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas le pas de volume indiqué.');
   const count=(s.take_profits||[]).length;
   if(mode==='unique'&&Math.floor((volume/count)/checked.spec.lotStep)*checked.spec.lotStep<checked.spec.minLot)throw new Error('Le lot est trop faible pour être réparti entre les TP sélectionnés.');
-  const approved=await confirmInApp({title:'Confirmer l’enregistrement du trade',message:s.instrument+' · '+s.direction+'\nLot total : '+volume+'\nGestion : '+(mode==='unique'?'Position unique':'Trades séparés')+'\nPrix proposé par l’IA M5 : '+(s.entry_confirmation_price??s.entry)+'\nPrix réellement exécuté : '+(actualEntryPrice??'Ordre conditionnel en attente')+'\nStop Loss : '+s.stop_loss+'\nObjectifs : '+(s.take_profits||[]).join(' · ')+'\n\nSuivi interne AUREVIA uniquement. Aucun ordre broker ne sera envoyé.',confirmLabel:'Enregistrer le trade'});
+  const approved=await confirmInApp({title:'Confirmer l’enregistrement du trade',message:s.instrument+' · '+s.direction+'\nLot total : '+volume+'\nGestion : '+(mode==='unique'?'Position unique':'Trades séparés')+'\nPrix proposé par l’IA M5 : '+(s.entry_confirmation_price??s.entry)+'\nEntrée de référence IA M5 : '+(s.entry_confirmation_price??s.entry)+'\nStop Loss : '+s.stop_loss+'\nObjectifs : '+(s.take_profits||[]).join(' · ')+'\n\nSuivi interne AUREVIA uniquement. Aucun ordre broker ne sera envoyé.',confirmLabel:'Enregistrer le trade'});
   if(!approved)return;
-  const brokerSpec={...checked.spec};delete brokerSpec.actualEntryPrice;await saveBrokerSettings(s.instrument,brokerSpec);
+  const brokerSpec={...checked.spec};await saveBrokerSettings(s.instrument,brokerSpec);
   button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
   const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const brokerSnapshot={accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
