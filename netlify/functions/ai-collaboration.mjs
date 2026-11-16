@@ -71,6 +71,7 @@ export async function runAureviaM5Confirmation({scenario, candles, indicators, s
  const ps=Object.fromEntries(configuredAIProviders().map(p=>[p.id,p]));
  const groq=ps.groq,openrouter=ps.openrouter,cloudflare=ps.cloudflare;
  if(!groq||!openrouter||!cloudflare) return {confirmed:false,score:0,reason:'Analyse M5 suspendue : les trois IA (Groq, OpenRouter et Cloudflare) doivent être disponibles.',providerStatus:{groq:Boolean(groq),openrouter:Boolean(openrouter),cloudflare:Boolean(cloudflare)}};
+ if(!Array.isArray(candles)||candles.length<35)return {confirmed:false,score:0,reason:'Historique M5 insuffisant : 35 bougies clôturées sont nécessaires.'};
  const market={scenario,candles:candles.slice(-40),indicators,structure};
  const system=base+' Tu es l’analyste principal M5 d’AUREVIA. Tu analyses uniquement les bougies M5 clôturées fournies et le scénario M15 déjà défini. Ne modifies jamais le sens du scénario. Tu dois déterminer si une entrée raisonnable existe maintenant. Propose un prix d’entrée précis, ou WAIT si aucune entrée raisonnable. Le prix doit être appuyé par la structure, une zone de retest, une liquidité reprise ou une impulsion; ne recopie pas simplement la clôture de la dernière bougie. Ne propose jamais un prix hors de la zone M15 ou au-delà du SL/TP1. JSON: {decision:"CONFIRM|WAIT",entryPrice:null|number,entryZoneLow:null|number,entryZoneHigh:null|number,score:0-100,reasoning,structureEvidence:[],liquidityEvidence:[],riskNotes:[],invalidation}.';
  let lead,review,audit;
@@ -80,7 +81,7 @@ export async function runAureviaM5Confirmation({scenario, candles, indicators, s
  try { review=await ask(openrouter,[{role:'system',content:criticSystem},{role:'user',content:JSON.stringify({market,primaryProposal:lead})}],7500); }
  catch(e){return {confirmed:false,score:0,reason:'OpenRouter indisponible : contre-analyse M5 incomplète. '+clean(e.message,160)};}
  const controlSystem=base+' Tu es le contrôleur indépendant M5. Vérifie la sécurité du prix proposé, la cohérence BUY/SELL, la zone M15, le SL, TP1, la fraîcheur des bougies et les risques de poursuite tardive. Tu disposes d’un veto. JSON: {decision:"CONFIRM|WAIT",veto:false,vetoReason,score:0-100,reasoning,criticalBlockers:[]}.';
- try { audit=await ask(cloudflare,[{role:'system',content:controlSystem},{role:'user',content:JSON.stringify({market,primaryProposal:lead,independentReview:review})}],11000); }
+ try { audit=await ask(cloudflare,[{role:'system',content:controlSystem},{role:'user',content:JSON.stringify({market,primaryProposal:lead,independentReview:review})}],7500); }
  catch(e){return {confirmed:false,score:0,reason:'Cloudflare indisponible : contrôle de risque M5 incomplet. '+clean(e.message,160)};}
  const result=validateM5AIConsensus({scenario,lead,review,audit,atr:indicators?.atr14});
  return {...result,lastCandleAt:new Date(candles.at(-1).time+5*60000).toISOString(),providers:{groq:groq.name,openrouter:openrouter.name,cloudflare:cloudflare.name},proposal:lead,review,audit};
