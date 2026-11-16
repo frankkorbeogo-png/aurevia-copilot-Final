@@ -88,6 +88,8 @@ export async function handler() {
     if (!response.ok) {
       const error = new Error(`CME source returned HTTP ${response.status}`);
       error.code = 'CME_HTTP_ERROR';
+      error.upstreamStatus = response.status;
+      error.retryable = response.status === 429 || response.status >= 500;
       throw error;
     }
 
@@ -100,6 +102,7 @@ export async function handler() {
     if (!/CME Group Holiday and Trading Hours|CME Globex Trading Schedule/i.test(html)) {
       const error = new Error('Expected CME calendar markers were not found; existing stored snapshot is preserved');
       error.code = 'CME_SOURCE_MARKER_MISSING';
+      error.retryable = false;
       throw error;
     }
 
@@ -139,6 +142,8 @@ export async function handler() {
       const detail = (await saved.text()).slice(0, 300);
       const error = new Error(`Supabase upsert failed HTTP ${saved.status}: ${detail}`);
       error.code = 'SUPABASE_UPSERT_ERROR';
+      error.upstreamStatus = saved.status;
+      error.retryable = saved.status === 429 || saved.status >= 500;
       throw error;
     }
 
@@ -169,10 +174,14 @@ export async function handler() {
       code: error.code || 'UNEXPECTED_SYNC_ERROR',
       message: String(error.message || error).slice(0, 500)
     }));
-    return json(stage === 'supabase_upsert' ? 502 : 502, {
+    const retryable = error.retryable !== false;
+    const statusCode = retryable ? 503 : 422;
+    return json(statusCode, {
       ok: false,
       stage,
       code: error.code || 'UNEXPECTED_SYNC_ERROR',
+      upstreamStatus: error.upstreamStatus || null,
+      retryable,
       error: String(error.message || error).slice(0, 500),
       automaticMarketClosuresApplied: false
     });
