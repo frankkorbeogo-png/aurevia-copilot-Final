@@ -45,7 +45,7 @@ export function generateOpportunityScenarios({analyses, frames, staleFrames=[]})
     const r=Math.abs(entry-stop);targets=buy?[entry+r,entry+r*2,entry+r*3]:[entry-r,entry-r*2,entry-r*3];
     const entryBeforeOrderSelection=entry;
     let order=null,triggerPrice=null,limitPrice=null;
-    const priceInsideZone=price>=zoneLow&&price<=zoneHigh;
+    const priceInsideZone=Boolean(zone)&&price>=zoneLow&&price<=zoneHigh;
     if(priceInsideZone||Math.abs(entry-price)<=atr*.08){order=buy?'BUY MARKET':'SELL MARKET';entry=price;}
     else if(buy&&entry>price&&br){order='BUY STOP LIMIT';triggerPrice=round(Math.max(price+atr*.25,entry+atr*.05));limitPrice=round(Math.min(entry,triggerPrice-atr*.05));entry=limitPrice;}
     else if(!buy&&entry<price&&br){order='SELL STOP LIMIT';triggerPrice=round(Math.min(price-atr*.25,entry-atr*.05));limitPrice=round(Math.max(entry,triggerPrice+atr*.05));entry=limitPrice;}
