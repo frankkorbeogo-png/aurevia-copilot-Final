@@ -49,6 +49,10 @@ export async function handler(event){
  let ctx;try{ctx=await verifyBearerUser(event);await assertActiveSession(ctx);}catch(e){return json(e.statusCode||401,{error:e.message||'Session invalide.'});}
  const {instrument,m15,context={}}=body;
  if(!allowed.has(instrument)||!m15||!Array.isArray(m15.candles)||m15.candles.length<60)return json(400,{error:'Données M15 insuffisantes pour le raisonnement.'});
+ const m30=context?.timeframes?.M30,m30Stamp=Date.parse(m30?.lastCandleTime||'');
+ const m30ClosedAt=m30Stamp+30*60000,m30Age=Date.now()-m30ClosedAt;
+ if(m30?.available!==true||!Number.isFinite(m30Stamp)||!Number.isFinite(m30Age)||m30Age< -5*60000||m30Age>45*60000)
+  return json(409,{error:'Données M30 absentes ou trop anciennes : la préparation structurelle M30 est obligatoire avant une décision M15.',code:'M30_CONTEXT_REQUIRED'});
  const marketStatus=getMarketStatus(instrument);if(!marketStatus.tradable)return json(409,{error:'Marché fermé pour le week-end. Aucune directive de trading ne peut être générée avant la réouverture.',code:'MARKET_CLOSED',marketStatus});
  const candles=m15.candles.slice(-40).map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
  if(candles.some(c=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)))return json(400,{error:'Bougies M15 invalides.'});
