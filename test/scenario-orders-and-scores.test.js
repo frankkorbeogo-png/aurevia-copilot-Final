@@ -78,7 +78,7 @@ test('M5 consensus vetoes prices outside the M15 zone or beyond SL/TP1',()=>{
 });
 
 test('AI M15 scenario normalizes transparent score components and preserves order prices',()=>{
- const candidate={direction:'BUY',entryZone:{low:99,high:101},entry:100,stopLoss:98,takeProfits:[104],orderType:'BUY LIMIT',triggerPrice:null,limitPrice:100,confirmationScore:60,scoreComponents:[{label:'Structure M15',passed:true,weight:60},{label:'EMA and RSI',passed:false,weight:40}]};
+ const candidate={direction:'BUY',entryZone:{low:99,high:101},entry:100,stopLoss:98,takeProfits:[104],orderType:'BUY LIMIT',triggerPrice:null,limitPrice:100,confirmationScore:60,scoreComponents:[{label:'Structure M15',passed:true,weight:30},{label:'EMA20/50',passed:true,weight:20},{label:'RSI',passed:false,weight:15},{label:'MACD',passed:true,weight:20},{label:'Liquidity',passed:false,weight:15}]};
  const result=cleanScenario(candidate,'BUY',100);
  assert.ok(result);
  assert.equal(result.pendingOrderType,'BUY LIMIT');
@@ -141,4 +141,9 @@ test('la RPC de correction du prix réel active ensemble les TP enfants uniques 
  assert.match(sql,/status in \('OPEN','PENDING'\)/);
  assert.match(sql,/activated_at=coalesce\(activated_at,now\(\)\)/);
  assert.match(sql,/actual_entry_price=p_actual_entry_price/);
+});
+
+test('un scénario IA M15 sans cinq facteurs détaillés est rejeté',()=>{
+ const candidate={direction:'BUY',entryZone:{low:99,high:101},entry:100,stopLoss:98,takeProfits:[104],orderType:'BUY LIMIT',limitPrice:100,confirmationScore:90,scoreComponents:[{label:'Structure',passed:true,weight:100}]};
+ assert.equal(cleanScenario(candidate,'BUY',100),null);
 });
