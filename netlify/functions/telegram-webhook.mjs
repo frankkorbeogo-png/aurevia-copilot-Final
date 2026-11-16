@@ -39,7 +39,10 @@ function nextPrompt(setup){
   pointValue:'Quelle est la valeur monétaire d’un point pour 1 lot, dans la devise de ton compte ?',
   tickSize:'Quelle est la taille d’un tick ?',
   tickValue:'Quelle est la valeur monétaire d’un tick pour 1 lot, dans la devise de ton compte ?',
-  feesPerLot:'Quels sont les frais/commissions par lot dans la devise de ton compte ? Réponds 0 si aucun.'
+  feesPerLot:'Quels sont les frais/commissions par lot dans la devise de ton compte ? Réponds 0 si aucun.',
+  minLot:'Quel est le lot minimum autorisé par ton broker ? Réponds « ignorer » pour conserver 0,01.',
+  lotStep:'Quel est le pas de volume autorisé ? Exemple : 0.001. Réponds « ignorer » pour conserver 0,01.',
+  maxLot:'Quel est le lot maximum autorisé ? Réponds « ignorer » si aucun maximum ne s’applique.'
  };
  return prompts[setup.step]||'Réponse non reconnue. Envoie /annuler pour recommencer.';
 }
@@ -60,7 +63,7 @@ function summary(setup,scenario){
   :s.calculationType==='point'
    ?`Taille du point : ${s.pointSize}\nValeur du point/lot : ${s.pointValue}`
    :`Taille du tick : ${s.tickSize}\nValeur du tick/lot : ${s.tickValue}`;
- return `Vérifie les informations avant enregistrement\n\nInstrument : ${scenario.instrument}\nDirection : ${scenario.direction}\nEntrée : ${entry}\nStop Loss : ${scenario.stop_loss??'Non renseigné'}\nTake Profits : ${tps}\nMode : ${setup.mode==='unique'?'Position unique':'Trades séparés'}\nLot : ${setup.volume}\nDevise du compte (profil) : ${s.accountCurrency}\nLevier : ${s.leverage?`1:${s.leverage}`:'Non précisé'}\nMéthode : ${s.calculationType}\n${calc}\nLot minimum et incrément : 0,01\nFrais/lot : ${s.feesPerLot} ${s.accountCurrency}\nAjout automatique au journal : ${setup.autoJournal?'Oui':'Non'}\n\nConfirmer l’enregistrement ? Aucun ordre ne sera envoyé au broker.`;
+ return `Vérifie les informations avant enregistrement\n\nInstrument : ${scenario.instrument}\nDirection : ${scenario.direction}\nEntrée : ${entry}\nStop Loss : ${scenario.stop_loss??'Non renseigné'}\nTake Profits : ${tps}\nMode : ${setup.mode==='unique'?'Position unique':'Trades séparés'}\nLot : ${setup.volume}\nDevise du compte (profil) : ${s.accountCurrency}\nLevier : ${s.leverage?`1:${s.leverage}`:'Non précisé'}\nMéthode : ${s.calculationType}\n${calc}\nLot minimum et incrément : ${s.minLot} / ${s.lotStep}${s.maxLot!==null?` · maximum ${s.maxLot}`:''}\nFrais/lot : ${s.feesPerLot} ${s.accountCurrency}\nAjout automatique au journal : ${setup.autoJournal?'Oui':'Non'}\n\nConfirmer l’enregistrement ? Aucun ordre ne sera envoyé au broker.`;
 }
 
 async function finishSetup(token,chatId,userId,setup){
@@ -77,11 +80,10 @@ async function finishSetup(token,chatId,userId,setup){
  const checked=validateContractSpec(setup.spec);
  if(!checked.ok){await telegramSend(token,chatId,`Paramètres incomplets : ${checked.error}`);return false;}
  const spec=checked.spec,volume=Number(setup.volume);
- if(!Number.isFinite(volume)||volume<0.01||Math.abs(volume/0.01-Math.round(volume/0.01))>1e-7){
+ if(!Number.isFinite(volume)||volume<spec.minLot||(spec.maxLot!==null&&volume>spec.maxLot)||Math.abs(volume/spec.lotStep-Math.round(volume/spec.lotStep))>1e-7){
   setup.step='lot';await saveSetup(userId,setup);
-  await telegramSend(token,chatId,'Le lot minimum est de 0,01 et les volumes doivent être des multiples de 0,01. Saisis un autre lot.');return false;
+  await telegramSend(token,chatId,`Le lot doit respecter le minimum ${spec.minLot}, le pas ${spec.lotStep}${spec.maxLot!==null?` et le maximum ${spec.maxLot}`:''}. Saisis un autre volume.`);return false;
  }
- spec.minLot=0.01;spec.lotStep=0.01;spec.maxLot=null;
  const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};
  const result=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenario.id,p_user_id:userId,p_mode:setup.mode,p_volume:volume,p_contract_spec:spec,p_broker_snapshot:brokerSnapshot,p_auto_journal:setup.autoJournal!==false}});
  const groupId=typeof result==='string'?result:result?.[0]?.aurevia_create_position_from_scenario||result?.aurevia_create_position_from_scenario;
@@ -143,15 +145,19 @@ async function handleGuidedMessage(token,chatId,userId,text){
  if(Date.now()-Date.parse(setup.startedAt)>30*60*1000){await saveSetup(userId,null);await telegramSend(token,chatId,'Cette configuration a expiré. Attends une nouvelle confirmation d’entrée.');return true;}
  const value=text.trim(),skip=/^(ignorer|aucun|aucune)$/i.test(value),n=numberInput(value),step=setup.step;
  if(step==='lot'){
-  if(n===null||n<0.01||Math.abs(n/0.01-Math.round(n/0.01))>1e-7){await telegramSend(token,chatId,'Le lot minimum est de 0,01 et les volumes doivent être des multiples de 0,01. Exemple : 0.05.');return true;}
+  if(n===null||n<=0){await telegramSend(token,chatId,'Saisis un volume positif. Exemple : 0.05.');return true;}
   setup.volume=n;setup.step='leverage';
  }else if(step==='leverage'){
   if(!skip&&(n===null||n<1||n>100000)){await telegramSend(token,chatId,'Saisis un levier valide, par exemple 2000, ou « ignorer ».');return true;}
   setup.spec.leverage=skip?null:n;setup.step='calculationType';
- }else if(['contractSize','pointSize','pointValue','tickSize','tickValue','feesPerLot'].includes(step)){
-  if(n===null||(step==='feesPerLot'?n<0:n<=0)){await telegramSend(token,chatId,'Saisis une valeur numérique valide.');return true;}
-  else setup.spec[step]=n;
-  const order=setup.spec.calculationType==='contract'?['contractSize','feesPerLot']:setup.spec.calculationType==='point'?['pointSize','pointValue','feesPerLot']:['tickSize','tickValue','feesPerLot'];
+ }else if(['contractSize','pointSize','pointValue','tickSize','tickValue','feesPerLot','minLot','lotStep','maxLot'].includes(step)){
+  if(['minLot','lotStep','maxLot'].includes(step)&&skip){
+   if(step==='maxLot')setup.spec.maxLot=null;
+  }else{
+   if(n===null||(step==='feesPerLot'?n<0:n<=0)){await telegramSend(token,chatId,'Saisis une valeur numérique positive ou « ignorer » pour un paramètre de lot facultatif.');return true;}
+   setup.spec[step]=n;
+  }
+  const order=setup.spec.calculationType==='contract'?['contractSize','feesPerLot','minLot','lotStep','maxLot']:setup.spec.calculationType==='point'?['pointSize','pointValue','feesPerLot','minLot','lotStep','maxLot']:['tickSize','tickValue','feesPerLot','minLot','lotStep','maxLot'];
   const index=order.indexOf(step);setup.step=order[index+1]||'review';
  }else return false;
  if(setup.step==='review'){
