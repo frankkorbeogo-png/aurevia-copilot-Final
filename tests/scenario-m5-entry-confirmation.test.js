@@ -53,7 +53,7 @@ test('the scheduled M5 watcher only analyses closed post-mitigation candles and 
 test('the confirmed M5 price is applied to the selected conditional order level',async()=>{
  const {readFile}=await import('node:fs/promises');
  const watch=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
- assert.match(watch,/orderType\.endsWith\(' STOP LIMIT'\)/);
+ assert.match(watch,/orderType==='BUY STOP LIMIT'\|\|orderType==='SELL STOP LIMIT'/);
  assert.match(watch,/orderType\.endsWith\(' STOP'\)/);
  assert.match(watch,/orderType\.endsWith\('LIMIT'\)/);
  assert.match(watch,/entry:m5Entry,trigger_price:trigger,limit_price:limit/);
