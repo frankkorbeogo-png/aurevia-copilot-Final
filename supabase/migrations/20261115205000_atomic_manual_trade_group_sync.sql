@@ -148,7 +148,7 @@ begin
 
   if v_auto_journal then
     if jsonb_array_length(coalesce(p_journal,'[]'::jsonb)) <>
-       case when v_mode='unique' then 1 else cardinality(v_position_ids) end then
+       (case when v_mode='unique' then 1 else cardinality(v_position_ids) end) then
       raise exception 'INVALID_TRADE_JOURNAL_MAPPING';
     end if;
 
