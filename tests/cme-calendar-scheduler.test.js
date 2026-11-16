@@ -4,8 +4,9 @@ import {handler} from '../netlify/functions/cme-calendar-sync.mjs';
 
 test('CME calendar sync accepts the scheduled POST invocation',async()=>{
  const oldFetch=globalThis.fetch,oldEnv={...process.env};
- Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service'});
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co/',SUPABASE_SERVICE_ROLE_KEY:'service'});
  let saved=null;
+ let upsertUrl=null;
  globalThis.fetch=async(input,options={})=>{
   const url=String(input);
   if(url==='https://www.cmegroup.com/trading-hours.html'){const html='<html><h1>2026 CME Globex Trading Schedule</h1><table><tr><th>Holiday</th><th>Date range</th></tr><tr><td>Thanksgiving</td><td>November 26–27</td></tr></table>'+('calendar source content '.repeat(60))+'</html>';return new Response(html,{status:200});}
