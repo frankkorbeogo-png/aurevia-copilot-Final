@@ -59,10 +59,11 @@ test('le build de production embarque le catalogue importé par les modules clie
   assert.match(build, /'market-catalog\.js'/);
 });
 
-test('WTI reste visible mais désactivé tant que le plan matières premières n’est pas vérifié', async () => {
+test('WTI et les instruments retirés ne figurent plus dans les sélecteurs actifs', async () => {
   const html = await read('index.html');
+  const app = await read('app.js');
   assert.equal(MARKET_INSTRUMENTS.WTIUSD, undefined);
-  assert.match(html, /WTI\/USD[^<]*accès matières premières à confirmer/);
-  assert.doesNotMatch(html, /data-symbol="WTIUSD"/);
-  assert.match(html, /value="WTIUSD" disabled/);
+  assert.doesNotMatch(html, /WTI\/USD|WTIUSD|US30|NAS100|SPX500/);
+  assert.doesNotMatch(app, /TVC:USOIL|PEPPERSTONE:US30|NASDAQ:NDX|SP:SPX/);
+  assert.match(app, /TVC:DXY/);
 });
