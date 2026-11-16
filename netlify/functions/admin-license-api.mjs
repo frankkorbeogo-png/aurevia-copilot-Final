@@ -23,13 +23,10 @@ export async function handler(event){
    if(days!==null&&(!Number.isInteger(days)||days<1||days>3650))return json(400,{error:'Durée de licence invalide.'});
    const plan=String(body.plan_code||'standard').trim().toLowerCase();
    if(!/^[a-z0-9_-]{2,32}$/.test(plan))return json(400,{error:'Formule invalide.'});
-   const issued=[];
-   for(let i=0;i<count;i++){
-    const key=makeKey(),hash=sha256(key),prefix=key.slice(0,9);
-    const result=await rpc(base,service,'aurevia_admin_license_issue',{p_actor_id:user.id,p_key_hash:hash,p_key_prefix:prefix,p_plan_code:plan,p_duration_days:days});
-    if(!result?.ok||!result.license)throw new Error('La création transactionnelle de la licence a échoué.');
-    issued.push({...result.license,license_key:key});
-   }
+   const credentials=Array.from({length:count},()=>{const key=makeKey();return {key,key_hash:sha256(key),key_prefix:key.slice(0,9),duration_days:days};});
+   const result=await rpc(base,service,'aurevia_admin_license_issue_batch',{p_actor_id:user.id,p_plan_code:plan,p_licenses:credentials.map(({key_hash,key_prefix,duration_days})=>({key_hash,key_prefix,duration_days}))});
+   if(!result?.ok||!Array.isArray(result.licenses)||result.licenses.length!==count)throw new Error('La création atomique du lot de licences a échoué.');
+   const issued=result.licenses.map((license,index)=>({...license,license_key:credentials[index].key}));
    return json(200,{ok:true,issued});
   }
   if(action==='set_status'){
