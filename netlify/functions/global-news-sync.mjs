@@ -108,7 +108,7 @@ async function syncEconomicCalendar(){
    deactivated++;
   }
  }
- if(key&&!cacheFresh)await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
+ if(key&&!cacheFresh&&!fredSyncError)await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
  return {status:fredSyncError?'fred_sync_failed_fomc_refreshed':!key?'fomc_only_fred_not_configured':cacheFresh?'fresh_fred_cache_official_fomc_refreshed':'synced',synced:events.length,deactivated,source:key?'FRED + Federal Reserve FOMC calendar':'Federal Reserve FOMC calendar',...(fredSyncError?{fredError:fredSyncError}:{}),...(key?{}:{notice:'FRED_API_KEY absent : seules les dates officielles FOMC sont synchronisées.'})};
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
