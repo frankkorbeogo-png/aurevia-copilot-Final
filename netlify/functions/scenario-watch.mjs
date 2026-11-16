@@ -22,7 +22,7 @@ export async function handler(){
  if(!BASE()||!KEY()||!process.env.TWELVEDATA_API_KEY)return {statusCode:503,body:'Monitor not configured'};
  try{
   const rows=await rest('aurevia_analysis_scenarios?select=*&status=in.(monitoring,zone_reached,entry_confirmed)&order=updated_at.asc&limit=100');
-  let checked=0,zones=0,entries=0,invalidated=0,errors=0,m5AiCalls=0;const m15Cache=new Map(),m5Cache=new Map(),quoteCache=new Map();
+  let checked=0,zones=0,entries=0,invalidated=0,errors=0,m5AiCalls=0;const m15Cache=new Map(),m5Cache=new Map(),quoteCache=new Map(),accessCache=new Map();
   for(const s of rows||[]){
    try{
     const market=getMarketInstrument(s.instrument);if(!market){errors++;continue;}
