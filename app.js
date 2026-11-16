@@ -263,7 +263,7 @@ function renderAITradePlan(state){
 
 let pendingValidationScenario=null;
 async function openTradeValidation(scenario){
- pendingValidationScenario=scenario;
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;pendingValidationScenario=scenario;
  $('validationScenarioTitle').textContent=`${scenario.instrument} · ${scenario.direction}`;
  $('validationScenarioStatus').textContent='Proposition M5 validée par les trois IA';
  const orderType=String(scenario.order_type||(scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();const orderDetails=orderType.endsWith('STOP LIMIT')?`<span>Déclenchement <b>${escapeText(scenario.trigger_price??'—')}</b></span><span>Prix limite <b>${escapeText(scenario.limit_price??scenario.entry_confirmation_price??scenario.entry)}</b></span>`:orderType.endsWith(' STOP')?`<span>Déclenchement <b>${escapeText(scenario.trigger_price??scenario.entry_confirmation_price??scenario.entry)}</b></span>`:orderType.endsWith(' LIMIT')?`<span>Prix limite <b>${escapeText(scenario.limit_price??scenario.entry_confirmation_price??scenario.entry)}</b></span>`:'';$('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Type d’ordre <b>${escapeText(orderType)}</b></span><span>Prix proposé par l’IA M5 <b>${escapeText(scenario.entry_confirmation_price??scenario.entry??scenario.last_price)}</b></span>${orderDetails}<span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
@@ -272,11 +272,11 @@ async function openTradeValidation(scenario){
  $('validationLeverage').value='';$('validationMinLot').value='0.01';$('validationLotStep').value='0.01';$('validationMaxLot').value='';
  $('validationCalcType').value='contract';$('validationContractSize').value='';$('validationPointSize').value='';$('validationPointValue').value='';$('validationTickSize').value='';$('validationTickValue').value='';$('validationFees').value='0';
  try{
-  const spec=await loadBrokerSettings(scenario.instrument);
+  const spec=await loadBrokerSettings(scenario.instrument,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   if(spec){$('validationCalcType').value=spec.calculationType||'contract';$('validationLeverage').value=spec.leverage??'';$('validationMinLot').value=spec.minLot??0.01;$('validationLotStep').value=spec.lotStep??0.01;$('validationMaxLot').value=spec.maxLot??'';$('validationContractSize').value=spec.contractSize??'';$('validationPointSize').value=spec.pointSize??'';$('validationPointValue').value=spec.pointValue??'';$('validationTickSize').value=spec.tickSize??'';$('validationTickValue').value=spec.tickValue??'';$('validationFees').value=spec.feesPerLot??0;$('validationTradeStatus').textContent='Paramètres techniques enregistrés chargés automatiquement. Vérifiez le lot puis confirmez.';}
   else $('validationTradeStatus').textContent='Aucun paramètre technique enregistré pour cet instrument. Configurez-les une seule fois dans Paramètres.';
   updateValidationContractFields();
- }catch(error){$('validationTradeStatus').textContent='Chargement des paramètres techniques impossible : '+error.message;}
+ }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId)$('validationTradeStatus').textContent='Chargement des paramètres techniques impossible : '+error.message;}
 
  $('validationTradeNav').hidden=false;
  document.querySelector('[data-page="validation-trade"]')?.click();
@@ -290,7 +290,7 @@ async function validationContractSpec(){
  if(!accountCurrency)throw new Error('La devise du compte est absente du profil. Configurez-la dans Paramètres.');
  let quoteToAccount=1,fxSnapshot=null;
  if(quoteCurrency&&quoteCurrency!==accountCurrency){
-  const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
+  const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);
   fxSnapshot=validateFxSnapshot(data,{from:quoteCurrency,to:accountCurrency});quoteToAccount=fxSnapshot.rate;
@@ -309,7 +309,7 @@ function updateValidationModeHelp(){
  $('validationModeHelp').textContent=$('validationMode').value==='unique'?'Position unique : le lot saisi est réparti entre les TP sélectionnés, avec une seule fiche journal.':'Trades séparés : le lot saisi est appliqué à chaque TP sélectionné, avec un suivi et une fiche par TP.';
 }
 async function confirmTradeValidation(){
- const button=$('confirmTradeValidation'),status=$('validationTradeStatus');
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$('confirmTradeValidation'),status=$('validationTradeStatus');
  try{
   const s=pendingValidationScenario;if(!s?.id)throw new Error('Aucun scénario confirmé n’est sélectionné.');
   const volume=Number($('validationLot').value),mode=$('validationMode').value;
@@ -331,17 +331,17 @@ async function confirmTradeValidation(){
   const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const brokerSnapshot={accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
   const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id:s.id,mode,volume,contract_spec:checked.spec,broker_snapshot:brokerSnapshot,auto_journal:$('validationAutoJournal').checked}),cache:'no-store'});
-  const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
+  const result=await response.json().catch(()=>({}));if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
   status.textContent='Trade enregistré. Synchronisation du suivi des positions et du journal…';
-  const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));
+  const restored=await restoreTradeGroupsFromSupabase(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();}
-  await refreshScenarioWatchList();
+  await refreshScenarioWatchList();if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   status.textContent='Trade enregistré avec succès. Retrouvez-le dans « Suivi des positions ».';
   showInAppNotice('Trade confirmé et enregistré. Le suivi AUREVIA est activé.',{type:'success'});
   pendingValidationScenario=null;
   $('validationTradeNav').hidden=true;
   document.querySelector('[data-page="positions"]')?.click();
- }catch(error){status.textContent=error.message||'Impossible d’enregistrer ce trade.';showInAppNotice(error.message||'Impossible d’enregistrer ce trade.',{type:'error'});}
+ }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){status.textContent=error.message||'Impossible d’enregistrer ce trade.';showInAppNotice(error.message||'Impossible d’enregistrer ce trade.',{type:'error'});}}
  finally{button.disabled=false;}
 }
 async function refreshScenarioWatchList(){
