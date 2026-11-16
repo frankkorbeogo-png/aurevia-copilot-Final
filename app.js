@@ -256,6 +256,15 @@ async function openTradeValidation(scenario){
  $('validationScenarioStatus').textContent='Entrée validée par M5';
  $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Référence d’entrée M5 <b>${escapeText(scenario.entry_confirmation_price??scenario.entry??scenario.last_price)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
  $('validationLot').value='';
+ $('validationLeverage').value='';$('validationMinLot').value='0.01';$('validationLotStep').value='0.01';$('validationMaxLot').value='';
+ $('validationCalcType').value='contract';$('validationContractSize').value='';$('validationPointSize').value='';$('validationPointValue').value='';$('validationTickSize').value='';$('validationTickValue').value='';$('validationFees').value='0';
+ try{
+  const spec=await loadBrokerSettings(scenario.instrument);
+  if(spec){$('validationCalcType').value=spec.calculationType||'contract';$('validationLeverage').value=spec.leverage??'';$('validationMinLot').value=spec.minLot??0.01;$('validationLotStep').value=spec.lotStep??0.01;$('validationMaxLot').value=spec.maxLot??'';$('validationContractSize').value=spec.contractSize??'';$('validationPointSize').value=spec.pointSize??'';$('validationPointValue').value=spec.pointValue??'';$('validationTickSize').value=spec.tickSize??'';$('validationTickValue').value=spec.tickValue??'';$('validationFees').value=spec.feesPerLot??0;$('validationTradeStatus').textContent='Spécifications broker enregistrées chargées automatiquement. Vérifiez le lot puis confirmez.';}
+  else $('validationTradeStatus').textContent='Aucune fiche broker enregistrée pour cet instrument. Configurez-la une seule fois dans Paramètres.';
+  updateValidationContractFields();
+ }catch(error){$('validationTradeStatus').textContent='Chargement des paramètres broker impossible : '+error.message;}
+
  $('validationTradeStatus').textContent=accountCurrency?`Devise du profil : ${accountCurrency}. Vérifiez les niveaux, choisissez le mode et renseignez les paramètres techniques du trade.`:'Devise du compte absente du profil. Configurez-la dans Paramètres avant de valider ce trade.';
  $('validationTradeNav').hidden=false;
  document.querySelector('[data-page="validation-trade"]')?.click();
