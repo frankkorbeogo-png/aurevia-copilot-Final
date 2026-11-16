@@ -31,7 +31,7 @@ export function parseProviderTime(value,zone){
 }
 function isFresh(candles,zone,intervalMinutes){const last=candles.at(-1),stamp=parseProviderTime(last?.time,zone);if(!Number.isFinite(stamp))return false;const age=(Date.now()-stamp)/60000;return age>=-intervalMinutes*1.5&&age<=intervalMinutes*2.5;}
 async function fetchMacroContext(instrument){try{const token=await getAnalysisAccessToken();if(!token)return {configured:false,notice:'Connexion requise pour les données macro.'};const r=await fetch(`/api/macro-context?instrument=${encodeURIComponent(instrument)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});if(!r.ok)return {configured:false,notice:'Flux macro indisponible.'};return await r.json();}catch{return {configured:false,notice:'Flux macro indisponible.'};}}
-export function buildMacroContextForAI(macroContext){return macroContext&&typeof macroContext==='object'?macroContext:{configured:false,notice:'Contexte macro indisponible.'};}
+
 async function requestAureviaAnalysis(symbol,m15,context){
  const token=await getAnalysisAccessToken();
  if(!token)throw new Error('Connexion requise pour solliciter le moteur IA.');
