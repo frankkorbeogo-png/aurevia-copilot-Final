@@ -38,7 +38,7 @@ test('global-news-sync backs off after GDELT HTTP 429 and stores the recovered a
    if(gdeltCalls===1)return new Response('rate limited',{status:429,headers:{'content-type':'text/plain','retry-after':'1'}});
    return new Response(JSON.stringify({articles:[{title:'Central bank signals policy update',url:'https://example.org/macro-story',seendate:seenAt,publishdate:seenAt,sourcecountry:'US',language:'English',tone:'-0.4'}]}),{status:200,headers:{'content-type':'application/json'}});
   }
-  if(url.includes('/rest/v1/global_news_events')&&options.method==='POST'){inserted=JSON.parse(options.body);return new Response('',{status:204});}
+  if(url.includes('/rest/v1/global_news_events')&&options.method==='POST'){inserted=JSON.parse(options.body);return new Response(null,{status:204});}
   if(url.includes('/rest/v1/global_news_events'))return new Response('[]',{status:200});
   return new Response('[]',{status:200});
  };
