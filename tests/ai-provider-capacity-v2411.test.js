@@ -25,6 +25,6 @@ test('Groq garde le contexte initial puis compacte seulement après HTTP 413', (
 
 test('l’analyse transmet H4, H1, M30 et M15 puis réserve la validation d’entrée à M5', () => {
   assert.match(clientSource, /timeframes:\{H4:frameBrief\('H4'\),H1:frameBrief\('H1'\),M30:frameBrief\('M30'\),M15:frameBrief\('M15'\)\}/);
-  assert.match(analysisSource, /Ne prétends pas que M5\/M1 ont été confirmés/);
+  assert.match(analysisSource, /Ne prétends pas que M5 a été confirmé/);
   assert.match(analysisSource, /mitigation puis confirmation structurelle M5/);
 });
