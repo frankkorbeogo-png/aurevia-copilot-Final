@@ -91,8 +91,8 @@ test('la validation manuelle affiche le type d’ordre et les niveaux Stop/Limit
 });
 
 
-test('les données privées sont réinitialisées lorsqu’un autre compte devient propriétaire du stockage local',async()=>{
- const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
+test('les données privées sont réinitialisées lorsqu’un autre compte devient propriétaire du stockage local',()=>{
+ const auth=readFileSync(new URL('../auth.js',import.meta.url),'utf8');
  assert.match(auth,/aurevia:localownerchange/);
  assert.match(auth,/aurevia-cloud-sync-retry-v1/);
  assert.match(auth,/previousQueueKey/);
