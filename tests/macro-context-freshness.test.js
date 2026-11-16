@@ -28,3 +28,10 @@ test('DXY quote without timestamp is not considered fresh', () => {
   assert.equal(result.freshness, 'unknown');
   assert.equal(result.usableForDirectionalBias, false);
 });
+
+test('DXY datetime with explicit timezone is parsed without altering its instant', () => {
+  const result = assessDxyQuote({ close: '100.25', datetime: '2026-11-16T11:59:00+00:00' }, NOW);
+  assert.equal(result.freshness, 'recent');
+  assert.equal(result.usableForDirectionalBias, true);
+  assert.equal(result.asOf, '2026-11-16T11:59:00.000Z');
+});
