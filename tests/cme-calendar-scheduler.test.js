@@ -9,7 +9,7 @@ test('CME calendar sync accepts the scheduled POST invocation',async()=>{
  globalThis.fetch=async(input,options={})=>{
   const url=String(input);
   if(url==='https://www.cmegroup.com/trading-hours.html'){const html='<html><h1>2026 CME Globex Trading Schedule</h1><table><tr><th>Holiday</th><th>Date range</th></tr><tr><td>Thanksgiving</td><td>November 26–27</td></tr></table>'+('calendar source content '.repeat(60))+'</html>';return new Response(html,{status:200});}
-  if(url.includes('/rest/v1/cme_calendar_sync')){saved=JSON.parse(options.body);return new Response('',{status:201});}
+  if(url.includes('/rest/v1/cme_calendar_sync')){upsertUrl=url;saved=JSON.parse(options.body);return new Response('',{status:201});}
   throw new Error('Unexpected URL '+url);
  };
  try{
@@ -17,6 +17,7 @@ test('CME calendar sync accepts the scheduled POST invocation',async()=>{
   const body=JSON.parse(result.body);
   assert.equal(result.statusCode,200);
   assert.equal(body.ok,true);
+  assert.equal(upsertUrl,'https://example.supabase.co/rest/v1/cme_calendar_sync?on_conflict=source_key');
   assert.equal(saved.source_key,'cme-globex-holiday-calendar');
   assert.equal(body.automaticMarketClosuresApplied,false);
   assert.equal(body.candidateCount,1);
