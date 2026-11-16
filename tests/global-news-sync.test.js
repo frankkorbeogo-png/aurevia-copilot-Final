@@ -97,3 +97,46 @@ test('un cache FRED frais ne désactive pas les publications FRED existantes',as
   Object.assign(process.env,old);
  }
 });
+
+
+test('une panne FRED conserve les publications et ne renouvelle pas le cache',async()=>{
+ const old={...process.env};
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',FRED_API_KEY:'fred-test'});
+ delete process.env.TELEGRAM_BOT_TOKEN;
+ const original=globalThis.fetch,inserted=[],patches=[],stateWrites=[];
+ const existing=[
+  {id:'fred-cpi',external_id:'FRED-10-2026-11-20',release_id:10,scheduled_at:new Date(Date.now()+4*86400000).toISOString(),is_active:true},
+  {id:'old-fomc',external_id:'FRED-101-2026-11-17',release_id:101,scheduled_at:new Date(Date.now()+86400000).toISOString(),is_active:true}
+ ];
+ globalThis.fetch=async(input,options={})=>{
+  const url=new URL(String(input)),method=options.method||'GET';
+  if(url.hostname==='example.supabase.co'){
+   if(url.pathname.endsWith('/economic_release_sync_state')&&method==='GET')return Response.json([{last_synced_at:new Date(Date.now()-7*3600000).toISOString()}]);
+   if(url.pathname.endsWith('/economic_release_events')&&method==='POST'){inserted.push(...JSON.parse(options.body));return new Response(null,{status:204});}
+   if(url.pathname.endsWith('/economic_release_events')&&method==='GET')return Response.json(existing);
+   if(url.pathname.endsWith('/economic_release_events')&&method==='PATCH'){patches.push({url:url.toString(),body:JSON.parse(options.body)});return new Response(null,{status:204});}
+   if(url.pathname.endsWith('/economic_release_sync_state')&&method==='POST'){stateWrites.push(JSON.parse(options.body));return new Response(null,{status:204});}
+   if(url.pathname.endsWith('/global_news_events'))return Response.json([]);
+   throw new Error('Supabase inattendu '+method+' '+url.pathname);
+  }
+  if(url.hostname==='api.stlouisfed.org')return new Response('FRED indisponible',{status:503});
+  if(url.hostname==='api.gdeltproject.org')return Response.json({articles:[]});
+  throw new Error('URL inattendue '+url.toString());
+ };
+ try{
+  const r=await handler({httpMethod:'POST'}),data=JSON.parse(r.body);
+  assert.equal(r.statusCode,502);
+  assert.match(data.economicCalendarError,/FRED release .* HTTP 503/);
+  assert.equal(data.economicCalendar.status,'fred_sync_failed_fomc_refreshed');
+  assert.ok(inserted.some(x=>x.release_id===101));
+  assert.ok(!inserted.some(x=>x.release_id===10));
+  assert.equal(patches.length,1);
+  assert.match(patches[0].url,/old-fomc/);
+  assert.equal(patches[0].body.is_active,false);
+  assert.equal(stateWrites.length,0);
+ }finally{
+  globalThis.fetch=original;
+  for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];
+  Object.assign(process.env,old);
+ }
+});
