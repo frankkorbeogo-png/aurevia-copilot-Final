@@ -50,7 +50,7 @@ async function fetchArticles(){
  let response;
  for(let attempt=0;attempt<2;attempt++){
   try{
-   response=await fetch(url,{headers,signal:AbortSignal.timeout(10000)});
+   response=await fetch(url,{headers,signal:AbortSignal.timeout(8000)});
   }catch(error){
    if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(1500);continue;}
    throw error;
