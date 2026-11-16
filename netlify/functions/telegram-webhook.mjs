@@ -170,7 +170,7 @@ async function handleGuidedMessage(token,chatId,userId,text){
   if(n===null||n<=0){await telegramSend(token,chatId,'Saisis un volume positif. Exemple : 0.05.');return true;}
   setup.volume=n;setup.step=String(setup.orderType||'').includes('LIMIT')||String(setup.orderType||'').includes('STOP')?(setup.spec.calculationType?'review':'leverage'):'actualEntryPrice';
  }else if(step==='actualEntryPrice'){
-  if(n===null||n<=0){await telegramSend(token,chatId,'Saisis le prix réellement exécuté sur ton broker.');return true;}
+  if(n===null||n<=0){await telegramSend(token,chatId,'Saisis le prix réellement obtenu sur ta plateforme de trading.');return true;}
   setup.actualEntryPrice=n;setup.step=setup.spec.calculationType?'review':'leverage';
  }else if(step==='leverage'){
   if(!skip&&(n===null||n<1||n>100000)){await telegramSend(token,chatId,'Saisis un levier valide, par exemple 2000, ou « ignorer ».');return true;}
