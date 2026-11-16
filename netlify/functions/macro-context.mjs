@@ -15,17 +15,44 @@ async function latestSeries(apiKey,id){
  const maxAgeDays=({DTWEXBGS:14,DGS10:7,DFII10:7,FEDFUNDS:45,CPIAUCSL:75,UNRATE:75})[id]||45;
  return {latest,previous,ageDays,maxAgeDays,freshness:ageDays<=maxAgeDays?'recent':'stale'};
 }
+export function assessDxyQuote(data, now = Date.now()) {
+ const price=Number(data?.close??data?.price);
+ if(!Number.isFinite(price)||price<=0)return {available:false,notice:'Prix DXY absent ou invalide.'};
+ let asOfMs=null;
+ const rawTimestamp=data?.last_quote_at??data?.timestamp;
+ if(rawTimestamp!==undefined&&rawTimestamp!==null&&String(rawTimestamp).trim()!==''){
+  const numeric=Number(rawTimestamp);
+  if(Number.isFinite(numeric)&&numeric>0)asOfMs=numeric>1e12?numeric:numeric*1000;
+  else {const parsed=Date.parse(String(rawTimestamp));if(Number.isFinite(parsed))asOfMs=parsed;}
+ }
+ if(asOfMs===null&&data?.datetime){
+  const raw=String(data.datetime).trim();
+  const hasZone=/(Z|[+-]\\d{2}:?\\d{2})$/i.test(raw);
+  const parsed=Date.parse(hasZone?raw:raw.replace(' ','T')+'Z');
+  if(Number.isFinite(parsed))asOfMs=parsed;
+ }
+ if(asOfMs===null||!Number.isFinite(asOfMs)){
+  return {available:true,price,asOf:null,ageMinutes:null,freshness:'unknown',usableForDirectionalBias:false,notice:'Horodatage DXY absent ou illisible : cette valeur ne doit pas orienter le biais directionnel.'};
+ }
+ const ageMs=now-asOfMs,ageMinutes=Math.floor(ageMs/60000);
+ const freshness=ageMs < -5*60000 ? 'future' : ageMs<=20*60000 ? 'recent' : 'stale';
+ const usableForDirectionalBias=freshness==='recent';
+ const notice=freshness==='recent'
+  ? 'Dernière cotation DXY horodatée; flux REST indicatif, non tick temps réel.'
+  : freshness==='future'
+   ? 'Horodatage DXY dans le futur : cotation rejetée pour le biais directionnel.'
+   : 'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.';
+ return {available:true,price,asOf:new Date(asOfMs).toISOString(),ageMinutes,freshness,usableForDirectionalBias,notice};
+}
 async function fetchDxy(){
  const key=process.env.TWELVEDATA_API_KEY;
  if(!key)return {configured:false,source:'Twelve Data',notice:'TWELVEDATA_API_KEY absent.'};
  const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('timezone','UTC');
  const r=await fetch(u,{signal:AbortSignal.timeout(9000)});let d={};try{d=await r.json();}catch{}
- const price=Number(d.close??d.price);
- if(!r.ok||!Number.isFinite(price)||price<=0||d.status==='error'||d.code){return {configured:false,source:'Twelve Data',symbol:'DXY',providerStatus:d.code||r.status,notice:d.message||'Le fournisseur ne confirme pas le symbole DXY pour cette clé ou ce forfait.'};}
- const stamp=Number(d.last_quote_at??d.timestamp);const asOf=Number.isFinite(stamp)&&stamp>0?new Date(stamp*1000).toISOString():(d.datetime?new Date(`${d.datetime.replace(' ','T')}Z`).toISOString():null);
- const ageMinutes=asOf?Math.max(0,Math.floor((Date.now()-Date.parse(asOf))/60000)):null;
- const freshness=ageMinutes===null?'unknown':ageMinutes<=20?'recent':'stale';
- return {configured:true,symbol:'DXY',price,asOf,ageMinutes,freshness,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,notice:freshness==='stale'?'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.':freshness==='unknown'?'Horodatage de cotation non fourni : fraîcheur non vérifiable.':'Dernière cotation horodatée fournie par Twelve Data; ce flux REST n’est pas un flux tick temps réel.'};
+ if(!r.ok||d.status==='error'||d.code){return {configured:false,source:'Twelve Data',symbol:'DXY',providerStatus:d.code||r.status,notice:d.message||'Le fournisseur ne confirme pas le symbole DXY pour cette clé ou ce forfait.'};}
+ const assessment=assessDxyQuote(d);
+ if(!assessment.available)return {configured:false,source:'Twelve Data',symbol:'DXY',notice:assessment.notice};
+ return {configured:true,symbol:'DXY',...assessment,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null};
 }
 async function fetchGlobalNews(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
