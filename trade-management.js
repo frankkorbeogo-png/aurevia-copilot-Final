@@ -162,13 +162,15 @@ export function attachCloudJournalIds(groupId,mappings=[]){
 
 export function mergeRestoredTradeGroups(cloudGroups, cloudJournal=[]){
   const local=read(STORAGE_KEY),byId=new Map(local.map(g=>[g.id,g]));
-  for(const group of cloudGroups||[])byId.set(group.id,group);
+  const pendingGroupIds=new Set(local.filter(group=>group.cloudSyncPending||group.children?.some(child=>child.closes?.some(close=>close.cloudSyncPending))).map(group=>group.id));
+  for(const group of cloudGroups||[])if(!pendingGroupIds.has(group.id))byId.set(group.id,group);
   const merged=[...byId.values()].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   if(!write(STORAGE_KEY,merged))throw new Error('Impossible de restaurer les positions dans le stockage local.');
-  const journal=read(JOURNAL_KEY),cloudIds=new Set((cloudJournal||[]).map(x=>x.cloudId||x.id));
-  const cloudKeys=new Set((cloudJournal||[]).map(x=>`${x.groupId}:${x.childId||'parent'}`));
-  const localOnly=journal.filter(x=>!cloudIds.has(x.cloudId||x.id)&&!cloudKeys.has(`${x.groupId}:${x.childId||'parent'}`));
-  const mapped=(cloudJournal||[]).map(x=>({...x,id:x.cloudId||x.id}));
+  const visibleCloudJournal=(cloudJournal||[]).filter(row=>!pendingGroupIds.has(row.groupId));
+  const journal=read(JOURNAL_KEY),cloudIds=new Set(visibleCloudJournal.map(x=>x.cloudId||x.id));
+  const cloudKeys=new Set(visibleCloudJournal.map(x=>`${x.groupId}:${x.childId||'parent'}`));
+  const localOnly=journal.filter(x=>pendingGroupIds.has(x.groupId)||(!cloudIds.has(x.cloudId||x.id)&&!cloudKeys.has(`${x.groupId}:${x.childId||'parent'}`)));
+  const mapped=visibleCloudJournal.map(x=>({...x,id:x.cloudId||x.id}));
   if(!write(JOURNAL_KEY,[...mapped,...localOnly]))throw new Error('Positions restaurées, mais le journal local n’a pas pu être restauré.');
   return merged;
 }
