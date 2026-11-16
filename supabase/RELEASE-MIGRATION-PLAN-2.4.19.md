@@ -31,6 +31,8 @@ Les 19 migrations ci-dessous sont les seules migrations de cette livraison absen
 15. 20261116230100_aurevia_retire_invalid_fred_fomc_dates.sql
 16. 20261116230200_aurevia_require_manual_actual_fill_for_market_pnl.sql
 17. 20261116230300_aurevia_enforce_manual_fill_source.sql
+18. 20261116230400_aurevia_gdelt_publication_date_cleanup.sql
+19. 20261116230500_aurevia_trade_validation_profile_currency_guard.sql
 
 ## Procédure de publication
 
