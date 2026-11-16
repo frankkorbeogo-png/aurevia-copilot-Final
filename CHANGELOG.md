@@ -9,6 +9,8 @@
 - FRED et GDELT synchronisés en parallèle avec délais bornés; rappels économiques limités à 60 minutes avant l'événement.
 - CME : retry et URL officielle alternative après erreurs upstream 502; aucune fermeture automatique de marché.
 - Guide d'aide corrigé : M1 reste une vue facultative et ne confirme pas l'entrée.
+- GDELT : les anciens seendate enregistrés à tort dans published_at sont déplacés dans seen_at, puis publiés à null pour le fournisseur GDELT DOC 2.0.
+- Validation trade : le RPC MARKET exige désormais la devise du profil et vérifie qu'elle correspond à la devise du snapshot contractuel, sans imposer de broker ni de type de compte.
 - Tests automatisés et build CI à actualiser sur le dernier commit de cette version.
 
 # V2.3.98 — Suppression définitive des comptes AUREVIA
