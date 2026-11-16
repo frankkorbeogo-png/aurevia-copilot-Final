@@ -66,6 +66,6 @@ test('the AI-proposed M5 entry price is stored and shown separately',async()=>{
   const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
   assert.match(watch,/entry_confirmation_price:m5Entry/);
   assert.match(watch,/entry_confirmation_score:confirmation\.score/);
-  assert.match(watch,/Entrée indicative M5 : \$\{m5Entry\}/);
+  assert.match(watch,/Prix d’entrée proposé par les IA M5 : \$\{m5Entry\}/);
   assert.match(app,/scenario\.entry_confirmation_price\?\?scenario\.entry/);
 });
