@@ -81,3 +81,11 @@ test('la base bloque elle-même la création d’un trade à partir d’un prix 
  assert.match(migration,/SCENARIO_PRICE_STALE/);
  assert.match(migration,/interval '2 minutes'/);
 });
+
+
+test('la validation manuelle affiche le type d’ordre et les niveaux Stop/Limit proposés par M5',()=>{
+ assert.match(app,/Type d’ordre/);
+ assert.match(app,/Déclenchement/);
+ assert.match(app,/Prix limite/);
+ assert.match(app,/Prix proposé par l’IA M5/);
+});
