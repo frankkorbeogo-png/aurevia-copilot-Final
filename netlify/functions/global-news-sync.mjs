@@ -75,7 +75,9 @@ async function syncEconomicCalendar(){
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
  const cacheFresh=Boolean(key&&state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000);
  const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
- const results=(!key||cacheFresh)?[]:await Promise.all(RELEASES.map(async release=>{
+ let results=[],fredSyncError=null;
+ if(key&&!cacheFresh){
+  try{results=await Promise.all(RELEASES.map(async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
   url.searchParams.set('release_id',String(release.id));url.searchParams.set('api_key',key);url.searchParams.set('file_type','json');
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
@@ -88,7 +90,9 @@ async function syncEconomicCalendar(){
    if(Date.parse(scheduledAt)<Date.now()-60*60*1000||Date.parse(scheduledAt)>Date.now()+15*86400000)return null;
    return {external_id:'FRED-'+release.id+'-'+date,release_id:release.id,event_name:release.name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:release.url,source_provider:'FRED release calendar',time_basis:'standard_release_time'};
   }).filter(Boolean);
- }));
+ });}
+  catch(error){fredSyncError=String(error.message||error).slice(0,300);}
+ }
  const events=[...results.flat(),...buildFomcReleaseEvents(new Date(),15)];
  if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
  const now=new Date(),horizon=new Date(now.getTime()+15*86400000);const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+[...RELEASES.map(x=>x.id),101].join(',')+')&limit=500');
@@ -96,7 +100,7 @@ async function syncEconomicCalendar(){
  // FRED is intentionally skipped while its six-hour cache is fresh (or when
  // no API key is configured). In those cases, absence from `events` is not
  // evidence that a FRED release disappeared. Reconcile FOMC independently.
- const fredReconciliationAllowed=Boolean(key&&!cacheFresh);
+ const fredReconciliationAllowed=Boolean(key&&!cacheFresh&&!fredSyncError);
  for(const row of (Array.isArray(current)?current:[])){
   const isFomc=Number(row.release_id)===101;
   if((isFomc||fredReconciliationAllowed)&&!live.has(row.external_id)){
@@ -105,7 +109,7 @@ async function syncEconomicCalendar(){
   }
  }
  if(key&&!cacheFresh)await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
- return {status:!key?'fomc_only_fred_not_configured':cacheFresh?'fresh_fred_cache_official_fomc_refreshed':'synced',synced:events.length,deactivated,source:key?'FRED + Federal Reserve FOMC calendar':'Federal Reserve FOMC calendar',...(key?{}:{notice:'FRED_API_KEY absent : seules les dates officielles FOMC sont synchronisées.'})};
+ return {status:fredSyncError?'fred_sync_failed_fomc_refreshed':!key?'fomc_only_fred_not_configured':cacheFresh?'fresh_fred_cache_official_fomc_refreshed':'synced',synced:events.length,deactivated,source:key?'FRED + Federal Reserve FOMC calendar':'Federal Reserve FOMC calendar',...(fredSyncError?{fredError:fredSyncError}:{}),...(key?{}:{notice:'FRED_API_KEY absent : seules les dates officielles FOMC sont synchronisées.'})};
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
@@ -169,12 +173,14 @@ async function syncGlobalNews(){
 export async function handler(event){
  if(!env('SUPABASE_URL')||!env('SUPABASE_SERVICE_ROLE_KEY'))return json(503,{ok:false,error:'Supabase service credentials are missing.'});
  const result={ok:true,source:SOURCE};
- try{result.economicCalendar=await syncEconomicCalendar();result.economicReminders=await broadcastDueReleases();}
+ try{result.economicCalendar=await syncEconomicCalendar();if(result.economicCalendar.fredError)result.economicCalendarError=result.economicCalendar.fredError;}
  catch(error){result.economicCalendarError=String(error.message||error).slice(0,300);}
+ try{result.economicReminders=await broadcastDueReleases();}
+ catch(error){result.economicReminderError=String(error.message||error).slice(0,300);}
  try{Object.assign(result,await syncGlobalNews());}
  catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
  result.asOf=new Date().toISOString();
- const failed=Boolean(result.economicCalendarError||result.globalNewsError);
+ const failed=Boolean(result.economicCalendarError||result.economicReminderError||result.globalNewsError);
  return json(failed?502:200,result);
 }
 
