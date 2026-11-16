@@ -6,7 +6,9 @@ const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
 const adminApi = await readFile(new URL('../netlify/functions/admin-api.mjs', import.meta.url), 'utf8');
 
 test('le compte administrateur conserve l’accès au centre et au compteur des annonces', () => {
-  assert.match(app, /async function loadAnnouncements\(\)\{if\(!window\.__aureviaAuthenticated\)return;/);
+  assert.match(app, /async function loadAnnouncements\(\)\{const ownerId=String\(window\.__aureviaUserId\|\|''\)\.trim\(\);if\(!window\.__aureviaAuthenticated\|\|!ownerId\)return;/);
+  assert.match(app, /loadPublishedAnnouncements\(ownerId\)/);
+  assert.match(app, /window\.__aureviaUserId\|\|''\)\.trim\(\)!==ownerId\)return/);
   assert.doesNotMatch(app, /__aureviaAdminVerified===true\)return;[^\n]*loadAnnouncements/);
   assert.match(app, /if\(announcementsLink\)announcementsLink\.hidden=false/);
   assert.match(app, /if\(announcementsView\)announcementsView\.hidden=false/);
