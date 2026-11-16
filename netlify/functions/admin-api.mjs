@@ -120,7 +120,8 @@ export async function handler(event){
     const block=await rpc(base,key,'aurevia_admin_permanent_delete_block',{p_actor_id:caller.id,p_target_user_id:target,p_reason:String(body.reason||'').slice(0,500)});
     if(block?.ok!==true)return json(block?.code==='ADMIN_REQUIRED'?403:409,{error:'Le blocage définitif de cette adresse n’a pas pu être confirmé.',code:block?.code||'EMAIL_BLOCK_FAILED'});
    }
-   await rpc(base,key,'aurevia_admin_revoke_session',{p_actor_id:caller.id,p_target_user_id:target});
+   // deleteUserApplicationData revokes every AUREVIA session before cleanup.
+   // Permanent deletion already revoked the active session atomically with the email block.
    const cleanup=await deleteUserApplicationData(base,key,target);
    await request(`${base}/auth/v1/admin/users/${encodeURIComponent(target)}`,{method:'DELETE',headers:adminHeaders(key)});
    await audit(base,key,caller.id,action,target,{source:'admin_console',session_revoked:true,application_data_deleted:true,email_blocked:action==='permanent_delete_user'});
