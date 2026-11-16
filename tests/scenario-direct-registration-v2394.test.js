@@ -96,6 +96,9 @@ test('les données privées sont réinitialisées lorsqu’un autre compte devie
  assert.match(auth,/aurevia:localownerchange/);
  assert.match(auth,/aurevia-cloud-sync-retry-v1/);
  assert.match(auth,/previousQueueKey/);
+ assert.match(auth,/LOCAL_ACCOUNT_SNAPSHOT_PREFIX/);
+ assert.match(auth,/snapshotLocalAccountData\(previous\)/);
+ assert.match(auth,/restoreLocalAccountData\(id\)/);
  assert.match(app,/tradeSyncQueueStorageKey\(\)/);
  assert.match(app,/aurevia_local_data_owner_id/);
  assert.match(auth,/aurevia_active_session_id/);
