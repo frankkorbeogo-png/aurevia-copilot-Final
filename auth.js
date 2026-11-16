@@ -365,6 +365,19 @@ export async function syncTradeGroupToSupabase(group){
  return {synced:true,journalMappings:Array.isArray(data.journal_mappings)?data.journal_mappings:[]};
 }
 
+export async function syncActualFillPriceToSupabase(groupId,positionId,actualEntryPrice){
+ await ensureClient();
+ const {data:{user},error:userError}=await supabase.auth.getUser();
+ if(userError)throw new Error(userError.message);
+ if(!user)return {synced:false,reason:'not_authenticated'};
+ const {data,error}=await supabase.rpc('aurevia_update_actual_fill_price',{
+  p_group_id:groupId,p_position_id:positionId||null,p_actual_entry_price:Number(actualEntryPrice)
+ });
+ if(error)throw new Error(error.message);
+ if(!data?.ok)throw new Error(data?.error||'Le prix réel d’exécution n’a pas été synchronisé.');
+ return {synced:true,actualEntryPrice:Number(data.actual_entry_price)};
+}
+
 export async function deleteLinkedJournalEntryFromSupabase(journalId,groupId=null,positionId=null){
  await ensureClient();
  const {data:{user},error:userError}=await supabase.auth.getUser();
