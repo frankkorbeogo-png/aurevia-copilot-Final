@@ -763,7 +763,7 @@ async function refreshBrokerProfile(){
  }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Chargement impossible : '+error.message;}
 }
 async function persistBrokerProfile(){
- const button=$('saveBrokerProfile'),status=$('brokerProfileStatus');
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$('saveBrokerProfile'),status=$('brokerProfileStatus');
  try{
   const instrument=$('brokerProfileInstrument').value;
   const value=id=>$(id)?.value?.trim()||null;
@@ -772,10 +772,10 @@ async function persistBrokerProfile(){
   await saveBrokerSettings(instrument,spec);
   if(status)status.textContent='Spécifications enregistrées pour '+instrument+'. Elles seront réutilisées dans AUREVIA et Telegram.';
   showInAppNotice('Paramètres techniques enregistrés pour '+instrument+'.',{type:'success'});
- }catch(error){if(status)status.textContent=error.message;showInAppNotice(error.message,{type:'error'});}
+ }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){if(status)status.textContent=error.message;showInAppNotice(error.message,{type:'error'});}}
  finally{if(button)button.disabled=false;}
 }
-async function persistAccountCurrency(){const button=$('saveAccountCurrency');try{const selected=$('profileAccountCurrency').value;if(!selected)throw new Error('Choisissez une devise avant de continuer.');if(!await confirmInApp({title:'Enregistrer la devise du compte ?',message:'La devise '+selected+' sera utilisée pour les calculs de risque et le suivi des positions.',confirmLabel:'Enregistrer la devise'}))return;if(button)button.disabled=true;const value=await saveAccountCurrency(selected);accountCurrency=value;if($('accountCurrency').value!==undefined)$('accountCurrency').value=value;if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=true;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=`Devise enregistrée : ${value}.`;showInAppNotice(`Devise du compte enregistrée : ${value}.`,{type:'success'});}catch(error){if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}finally{if(button)button.disabled=false;}}
+async function persistAccountCurrency(){const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$('saveAccountCurrency');try{const selected=$('profileAccountCurrency').value;if(!selected)throw new Error('Choisissez une devise avant de continuer.');if(!await confirmInApp({title:'Enregistrer la devise du compte ?',message:'La devise '+selected+' sera utilisée pour les calculs de risque et le suivi des positions.',confirmLabel:'Enregistrer la devise'}))return;if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(button)button.disabled=true;const value=await saveAccountCurrency(selected,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;accountCurrency=value;if($('accountCurrency').value!==undefined)$('accountCurrency').value=value;if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=true;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=`Devise enregistrée : ${value}.`;showInAppNotice(`Devise du compte enregistrée : ${value}.`,{type:'success'});}catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}}finally{if(button)button.disabled=false;}}
 async function adminLicenseRequest(action,payload={}){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Session administrateur absente.');
  const response=await fetch('/api/admin-licenses'+(action==='list'?'':'?'),{method:action==='list'?'GET':'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(action==='list'?{}:{body:JSON.stringify({action,...payload})}),cache:'no-store'});
