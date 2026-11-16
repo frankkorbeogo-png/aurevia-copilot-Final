@@ -63,3 +63,18 @@ test('la surveillance ne peut être créée sans une confrontation correspondant
  assert.match(app,/currentAnalysis\.zoneLow/);
  assert.match(app,/Confrontez d’abord votre zone d’entrée/);
 });
+
+test('la confirmation d’un scénario exige un prix récent et un marché ouvert',()=>{
+ assert.match(api,/getMarketStatus/);
+ assert.match(api,/scenario\.last_price_at/);
+ assert.match(api,/quoteAge>120000/);
+ assert.match(webhook,/scenario\.last_price_at/);
+ assert.match(webhook,/quoteAge>120000/);
+ assert.match(watch,/last_price_at:quote\.quoteAt/);
+});
+test('la base bloque elle-même la création d’un trade à partir d’un prix périmé',()=>{
+ const migration=readFileSync(new URL('../supabase/migrations/20261116114000_aurevia_require_fresh_scenario_price_for_trade.sql',import.meta.url),'utf8');
+ assert.match(migration,/before update of trade_group_id/i);
+ assert.match(migration,/SCENARIO_PRICE_STALE/);
+ assert.match(migration,/interval '2 minutes'/);
+});
