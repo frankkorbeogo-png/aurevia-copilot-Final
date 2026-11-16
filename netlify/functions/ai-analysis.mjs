@@ -32,7 +32,7 @@ export async function handler(event){
  const timezone=String(m15.timezone||'UTC');
  const closed=selectClosedMarketCandles(m15.candles,timezone,15,Date.now());
  if(!closed.ok||closed.candles.length<60)return json(409,{error:closed.reason||'Historique M15 clôturé insuffisant.',code:'M15_CANDLES_INVALID'});
- const freshness=validateLatestClosedCandle(closed.candles,timezone,15,{now:Date.now(),maxAgeIntervals:2.5});
+ const freshness=validateLatestClosedCandle(closed.candles,timezone,15,{now:Date.now(),maxAgeIntervals:1.5});
  if(!freshness.ok)return json(409,{error:freshness.error,code:'M15_CANDLE_NOT_FRESH'});
  const candles=closed.candles.slice(-40).map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
  if(candles.some(c=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)))return json(400,{error:'Bougies M15 invalides.'});
