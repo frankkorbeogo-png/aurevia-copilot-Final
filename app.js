@@ -20,11 +20,11 @@ let deferredInstallPrompt=null;
 const TRADE_SYNC_QUEUE_KEY='aurevia-cloud-sync-retry-v1';
 let tradeSyncFlushBusy=false;
 function tradeSyncQueueStorageKey(){const userId=String(window.__aureviaUserId||'').trim();return userId?`${TRADE_SYNC_QUEUE_KEY}:${userId}`:TRADE_SYNC_QUEUE_KEY;}
-function readTradeSyncQueue(){
-  try{const key=tradeSyncQueueStorageKey();let raw=localStorage.getItem(key);if(!raw&&window.__aureviaUserId&&localStorage.getItem('aurevia_local_data_owner_id')===String(window.__aureviaUserId)){raw=localStorage.getItem(TRADE_SYNC_QUEUE_KEY);if(raw){localStorage.setItem(key,raw);localStorage.removeItem(TRADE_SYNC_QUEUE_KEY);}}const value=JSON.parse(raw||'{}');return {groups:Array.isArray(value.groups)?value.groups:[],closes:Array.isArray(value.closes)?value.closes:[]};}
+function readTradeSyncQueue(storageKey=tradeSyncQueueStorageKey()){
+  try{let raw=localStorage.getItem(storageKey);if(!raw&&storageKey===tradeSyncQueueStorageKey()&&window.__aureviaUserId&&localStorage.getItem('aurevia_local_data_owner_id')===String(window.__aureviaUserId)){raw=localStorage.getItem(TRADE_SYNC_QUEUE_KEY);if(raw){localStorage.setItem(storageKey,raw);localStorage.removeItem(TRADE_SYNC_QUEUE_KEY);}}const value=JSON.parse(raw||'{}');return {groups:Array.isArray(value.groups)?value.groups:[],closes:Array.isArray(value.closes)?value.closes:[]};}
   catch{return {groups:[],closes:[]};}
 }
-function writeTradeSyncQueue(queue){try{localStorage.setItem(tradeSyncQueueStorageKey(),JSON.stringify(queue));return true;}catch{return false;}}
+function writeTradeSyncQueue(queue,storageKey=tradeSyncQueueStorageKey()){try{localStorage.setItem(storageKey,JSON.stringify(queue));return true;}catch{return false;}}
 function queueTradeGroupSync(groupId,telegramText=null){
   const queue=readTradeSyncQueue(),existing=queue.groups.find(item=>item.groupId===groupId);
   if(existing){if(telegramText)existing.telegramText=telegramText;}else queue.groups.push({groupId,telegramText,queuedAt:new Date().toISOString()});
@@ -38,34 +38,45 @@ function queueTradeCloseSync(groupId,childId,closeId,telegramText=null){
 }
 async function flushTradeSyncQueue(){
   if(tradeSyncFlushBusy||!window.__aureviaAuthenticated)return {synced:0,pending:true};
+  const ownerId=String(window.__aureviaUserId||'').trim();
+  if(!ownerId)return {synced:0,pending:true};
+  const queueKey=tradeSyncQueueStorageKey();
+  const stillOwner=()=>String(window.__aureviaUserId||'').trim()===ownerId;
   tradeSyncFlushBusy=true;let synced=0;
   try{
-    let queue=readTradeSyncQueue();
+    let queue=readTradeSyncQueue(queueKey);
     for(const item of [...queue.groups]){
+      if(!stillOwner())break;
       const group=loadTradeGroups().find(row=>row.id===item.groupId);
-      if(!group){queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue);continue;}
+      if(!group){queue=readTradeSyncQueue(queueKey);queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue,queueKey);continue;}
       try{
-        const result=await syncTradeGroupToSupabase(group);if(!result?.synced)continue;
+        const result=await syncTradeGroupToSupabase(group,ownerId);
+        if(!stillOwner())break;
+        if(!result?.synced){if(result?.reason==='account_changed')break;continue;}
         if(result.journalMappings)attachCloudJournalIds(group.id,result.journalMappings);
         markTradeGroupCloudSyncPending(group.id,false);
-        queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue);synced++;
-        if(item.telegramText)sendTelegramNotification({type:'trade_open',text:item.telegramText}).catch(()=>{});
+        queue=readTradeSyncQueue(queueKey);queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue,queueKey);synced++;
+        if(item.telegramText)sendTelegramNotification({type:'trade_open',text:item.telegramText},ownerId).catch(()=>{});
         showInAppNotice('Position et journal confirmés dans le cloud AUREVIA.',{type:'success'});
-      }catch(error){console.warn('Synchronisation cloud du trade différée :',error.message);}
+      }catch(error){if(!stillOwner())break;console.warn('Synchronisation cloud du trade différée :',error.message);}
     }
-    queue=readTradeSyncQueue();
+    if(!stillOwner()){const pending=readTradeSyncQueue(queueKey);return {synced,pending:pending.groups.length>0||pending.closes.length>0};}
+    queue=readTradeSyncQueue(queueKey);
     for(const item of [...queue.closes]){
+      if(!stillOwner())break;
       const group=loadTradeGroups().find(row=>row.id===item.groupId),child=group?.children.find(row=>row.id===item.childId),closeEvent=child?.closes?.find(row=>row.id===item.closeId);
-      if(!group||!child||!closeEvent){queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue);continue;}
+      if(!group||!child||!closeEvent){queue=readTradeSyncQueue(queueKey);queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue,queueKey);continue;}
       try{
-        const result=await syncTradeCloseToSupabase(group,child,closeEvent);if(!result?.synced)continue;
+        const result=await syncTradeCloseToSupabase(group,child,closeEvent,ownerId);
+        if(!stillOwner())break;
+        if(!result?.synced){if(result?.reason==='account_changed')break;continue;}
         markTradeCloseCloudSyncPending(group.id,child.id,closeEvent.id,false);
-        queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue);synced++;
-        if(item.telegramText)sendTelegramNotification({type:'trade_close',text:item.telegramText}).catch(()=>{});
+        queue=readTradeSyncQueue(queueKey);queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue,queueKey);synced++;
+        if(item.telegramText)sendTelegramNotification({type:'trade_close',text:item.telegramText},ownerId).catch(()=>{});
         showInAppNotice('Clôture confirmée dans le cloud AUREVIA.',{type:'success'});
-      }catch(error){console.warn('Synchronisation cloud de la clôture différée :',error.message);}
+      }catch(error){if(!stillOwner())break;console.warn('Synchronisation cloud de la clôture différée :',error.message);}
     }
-    const pending=readTradeSyncQueue();return {synced,pending:pending.groups.length>0||pending.closes.length>0};
+    const pending=readTradeSyncQueue(queueKey);return {synced,pending:pending.groups.length>0||pending.closes.length>0};
   }finally{tradeSyncFlushBusy=false;}
 }
 async function refreshSelectedQuote(){
