@@ -1,8 +1,10 @@
 export function validateM5AIConsensus({scenario,lead,review,audit,atr=null}){
  const direction=scenario?.direction;
+ const scenarioLow=Number(scenario?.entryZoneLow??scenario?.entry_low),scenarioHigh=Number(scenario?.entryZoneHigh??scenario?.entry_high);
+ const stopLoss=Number(scenario?.stopLoss??scenario?.stop_loss),takeProfits=scenario?.takeProfits??scenario?.take_profits;
  const price=Number(lead?.entryPrice),low=Number(lead?.entryZoneLow),high=Number(lead?.entryZoneHigh);
- const validPrice=Number.isFinite(price)&&price>0&&Number.isFinite(low)&&Number.isFinite(high)&&low<=price&&price<=high&&low>=Number(scenario.entryZoneLow)&&high<=Number(scenario.entryZoneHigh);
- const sl=Number(scenario.stopLoss),tp1=Number(scenario.takeProfits?.[0]);
+ const validPrice=Number.isFinite(price)&&price>0&&Number.isFinite(low)&&Number.isFinite(high)&&low<=price&&price<=high&&low>=scenarioLow&&high<=scenarioHigh;
+ const sl=stopLoss,tp1=Number(Array.isArray(takeProfits)?takeProfits[0]:NaN);
  const levelsValid=direction==='BUY'?price>sl&&price<tp1:direction==='SELL'?price<sl&&price>tp1:false;
  const reviewPrice=Number(review?.entryPrice);
  const tolerance=Math.max(Math.abs(price)*0.00015,Number.isFinite(Number(atr))&&Number(atr)>0?Number(atr)*0.25:0);
