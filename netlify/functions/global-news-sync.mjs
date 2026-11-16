@@ -136,7 +136,8 @@ async function broadcastDueReleases(){
 }
 function globalNewsMessage(event){
  const safeTitle=String(event.title||'').replace(/[<>]/g,'').slice(0,400),safeDomain=String(event.source_domain||'').replace(/[<>]/g,'').slice(0,120);
- return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\nPublié : '+new Date(event.published_at).toISOString()+'\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
+ const dateLine=event.published_at?'Publié : '+new Date(event.published_at).toISOString():'Repéré par GDELT : '+new Date(event.seen_at).toISOString();
+ return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\\n\\n'+safeTitle+'\\n\\nSource : '+safeDomain+'\\n'+dateLine+'\\n\\nLecture et vérification : '+event.source_url+'\\n\\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
 }
 async function syncGlobalNews(){
  const articles=await fetchArticles();
