@@ -927,7 +927,11 @@ function updateLicenseGate(state){
   else status.textContent=state?.message||'Le statut de votre licence ne peut pas être vérifié pour le moment.';
  }
  const trial=$('licenseTrialInfo');
- if(trial&&state?.status==='trial'&&state.trial_expires_at)trial.textContent=`Démo gratuite active jusqu’au ${new Date(state.trial_expires_at).toLocaleString('fr-FR')} · ${state.days_remaining??'—'} jour(s) restant(s).`;
+ if(trial){
+  if(state?.status==='trial'&&state.trial_expires_at)trial.textContent=`Démo gratuite active jusqu’au ${new Date(state.trial_expires_at).toLocaleString('fr-FR')} · ${state.days_remaining??'—'} jour(s) restant(s).`;
+  else if(state?.status==='licensed')trial.textContent=state.plan==='admin'?'Accès administrateur KOMI Group.':`Licence active${state.expires_at?' jusqu’au '+new Date(state.expires_at).toLocaleDateString('fr-FR'): ' sans date d’expiration'}.`;
+  else if(state?.status)trial.textContent=`Statut de licence : ${state.status}.`;
+ }
 }
 async function activateUserLicense(){
  const button=$('activateLicenseBtn'),input=$('licenseKeyInput'),status=$('licenseGateStatus');
