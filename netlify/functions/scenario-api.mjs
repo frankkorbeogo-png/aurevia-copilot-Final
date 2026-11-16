@@ -33,18 +33,10 @@ export async function handler(event){
    const marketStatus=getMarketStatus(marketInstrument.label);if(!marketStatus.tradable)return json(409,{error:marketStatus.reason||'Marché fermé : validation suspendue.',code:'MARKET_CLOSED'});
    const quoteAt=Date.parse(scenario.last_price_at||''),quoteAge=Date.now()-quoteAt;if(!Number.isFinite(quoteAge)||quoteAge< -5000||quoteAge>120000)return json(409,{error:'La dernière cotation est trop ancienne. Attendez la prochaine mise à jour du suivi avant de valider.',code:'SCENARIO_PRICE_STALE'});
    if(scenario.status!=='entry_confirmed'||!scenario.lot_confirmation_expires_at||Date.parse(scenario.lot_confirmation_expires_at)<=Date.now())return json(409,{error:'L’entrée n’est pas encore validée par l’analyse M5 après mitigation, ou le délai de validation a expiré.'});
-   const orderType=String(scenario.order_type|| (scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();
-   const marketOrder=orderType==='BUY MARKET'||orderType==='SELL MARKET'||orderType==='MARKET';
-   const actualEntry=contractSpec.actualEntryPrice==null||contractSpec.actualEntryPrice===''?null:Number(contractSpec.actualEntryPrice);
-   if(marketOrder){
-    const tp1=Number(scenario.take_profits?.[0]),sl=Number(scenario.stop_loss);
-    if(!Number.isFinite(actualEntry)||actualEntry<=0||(scenario.direction==='BUY'?(actualEntry<=sl||actualEntry>=tp1):(actualEntry>=sl||actualEntry<=tp1)))return json(400,{error:'Le prix réellement exécuté est obligatoire et doit rester cohérent avec le SL et le TP1.'});
-   }else if(actualEntry!==null)return json(400,{error:'Un ordre conditionnel non exécuté ne peut pas avoir de prix réel d’exécution.'});
-   contractSpec.actualEntryPrice=actualEntry;
    const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot,p_auto_journal:body.auto_journal!==false}});
    const groupId=typeof created==='string'?created:created?.[0]?.aurevia_create_position_from_scenario||created?.aurevia_create_position_from_scenario;
    if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
-   return json(201,{group_id:groupId,instrument:scenario.instrument,direction:scenario.direction,actual_entry_price:actualEntry,message:'Position enregistrée. Suivi et journal AUREVIA activés.'});
+   return json(201,{group_id:groupId,instrument:scenario.instrument,direction:scenario.direction,entry_price:scenario.entry_confirmation_price??scenario.entry,message:'Position enregistrée. Suivi et journal AUREVIA activés.'});
   }
   const id=String(body.id||'');
   if(action==='stop'){
