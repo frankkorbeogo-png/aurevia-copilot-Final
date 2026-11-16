@@ -19,7 +19,7 @@ test('la validation M5 explique le score et les facteurs techniques',()=>{
  assert.equal(result.confirmed,false);
  assert.match(result.reason,/Historique M5 insuffisant/);
 });
-test('le worker ne sollicite pas un fournisseur IA supplémentaire pour le contrôle M5',async()=>{
+test('le worker utilise les fournisseurs IA configurés pour le contrôle M5',async()=>{
  const s=await read();
  assert.doesNotMatch(s,/api\.groq\.com/);
 });
