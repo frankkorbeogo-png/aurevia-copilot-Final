@@ -105,3 +105,30 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
   globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
  }
 });
+
+
+test('une seule tâche macro en échec renvoie HTTP 502 au scheduler',async()=>{
+ const oldFetch=globalThis.fetch,oldEnv={...process.env};
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',FRED_API_KEY:'fred'});
+ delete process.env.TELEGRAM_BOT_TOKEN;
+ globalThis.fetch=async input=>{
+  const url=String(input);
+  if(url.includes('/rest/v1/economic_release_sync_state?id=eq.global'))return response([]);
+  if(url.includes('api.stlouisfed.org/fred/release/dates')){
+   const id=new URL(url).searchParams.get('release_id');
+   return id==='10'?response({error_message:'temporary FRED failure'},503):response({release_dates:[]});
+  }
+  if(url.includes('api.gdeltproject.org'))return response({articles:[]});
+  if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return response([]);
+  throw new Error('Unexpected URL '+url);
+ };
+ try{
+  const result=await syncNews({httpMethod:'POST'}),body=JSON.parse(result.body);
+  assert.equal(result.statusCode,502);
+  assert.equal(body.ok,false);
+  assert.match(body.economicCalendarError,/FRED release 10 HTTP 503/);
+  assert.equal(body.fetched,0);
+ }finally{
+  globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);
+ }
+});
