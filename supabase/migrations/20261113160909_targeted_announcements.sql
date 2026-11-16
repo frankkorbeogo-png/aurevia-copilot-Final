@@ -16,8 +16,6 @@ create policy "Users read own announcement recipients"
   on public.announcement_recipients for select to authenticated
   using (auth.uid() = user_id and aurevia_session_is_active());
 
--- Les annonces sans audience définie restent générales ; celles ciblées ne sont
--- visibles que par les comptes inscrits dans announcement_recipients.
 drop policy if exists "Users read published announcements" on public.announcements;
 create policy "Users read published announcements"
   on public.announcements for select to authenticated

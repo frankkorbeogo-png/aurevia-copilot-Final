@@ -1,4 +1,3 @@
--- Lecture de l’audit réservée au backend administrateur.
 create or replace function public.aurevia_admin_audit_list(p_actor_id uuid)
 returns jsonb
 language plpgsql

@@ -1,18 +1,11 @@
--- AUREVIA trade validation: use profile currency and user-entered contract specifications.
--- No broker name or account type is required. Preserve the legacy six-argument RPC as a wrapper.
-create or replace function public.aurevia_create_position_from_scenario(
-  p_scenario_id uuid,
-  p_user_id uuid,
-  p_mode text,
-  p_volume numeric,
-  p_contract_spec jsonb,
-  p_broker_snapshot jsonb,
-  p_auto_journal boolean
-) returns uuid
-language plpgsql
-security definer
-set search_path = pg_catalog, public, auth
-as $$
+CREATE OR REPLACE FUNCTION public.aurevia_create_position_from_scenario(
+ p_scenario_id uuid, p_user_id uuid, p_mode text, p_volume numeric,
+ p_contract_spec jsonb, p_broker_snapshot jsonb, p_auto_journal boolean
+) RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public', 'auth'
+AS $function$
 declare
   s public.aurevia_analysis_scenarios%rowtype;
   v_min numeric; v_step numeric; v_max numeric;
@@ -55,7 +48,6 @@ begin
   if s.status <> 'entry_confirmed' then raise exception 'SCENARIO_NOT_CONFIRMED'; end if;
   if s.trade_group_id is not null then return s.trade_group_id; end if;
   if s.lot_confirmation_expires_at is null or s.lot_confirmation_expires_at < now() then raise exception 'LOT_CONFIRMATION_EXPIRED'; end if;
-
   v_count := cardinality(s.take_profits);
   if v_count is null or v_count<1 then raise exception 'SCENARIO_TAKE_PROFITS_REQUIRED'; end if;
   if p_mode='unique' then
@@ -68,7 +60,6 @@ begin
   insert into public.trading_position_groups(user_id,mode,instrument,direction,order_type,requested_volume,lot_step,auto_journal,status,contract_spec,broker_snapshot)
   values(p_user_id,p_mode,s.instrument,s.direction,'MARKET',p_volume,v_step,coalesce(p_auto_journal,true),'OPEN',p_contract_spec,p_broker_snapshot)
   returning id into v_group;
-
   v_remaining := p_volume;
   foreach tp in array s.take_profits loop
     v_idx := v_idx+1;
@@ -78,47 +69,22 @@ begin
     else v_child := p_volume;
     end if;
     insert into public.trading_positions(group_id,user_id,tp_label,entry_price,stop_loss,take_profit,volume_initial,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,status,opened_at)
-    values(v_group,p_user_id,'TP'||v_idx,v_entry,s.stop_loss,tp,v_child,v_child,case when v_calc='contract' then v_contract else null end,case when v_calc='contract' then v_quote else 1 end,v_fees,p_contract_spec,'OPEN',now()) returning id into v_position;
+    values(v_group,p_user_id,'TP'||v_idx,v_entry,s.stop_loss,tp,v_child,v_child,case when v_calc='contract' then v_contract else null end,case when v_calc='contract' then v_quote else 1 end,v_fees,p_contract_spec,'OPEN',now())
+    returning id into v_position;
     if coalesce(p_auto_journal,true) and p_mode='separate' then
       insert into public.trading_journal(user_id,instrument,direction,result,pnl,notes,group_id,position_id,mode,volume_initial,volume_remaining,tp_label,gross_pnl,fees,entry_price,stop_loss,take_profit)
-      values(p_user_id,s.instrument,s.direction,'OPEN',0,'Trade AUREVIA · TP'||v_idx,v_group,v_position,'separate',v_child,v_child,'TP'||v_idx,0,0,v_entry,s.stop_loss,tp) returning id into v_journal;
+      values(p_user_id,s.instrument,s.direction,'OPEN',0,'Trade AUREVIA · TP'||v_idx,v_group,v_position,'separate',v_child,v_child,'TP'||v_idx,0,0,v_entry,s.stop_loss,tp)
+      returning id into v_journal;
       update public.trading_positions set journal_id=v_journal where id=v_position;
     end if;
   end loop;
-
   if coalesce(p_auto_journal,true) and p_mode='unique' then
     insert into public.trading_journal(user_id,instrument,direction,result,pnl,notes,group_id,mode,volume_initial,volume_remaining,gross_pnl,fees,entry_price,stop_loss,take_profit)
-    values(p_user_id,s.instrument,s.direction,'OPEN',0,'Position unique AUREVIA · clôtures partielles',v_group,'unique',p_volume,p_volume,0,0,v_entry,s.stop_loss,s.take_profits[1]) returning id into v_journal;
+    values(p_user_id,s.instrument,s.direction,'OPEN',0,'Position unique AUREVIA · clôtures partielles',v_group,'unique',p_volume,p_volume,0,0,v_entry,s.stop_loss,s.take_profits[1])
+    returning id into v_journal;
     update public.trading_positions set journal_id=v_journal where group_id=v_group;
   end if;
-
   update public.aurevia_analysis_scenarios set trade_group_id=v_group,trade_created_at=now(),lot_confirmation_code=null,lot_confirmation_expires_at=null,updated_at=now() where id=s.id;
   return v_group;
 end;
-$$;
-revoke all on function public.aurevia_create_position_from_scenario(uuid,uuid,text,numeric,jsonb,jsonb,boolean) from public, anon, authenticated;
-grant execute on function public.aurevia_create_position_from_scenario(uuid,uuid,text,numeric,jsonb,jsonb,boolean) to service_role;
-
-
--- Keep the legacy six-argument RPC callable for older internal clients,
--- routing it through the same broker-independent validation logic.
-create or replace function public.aurevia_create_position_from_scenario(
-  p_scenario_id uuid,
-  p_user_id uuid,
-  p_mode text,
-  p_volume numeric,
-  p_contract_spec jsonb,
-  p_broker_snapshot jsonb
-) returns uuid
-language sql
-security definer
-set search_path = pg_catalog, public, auth
-as $$
-  select public.aurevia_create_position_from_scenario(
-    p_scenario_id, p_user_id, p_mode, p_volume,
-    p_contract_spec, p_broker_snapshot, true
-  );
-$$;
-
-revoke all on function public.aurevia_create_position_from_scenario(uuid,uuid,text,numeric,jsonb,jsonb) from public, anon, authenticated;
-grant execute on function public.aurevia_create_position_from_scenario(uuid,uuid,text,numeric,jsonb,jsonb) to service_role;
+$function$;
