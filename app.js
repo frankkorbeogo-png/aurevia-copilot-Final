@@ -19,11 +19,12 @@ let deferredInstallPrompt=null;
 
 const TRADE_SYNC_QUEUE_KEY='aurevia-cloud-sync-retry-v1';
 let tradeSyncFlushBusy=false;
+function tradeSyncQueueStorageKey(){const userId=String(window.__aureviaUserId||'').trim();return userId?`${TRADE_SYNC_QUEUE_KEY}:${userId}`:TRADE_SYNC_QUEUE_KEY;}
 function readTradeSyncQueue(){
-  try{const value=JSON.parse(localStorage.getItem(TRADE_SYNC_QUEUE_KEY)||'{}');return {groups:Array.isArray(value.groups)?value.groups:[],closes:Array.isArray(value.closes)?value.closes:[]};}
+  try{const key=tradeSyncQueueStorageKey();let raw=localStorage.getItem(key);if(!raw&&window.__aureviaUserId&&localStorage.getItem('aurevia_local_data_owner_id')===String(window.__aureviaUserId)){raw=localStorage.getItem(TRADE_SYNC_QUEUE_KEY);if(raw){localStorage.setItem(key,raw);localStorage.removeItem(TRADE_SYNC_QUEUE_KEY);}}const value=JSON.parse(raw||'{}');return {groups:Array.isArray(value.groups)?value.groups:[],closes:Array.isArray(value.closes)?value.closes:[]};}
   catch{return {groups:[],closes:[]};}
 }
-function writeTradeSyncQueue(queue){try{localStorage.setItem(TRADE_SYNC_QUEUE_KEY,JSON.stringify(queue));return true;}catch{return false;}}
+function writeTradeSyncQueue(queue){try{localStorage.setItem(tradeSyncQueueStorageKey(),JSON.stringify(queue));return true;}catch{return false;}}
 function queueTradeGroupSync(groupId,telegramText=null){
   const queue=readTradeSyncQueue(),existing=queue.groups.find(item=>item.groupId===groupId);
   if(existing){if(telegramText)existing.telegramText=telegramText;}else queue.groups.push({groupId,telegramText,queuedAt:new Date().toISOString()});
