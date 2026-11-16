@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {handler,normalizeArticle,buildFomcReleaseEvents} from '../netlify/functions/global-news-sync.mjs';
+import {handler,normalizeArticle,buildFomcReleaseEvents,isFredCacheFresh} from '../netlify/functions/global-news-sync.mjs';
 
 test('global-news-sync returns an error when one macro subsystem fails',async()=>{
  const old={...process.env};
@@ -179,4 +179,13 @@ test('une synchronisation FRED réussie désactive les anciennes dates absentes 
   for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];
   Object.assign(process.env,old);
  }
+});
+
+test('le cache FRED exige un horodatage valide, non futur et âgé de moins de six heures',()=>{
+ const now=Date.UTC(2026,10,16,3,0,0);
+ assert.equal(isFredCacheFresh(new Date(now-5*3600000).toISOString(),now),true);
+ assert.equal(isFredCacheFresh(new Date(now-6*3600000).toISOString(),now),false);
+ assert.equal(isFredCacheFresh(new Date(now+60000).toISOString(),now),false);
+ assert.equal(isFredCacheFresh('date-invalide',now),false);
+ assert.equal(isFredCacheFresh(null,now),false);
 });
