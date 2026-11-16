@@ -120,10 +120,10 @@ function mountTickerTape(){
   script.text=JSON.stringify({symbols:[
     {proName:'OANDA:XAUUSD',title:'Or / USD'},{proName:'OANDA:XAGUSD',title:'Argent / USD'},
     {proName:'OANDA:EURUSD',title:'EUR/USD'},{proName:'OANDA:GBPUSD',title:'GBP/USD'},
-    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'PEPPERSTONE:US30',title:'US30'},
-    {proName:'NASDAQ:NDX',title:'NASDAQ 100'},{proName:'SP:SPX',title:'S&P 500'},
-    {proName:'TVC:DXY',title:'Dollar Index'},{proName:'TVC:USOIL',title:'WTI'},
-    {proName:'BITSTAMP:BTCUSD',title:'Bitcoin'},{proName:'NASDAQ:NVDA',title:'NVIDIA'}
+    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'OANDA:EURGBP',title:'EUR/GBP'},
+    {proName:'OANDA:GBPJPY',title:'GBP/JPY'},{proName:'TVC:DXY',title:'Dollar Index'},
+    {proName:'BITSTAMP:BTCUSD',title:'Bitcoin'},{proName:'BITSTAMP:ETHUSD',title:'Ethereum'},
+    {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:AAPL',title:'Apple'}
   ],showSymbolLogo:true,isTransparent:true,displayMode:'adaptive',colorTheme:'dark',locale:'fr'});
   const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';
   const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';wrapper.append(widget,script);
