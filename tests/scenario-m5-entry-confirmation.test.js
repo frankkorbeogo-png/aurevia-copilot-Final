@@ -18,6 +18,13 @@ test('M5 BUY is confirmed only from three agreeing AI analyses and an AI-propose
  assert.equal(result.score,83);
  assert.equal(result.components.length,3);
 });
+test('M5 accepts the raw Supabase scenario field names used by scenario-watch',()=>{
+ const input=consensus('BUY');
+ input.scenario={direction:'BUY',entry_low:99,entry_high:102,stop_loss:98,take_profits:[106]};
+ const result=validateM5AIConsensus({...input,atr:0.2});
+ assert.equal(result.confirmed,true,result.reason);
+ assert.equal(result.entryReference,100.5);
+});
 test('M5 SELL is confirmed only from three agreeing AI analyses and an AI-proposed price',()=>{
  const input=consensus('SELL'),result=validateM5AIConsensus({...input,atr:0.2});
  assert.equal(result.confirmed,true,result.reason);
