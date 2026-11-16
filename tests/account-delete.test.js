@@ -29,11 +29,13 @@ test('la suppression personnelle purge les données AUREVIA avant de supprimer l
 
 test('la suppression administrative purge aussi les données personnelles et révoque la session', () => {
   assert.ok(admin.includes('deleteUserApplicationData'));
-  const start = admin.indexOf("if(action==='delete_user')");
+  const start = admin.indexOf("if(action==='delete_user'||action==='permanent_delete_user')");
   const end = admin.indexOf("if(action==='announcement_create')", start);
   const block = admin.slice(start, end);
   assert.ok(block.includes('aurevia_admin_revoke_session'));
   assert.ok(block.includes('application_data_deleted:true'));
+  assert.ok(block.includes("action==='permanent_delete_user'"));
+  assert.ok(block.includes('aurevia_admin_permanent_delete_block'));
   assert.ok(block.indexOf('deleteUserApplicationData') < block.indexOf('/auth/v1/admin/users/'));
 });
 
@@ -62,4 +64,14 @@ test('la suppression personnelle et administrative passent par la révocation pa
   assert.ok(sharedRevocationMigration.includes('aurevia_account_revoke_all_sessions'));
   assert.ok(sharedRevocationMigration.includes('grant execute on function public.aurevia_account_revoke_all_sessions(uuid) to service_role'));
   assert.ok(sharedRevocationMigration.includes('revoked_at = now()')); 
+});
+
+test('la suppression standard ne crée pas de blocage e-mail tandis que la suppression définitive le fait', () => {
+  const start = admin.indexOf("if(action==='delete_user'||action==='permanent_delete_user')");
+  const end = admin.indexOf("if(action==='announcement_create')", start);
+  const block = admin.slice(start, end);
+  assert.match(block,/if\(action==='permanent_delete_user'\)/);
+  assert.match(block,/aurevia_admin_permanent_delete_block/);
+  assert.match(block,/body\.confirmation!=='SUPPRIMER DÉFINITIVEMENT'/);
+  assert.match(block,/email_blocked:action==='permanent_delete_user'/);
 });
