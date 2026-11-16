@@ -64,8 +64,10 @@ export async function handler(){
      const lastAnalysisAt=Date.parse(s.last_m5_analysis_at||'');
      const closedAt=lastClosedM5.time+5*60000;
      if(Number.isFinite(lastAnalysisAt)&&closedAt<=lastAnalysisAt)continue;
+     const claim=await rest('rpc/aurevia_claim_m5_analysis',{method:'POST',body:{p_scenario_id:s.id,p_closed_at:new Date(closedAt).toISOString()}});
+     if(claim!==true&&claim?.claimed!==true)continue;
      const confirmation=await runAureviaM5Confirmation({
-      scenario:{instrument:s.instrument,direction:s.direction,entryZoneLow:Number(s.entry_low),entryZoneHigh:Number(s.entry_high),stopLoss:Number(s.stop_loss),takeProfits:s.take_profits||[]},
+      scenario:{instrument:s.instrument,direction:s.direction,orderType:s.order_type||null,triggerPrice:s.trigger_price??null,limitPrice:s.limit_price??null,entryZoneLow:Number(s.entry_low),entryZoneHigh:Number(s.entry_high),stopLoss:Number(s.stop_loss),takeProfits:s.take_profits||[]},
       candles:closedM5,
       indicators:calculateIndicators(closedM5),
       structure:detectMarketStructure(closedM5.slice(0,-1))
@@ -76,7 +78,11 @@ export async function handler(){
       continue;
      }
      const m5Entry=Number(confirmation.entryReference),firstTarget=Number(s.take_profits?.[0]);
-     const validM5Entry=Number.isFinite(m5Entry)&&Number.isFinite(firstTarget)&&m5Entry>=Number(s.entry_low)&&m5Entry<=Number(s.entry_high)&&(s.direction==='BUY'?m5Entry>Number(s.stop_loss)&&m5Entry<firstTarget:m5Entry<Number(s.stop_loss)&&m5Entry>firstTarget);
+     const orderType=String(s.order_type||(s.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();
+     const trigger=orderType==='BUY STOP LIMIT'||orderType==='SELL STOP LIMIT'?Number(s.trigger_price):orderType.endsWith(' STOP')?m5Entry:null;
+     const limit=orderType.endsWith('LIMIT')?m5Entry:null;
+     const stopLimitGeometry=orderType==='BUY STOP LIMIT'?Number.isFinite(trigger)&&trigger>0&&trigger>m5Entry:orderType==='SELL STOP LIMIT'?Number.isFinite(trigger)&&trigger>0&&trigger<m5Entry:true;
+     const validM5Entry=Number.isFinite(m5Entry)&&Number.isFinite(firstTarget)&&m5Entry>=Number(s.entry_low)&&m5Entry<=Number(s.entry_high)&&stopLimitGeometry&&(s.direction==='BUY'?m5Entry>Number(s.stop_loss)&&m5Entry<firstTarget:m5Entry<Number(s.stop_loss)&&m5Entry>firstTarget);
      if(!validM5Entry){
       await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.zone_reached`,{method:'PATCH',body:{...proposalPatch,m5_ai_reason:'Prix proposé hors de la zone M15 ou incohérent avec le SL/TP1 : entrée refusée.'},prefer:'return=minimal'});
       await notify(s.user_id,`AUREVIA COPILOT · ENTRÉE M5 REFUSÉE\n${s.instrument} · ${s.direction}\nLes IA ont proposé un prix qui ne respecte pas la zone M15 ou les niveaux SL/TP1. Aucune entrée n’est confirmée. Nouvelle analyse à la prochaine clôture M5.`);
