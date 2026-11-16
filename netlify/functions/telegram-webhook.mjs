@@ -74,7 +74,7 @@ function summary(setup,scenario){
  const s=setup.spec,entry=scenario.entry_confirmation_price??scenario.entry??scenario.last_price??'Non renseignée';
  const tps=Array.isArray(scenario.take_profits)?scenario.take_profits.join(' · '):'Non renseignés';
  const orderType=String(scenario.order_type||(scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();
- const orderDetails=orderType.endsWith('STOP LIMIT')?`\\nDéclenchement : ${scenario.trigger_price??'—'}\\nPrix limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' STOP')?`\\nDéclenchement : ${scenario.trigger_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' LIMIT')?`\\nPrix limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:'';
+ const orderDetails=orderType.endsWith('STOP LIMIT')?`\nDéclenchement : ${scenario.trigger_price??'—'}\nPrix limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' STOP')?`\nDéclenchement : ${scenario.trigger_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' LIMIT')?`\nPrix limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:'';
  const isPendingOrder=orderType.includes('LIMIT')||orderType.includes('STOP');
  const fillLabel=isPendingOrder?'non applicable avant activation':(setup.actualEntryPrice??'non renseigné — référence IA M5 utilisée');
  const calc=s.calculationType==='contract'
@@ -82,7 +82,7 @@ function summary(setup,scenario){
   :s.calculationType==='point'
    ?`Taille du point : ${s.pointSize}\nValeur du point/lot : ${s.pointValue}`
    :`Taille du tick : ${s.tickSize}\nValeur du tick/lot : ${s.tickValue}`;
- return `Vérifie les informations avant enregistrement\n\nInstrument : ${scenario.instrument}\nDirection : ${scenario.direction}\nPrix proposé par l’IA M5 : ${entry}\nPrix réel saisi : ${fillLabel}\nStop Loss : ${scenario.stop_loss??'Non renseigné'}\nTake Profits : ${tps}\nMode : ${setup.mode==='unique'?'Position unique':'Trades séparés'}\nLot : ${setup.volume}\nDevise du compte (profil) : ${s.accountCurrency}\nLevier : ${s.leverage?`1:${s.leverage}`:'Non précisé'}\nMéthode : ${s.calculationType}\n${calc}\nLot minimum et incrément : ${s.minLot} / ${s.lotStep}${s.maxLot!==null?` · maximum ${s.maxLot}`:''}\nFrais/lot : ${s.feesPerLot} ${s.accountCurrency}\nAjout automatique au journal : ${setup.autoJournal?'Oui':'Non'}\n\nConfirmer l’enregistrement ? AUREVIA n’exécutera aucun ordre.`;
+ return `Vérifie les informations avant enregistrement\n\nInstrument : ${scenario.instrument}\nDirection : ${scenario.direction}\nType d’ordre : ${orderType}${orderDetails}\nPrix de référence proposé par l’IA M5 : ${entry}\nPrix réel saisi : ${fillLabel}\nStop Loss : ${scenario.stop_loss??'Non renseigné'}\nTake Profits : ${tps}\nMode : ${setup.mode==='unique'?'Position unique':'Trades séparés'}\nLot : ${setup.volume}\nDevise du compte (profil) : ${s.accountCurrency}\nLevier : ${s.leverage?`1:${s.leverage}`:'Non précisé'}\nMéthode : ${s.calculationType}\n${calc}\nLot minimum et incrément : ${s.minLot} / ${s.lotStep}${s.maxLot!==null?` · maximum ${s.maxLot}`:''}\nFrais/lot : ${s.feesPerLot} ${s.accountCurrency}\nAjout automatique au journal : ${setup.autoJournal?'Oui':'Non'}\n\nConfirmer l’enregistrement ? AUREVIA n’exécutera aucun ordre.`;
 }
 
 async function finishSetup(token,chatId,userId,setup){
