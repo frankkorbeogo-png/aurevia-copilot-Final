@@ -1074,19 +1074,19 @@ function updateLicenseGate(state){
  }
 }
 async function activateUserLicense(){
- const button=$('activateLicenseBtn'),input=$('licenseKeyInput'),status=$('licenseGateStatus');
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$('activateLicenseBtn'),input=$('licenseKeyInput'),status=$('licenseGateStatus');
  const key=String(input?.value||'').trim().toUpperCase();
  if(!key){if(status)status.textContent='Saisissez votre clé de licence.';return;}
- const token=await getAnalysisAccessToken();if(!token){if(status)status.textContent='Reconnectez-vous pour activer votre licence.';return;}
+ const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!token){if(status)status.textContent='Reconnectez-vous pour activer votre licence.';return;}
  if(button){button.disabled=true;button.textContent='Vérification…';}
  try{
   const response=await fetch('/api/license',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({license_key:key}),cache:'no-store'});
-  const result=await response.json().catch(()=>({}));
+  const result=await response.json().catch(()=>({}));if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   if(!response.ok||result.ok!==true)throw new Error(({INVALID_KEY:'Clé invalide ou inconnue.',LICENSE_EXPIRED:'Cette licence a expiré.',LICENSE_SUSPENDED:'Cette licence est suspendue.',LICENSE_REVOKED:'Cette licence a été révoquée.',LICENSE_UNAVAILABLE:'Cette licence n’est pas disponible.'})[result.code]||result.error||'Activation impossible.');
   window.__aureviaLicense=result;updateLicenseGate(result);if(input)input.value='';
   if(status)status.textContent='Licence activée. Chargement de votre espace AUREVIA…';
   location.reload();
- }catch(error){if(status)status.textContent=error.message;}
+ }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent=error.message;}
  finally{if(button){button.disabled=false;button.textContent='Activer ma licence';}}
 }
 let authenticatedBooted=false;
