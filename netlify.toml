@@ -28,6 +28,16 @@
   to = "/.netlify/functions/ai-confrontation"
   status = 200
 
+[[redirects]]
+  from = "/api/license"
+  to = "/.netlify/functions/license-api"
+  status = 200
+
+[[redirects]]
+  from = "/api/admin-licenses"
+  to = "/.netlify/functions/admin-license-api"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
