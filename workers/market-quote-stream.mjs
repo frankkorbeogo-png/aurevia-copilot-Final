@@ -12,7 +12,21 @@ async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${b
 async function loadActiveState(){const [groups,positions]=await Promise.all([rest('trading_position_groups?select=id,instrument,direction,order_type&status=eq.OPEN'),rest('trading_positions?select=id,user_id,group_id,entry_price,trigger_price,trigger_seen,status&status=eq.PENDING&volume_remaining=gt.0')]);const groupById=new Map((groups||[]).map(g=>[g.id,g]));pendingBySymbol.clear();for(const p of positions||[]){const g=groupById.get(p.group_id);if(!g||!allowed.has(g.instrument))continue;const list=pendingBySymbol.get(g.instrument)||[];list.push({...p,group:g});pendingBySymbol.set(g.instrument,list);}return [...new Set((groups||[]).map(x=>x.instrument).filter(x=>allowed.has(x)))];}
 function send(action,symbols){if(socket?.readyState===WebSocket.OPEN&&symbols.length)socket.send(JSON.stringify({action,params:{symbols:symbols.join(',')}}));}
 async function processPendingTick(symbol,prices){for(const p of pendingBySymbol.get(symbol)||[]){if(p.status!=='PENDING')continue;const state=evaluateEntryTrigger(p,p.group,prices);if(!state)continue;if(state==='TRIGGER_SEEN'){await rest(`trading_positions?id=eq.${p.id}&status=eq.PENDING&trigger_seen=eq.false`,{method:'PATCH',body:{trigger_seen:true,updated_at:new Date().toISOString()},prefer:'return=minimal'});p.trigger_seen=true;continue;}const activationPrice=prices.price;const result=await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:new Date().toISOString()}});if(result?.ok){p.status='OPEN';console.log(`[AUREVIA_ENTRY] ${p.group.direction} ${symbol} activated at ${activationPrice}`);}}}
-async function storeQuote(d){const price=Number(d.price),symbol=d.symbol;if(!allowed.has(symbol)||!Number.isFinite(price)||price<=0)return;const quoteAt=Number.isFinite(Number(d.timestamp))?new Date(Number(d.timestamp)*1000).toISOString():new Date().toISOString();const prices={price};await processPendingTick(symbol,prices);const now=Date.now();if(now-(lastPersistAt.get(symbol)||0)>=1000){await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data WebSocket Last Price',updated_at:new Date().toISOString()}});lastPersistAt.set(symbol,now);}}
+async function storeQuote(d){
+ const price=Number(d.price),symbol=d.symbol,stamp=Number(d.timestamp);
+ if(!allowed.has(symbol)||!Number.isFinite(price)||price<=0||!Number.isFinite(stamp)||stamp<=0)return;
+ const quoteDate=new Date(stamp*1000),age=Date.now()-quoteDate.getTime();
+ // A websocket message without a valid provider timestamp is never used to arm,
+ // activate, or monitor a position; the server clock is not a substitute.
+ if(!Number.isFinite(quoteDate.getTime())||age<0||age>120000)return;
+ const quoteAt=quoteDate.toISOString(),prices={price,quoteAt};
+ await processPendingTick(symbol,prices);
+ const now=Date.now();
+ if(now-(lastPersistAt.get(symbol)||0)>=1000){
+  await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol,price,quote_at:quoteAt,source:'Twelve Data WebSocket Last Price · timestamp verified',updated_at:new Date().toISOString()}});
+  lastPersistAt.set(symbol,now);
+ }
+}
 async function syncSubscriptions(){try{const symbols=await loadActiveState();if(socket?.readyState!==WebSocket.OPEN)return;const next=new Set(symbols),added=[...next].filter(x=>!active.has(x)),removed=[...active].filter(x=>!next.has(x));send('unsubscribe',removed);send('subscribe',added);for(const x of removed)active.delete(x);for(const x of added)active.add(x);}catch(e){console.error('[AUREVIA_QUOTES] subscription refresh failed:',e.message);}}
 function connect(){if(stopped)return;const url=`wss://ws.twelvedata.com/v1/quotes/price?apikey=${encodeURIComponent(apiKey)}`;socket=new WebSocket(url);
  socket.addEventListener('open',async()=>{console.log('[AUREVIA_QUOTES] connected');reconnectDelay=2000;await syncSubscriptions();});
