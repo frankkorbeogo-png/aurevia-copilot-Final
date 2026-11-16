@@ -31,7 +31,8 @@ export function generateOpportunityScenarios({analyses, frames, staleFrames=[]})
     const pattern=(m15.patterns||[]).some(x=>{const n=String(x.name||'').toLowerCase();return buy?/bull|hauss|morning|hammer|engulf|breakout/.test(n):/bear|baiss|evening|shooting|engulf|breakdown/.test(n);});
     add('Figure M15 compatible',pattern,5);
     const zone=buy?activeOb.find(x=>x.type?.includes('bullish'))||activeFvg.find(x=>x.type?.includes('bullish')):activeOb.find(x=>x.type?.includes('bearish'))||activeFvg.find(x=>x.type?.includes('bearish'));
-    add('Zone technique M15',Boolean(zone),5);\n    add('Alignement EMA20 / EMA50',finite(ema20)&&finite(ema50)&&(buy?ema20>ema50:ema20<ema50),5);
+    add('Zone technique M15',Boolean(zone),5);
+    add('Alignement EMA20 / EMA50',finite(ema20)&&finite(ema50)&&(buy?ema20>ema50:ema20<ema50),5);
     score=Math.max(0,Math.min(100,Math.round(score)));
     const directionOk=st.bias===(buy?'haussier':'baissier') || br || (finite(ema20)&&finite(ema50)&&(buy?ema20>ema50:ema20<ema50));
     const identified=directionOk&&score>=45;
