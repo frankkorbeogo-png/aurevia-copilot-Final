@@ -1,4 +1,5 @@
 import { configuredAIProviders } from './_ai-provider.mjs';
+import {validateM5AIConsensus} from '../../m5-entry-validation.js';
 
 const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
 const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
@@ -81,13 +82,6 @@ export async function runAureviaM5Confirmation({scenario, candles, indicators, s
  const controlSystem=base+' Tu es le contrôleur indépendant M5. Vérifie la sécurité du prix proposé, la cohérence BUY/SELL, la zone M15, le SL, TP1, la fraîcheur des bougies et les risques de poursuite tardive. Tu disposes d’un veto. JSON: {decision:"CONFIRM|WAIT",veto:false,vetoReason,score:0-100,reasoning,criticalBlockers:[]}.';
  try { audit=await ask(cloudflare,[{role:'system',content:controlSystem},{role:'user',content:JSON.stringify({market,primaryProposal:lead,independentReview:review})}],11000); }
  catch(e){return {confirmed:false,score:0,reason:'Cloudflare indisponible : contrôle de risque M5 incomplet. '+clean(e.message,160)};}
- const price=Number(lead.entryPrice),low=Number(lead.entryZoneLow),high=Number(lead.entryZoneHigh);
- const validPrice=Number.isFinite(price)&&price>0&&Number.isFinite(low)&&Number.isFinite(high)&&low<=price&&price<=high;
- const sl=Number(scenario.stopLoss),tp1=Number(scenario.takeProfits?.[0]);
- const levelsValid=scenario.direction==='BUY'?price>sl&&price<tp1:price<sl&&price>tp1;
- const agrees=review.decision==='CONFIRM'&&audit.decision==='CONFIRM'&&review.verdict!=='CONTESTE'&&audit.veto!==true;
- const confirmed=lead.decision==='CONFIRM'&&agrees&&validPrice&&levelsValid&&Number(lead.score)>=65&&Number(review.score)>=60&&Number(audit.score)>=60&&!(audit.criticalBlockers||[]).length&&!(review.criticalBlockers||[]).length;
- const scores=[Number(lead.score),Number(review.score),Number(audit.score)].filter(Number.isFinite);
- const score=scores.length===3?Math.round(scores.reduce((a,b)=>a+b,0)/3):0;
- return {confirmed,score,entryReference:confirmed?price:null,entryZoneLow:validPrice?low:null,entryZoneHigh:validPrice?high:null,reason:confirmed?'Entrée M5 proposée et validée par les trois IA. '+clean(lead.reasoning,500):'ATTENDRE : '+[lead.reasoning,review.reasoning,audit.vetoReason,audit.reasoning,...(review.criticalBlockers||[]),...(audit.criticalBlockers||[])].filter(Boolean).map(x=>clean(x,180)).join(' · '),components:[{label:'Proposition IA principale (Groq)',passed:lead.decision==='CONFIRM'&&validPrice,weight:40,score:lead.score,reasoning:clean(lead.reasoning,300)},{label:'Contre-analyse indépendante (OpenRouter)',passed:review.decision==='CONFIRM'&&review.verdict!=='CONTESTE',weight:30,score:review.score,reasoning:clean(review.reasoning,300)},{label:'Contrôle de risque indépendant (Cloudflare)',passed:audit.decision==='CONFIRM'&&audit.veto!==true&&!(audit.criticalBlockers||[]).length,weight:30,score:audit.score,reasoning:clean(audit.reasoning||audit.vetoReason,300)}],lastCandleAt:new Date(candles.at(-1).time+5*60000).toISOString(),providers:{groq:groq.name,openrouter:openrouter.name,cloudflare:cloudflare.name},proposal:lead,review,audit};
+ const result=validateM5AIConsensus({scenario,lead,review,audit,atr:indicators?.atr14});
+ return {...result,lastCandleAt:new Date(candles.at(-1).time+5*60000).toISOString(),providers:{groq:groq.name,openrouter:openrouter.name,cloudflare:cloudflare.name},proposal:lead,review,audit};
 }
