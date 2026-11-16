@@ -59,7 +59,6 @@ export function createTradeGroup(input) {
   if (!tps.length) throw new Error('Sélectionnez au moins un take-profit.');
   const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStepFixed) : tps.map(()=>lot);
   if(volumes.some(volume=>volume<lotMin||(lotMax!==null&&volume>lotMax)))throw new Error('La répartition des TP ne respecte pas les limites de volume broker.');
-  if(volumes.some(volume=>volume<0.01))throw new Error('Chaque TP doit recevoir au moins 0,01 lot.');
   const groupId=id();
   const createdAt=new Date().toISOString();
   const initialStatus=orderType==='MARKET'?'OPEN':'PENDING';
