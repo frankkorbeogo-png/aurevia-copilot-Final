@@ -82,6 +82,14 @@ test('scenario-api transmet le prix réellement exécuté validé au RPC',async(
   assert.equal(r.statusCode,201,parse(r).error);assert.equal(mock.createCalled,true);assert.equal(mock.createdPayload.p_contract_spec.actualEntryPrice,101);assert.equal(parse(r).actual_entry_price,101);
  }finally{mock.restore();}
 });
+test('scenario-api autorise un ordre conditionnel sans prix réel avant son activation',async()=>{
+ const mock=installCreatePositionMocks({orderType:'BUY LIMIT'});
+ try{
+  const r=await handler(req({action:'create_position',id:'s1',mode:'unique',volume:0.05,contract_spec:{...validContractSpec},auto_journal:true}));
+  assert.equal(r.statusCode,201,parse(r).error);assert.equal(mock.createCalled,true);assert.equal(mock.createdPayload.p_contract_spec.actualEntryPrice,null);
+ }finally{mock.restore();}
+});
+
 test('scenario-api refuse un prix réel pour un ordre conditionnel non exécuté',async()=>{
  const mock=installCreatePositionMocks({orderType:'BUY LIMIT'});
  try{
