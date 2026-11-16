@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const auth = await readFile(new URL('../auth.js', import.meta.url), 'utf8');
-const migration = await readFile(new URL('../supabase/migrations/20261116144803_aurevia_atomic_manual_trade_group_sync.sql', import.meta.url), 'utf8');
+const migration = await readFile(new URL('../supabase/migrations/20261116154522_aurevia_atomic_manual_trade_group_sync.sql', import.meta.url), 'utf8');
 const tradeManagement = await readFile(new URL('../trade-management.js', import.meta.url), 'utf8');
 
 test('la synchronisation manuelle appelle une seule RPC transactionnelle', () => {
@@ -63,7 +63,7 @@ test('la RPC ne supprime pas les anciennes fiches ni les positions non présente
 });
 
 
-const closeMigration = await readFile(new URL('../supabase/migrations/20261116144811_aurevia_atomic_close_fx_snapshot.sql', import.meta.url), 'utf8');
+const closeMigration = await readFile(new URL('../supabase/migrations/20261116154525_aurevia_atomic_close_fx_snapshot.sql', import.meta.url), 'utf8');
 
 test('la clôture manuelle et son snapshot FX sont enregistrés dans une seule RPC', () => {
   const start = auth.indexOf('export async function syncTradeCloseToSupabase(group,child,closeEvent,expectedUserId=null)');
@@ -87,7 +87,7 @@ test('l’ancienne signature de clôture ne reste pas accessible sans snapshot F
 
 
 const worker = await readFile(new URL('../netlify/functions/trade-watch.mjs', import.meta.url), 'utf8');
-const workerCloseMigration = await readFile(new URL('../supabase/migrations/20261116144819_aurevia_atomic_worker_close_fx_snapshot.sql', import.meta.url), 'utf8');
+const workerCloseMigration = await readFile(new URL('../supabase/migrations/20261116154527_aurevia_atomic_worker_close_fx_snapshot.sql', import.meta.url), 'utf8');
 
 test('le worker transmet le snapshot FX à la RPC de clôture, sans seconde écriture REST', () => {
   assert.ok(worker.includes('p_fx_snapshot:fxSnapshot'));
@@ -100,7 +100,7 @@ test('le worker transmet le snapshot FX à la RPC de clôture, sans seconde écr
 });
 
 
-const deletionMigration = await readFile(new URL('../supabase/migrations/20261116144826_aurevia_atomic_trade_tracking_deletion.sql', import.meta.url), 'utf8');
+const deletionMigration = await readFile(new URL('../supabase/migrations/20261116154532_aurevia_atomic_trade_tracking_deletion.sql', import.meta.url), 'utf8');
 
 test('le retrait d’un trade clôturé et le retrait de son groupe sont atomiques', () => {
   assert.ok(auth.includes("supabase.rpc('aurevia_delete_closed_trade_position'"));
