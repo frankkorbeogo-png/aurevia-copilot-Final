@@ -41,3 +41,11 @@ test('les interfaces et le bandeau TradingView n’affichent plus les indices/é
  assert.doesNotMatch(app,/PEPPERSTONE:US30|NASDAQ:NDX|SP:SPX|TVC:USOIL/);
  assert.match(app,/TVC:DXY/);
 });
+
+test('scenario-api valide strictement les niveaux des huit types d’ordres côté serveur',async()=>{
+ const source=await readFile(new URL('../netlify/functions/scenario-api.mjs',import.meta.url),'utf8');
+ assert.match(source,/normalizedOrder/);
+ assert.match(source,/Géométrie STOP LIMIT incompatible/);
+ assert.match(source,/Le prix d’entrée doit correspondre au niveau d’ordre/);
+ assert.match(source,/Un ordre MARKET ne doit pas contenir/);
+});
