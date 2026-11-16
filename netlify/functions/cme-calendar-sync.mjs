@@ -22,8 +22,18 @@ function cleanText(value = '') {
 
 // The annual CME summary table is deliberately captured as unverified candidates.
 // It does not identify a specific CFD/OTC product and must never close one.
-function extractHolidayCandidates(html) {
-  const sectionStart = html.search(/2026 CME Globex Trading Schedule/i);
+function findScheduleSection(html) {
+  const matches = [...html.matchAll(/(20\\d{2}) CME Globex Trading Schedule/gi)];
+  if (!matches.length) return { index: -1, year: null };
+  const currentYear = new Date().getUTCFullYear();
+  const selected = matches.find(match => Number(match[1]) === currentYear)
+    || matches.find(match => Number(match[1]) > currentYear)
+    || matches[matches.length - 1];
+  return { index: selected.index, year: Number(selected[1]) };
+}
+
+function extractHolidayCandidates(html, calendarYear) {
+  const sectionStart = findScheduleSection(html).index;
   if (sectionStart < 0) return [];
   const section = html.slice(sectionStart, sectionStart + 50000);
   const tableMatch = section.match(/<table[\s\S]*?<\/table>/i);
@@ -35,6 +45,7 @@ function extractHolidayCandidates(html) {
       .map(cell => cleanText(cell[1]));
     if (cells.length < 2 || !cells[0] || !cells[1]) return null;
     return {
+      calendar_year: calendarYear,
       holiday: cells[0],
       date_range: cells[1],
       venue: 'CME_GLOBEX',
@@ -94,10 +105,10 @@ export async function handler() {
 
     stage = 'parse';
     const contentHash = crypto.createHash('sha256').update(html).digest('hex');
-    const marker = html.search(/2026 CME Globex Trading Schedule/i);
-    const excerptStart = marker >= 0 ? marker : 0;
+    const schedule = findScheduleSection(html);
+    const excerptStart = schedule.index >= 0 ? schedule.index : 0;
     const excerpt = html.slice(excerptStart, excerptStart + MAX_EXCERPT);
-    const holidayCandidates = extractHolidayCandidates(html);
+    const holidayCandidates = extractHolidayCandidates(html, schedule.year);
 
     const payload = {
       source_key: SOURCE_KEY,
@@ -136,6 +147,7 @@ export async function handler() {
       stage: 'complete',
       excerptLength: excerpt.length,
       candidateCount: holidayCandidates.length,
+      calendarYear: schedule.year,
       parseStatus: payload.parse_status,
       contentHash
     }));
@@ -146,6 +158,7 @@ export async function handler() {
       excerptLength: excerpt.length,
       contentHash,
       candidateCount: holidayCandidates.length,
+      calendarYear: schedule.year,
       parseStatus: payload.parse_status,
       automaticMarketClosuresApplied: false
     });
