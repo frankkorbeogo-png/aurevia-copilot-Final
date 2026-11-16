@@ -33,3 +33,11 @@ test('scenario-api refuse de créer une position avec une cotation de scénario 
  globalThis.fetch=async(input,options={})=>{const u=String(input);if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'3ed0c702-03f1-4264-9e85-746d66401b51'}),{status:200});if(u.includes('/rpc/aurevia_session_is_active_for_user')||u.includes('/rpc/aurevia_is_admin'))return new Response('true',{status:200});if(u.includes('/rest/v1/user_preferences'))return new Response(JSON.stringify([{preferences:{account_currency:'USD'}}]),{status:200});if(u.includes('/rest/v1/aurevia_analysis_scenarios'))return new Response(JSON.stringify([{id:'s1',status:'entry_confirmed',lot_confirmation_expires_at:new Date(Date.now()+600000).toISOString(),trade_group_id:null,instrument:'XAU/USD',direction:'BUY',last_price_at:new Date(Date.now()-5*60*1000).toISOString()}]),{status:200});if(u.includes('/rpc/aurevia_create_position_from_scenario'))createCalled=true;return new Response('[]',{status:200});};
  try{const r=await handler(req({action:'create_position',id:'s1',mode:'unique',volume:0.05,contract_spec:{accountCurrency:'USD',calculationType:'contract',contractSize:100,quoteToAccount:1,feesPerLot:0,minLot:0.01,lotStep:0.01,maxLot:null},auto_journal:true}));assert.equal(r.statusCode,409);assert.equal(parse(r).code,'SCENARIO_PRICE_STALE');assert.equal(createCalled,false);}finally{globalThis.fetch=old;for(const k of ['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SERVICE_ROLE_KEY'])delete process.env[k];}
 });
+
+test('les interfaces et le bandeau TradingView n’affichent plus les indices/énergies retirés',async()=>{
+ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+ const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
+ assert.doesNotMatch(html,/US30|NAS100|SPX500|WTIUSD|WTI\/USD/);
+ assert.doesNotMatch(app,/PEPPERSTONE:US30|NASDAQ:NDX|SP:SPX|TVC:USOIL/);
+ assert.match(app,/TVC:DXY/);
+});
