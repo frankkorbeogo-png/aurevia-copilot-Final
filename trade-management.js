@@ -35,10 +35,12 @@ export function createTradeGroup(input) {
   if(!['unique','separate'].includes(mode)) throw new Error('Mode de gestion invalide.');
   if(!Number.isFinite(quoteToAccount)||quoteToAccount<=0||!Number.isFinite(feesPerLot)||feesPerLot<0) throw new Error('Conversion ou frais broker invalides.');
   if(contractSize!==null&&(!Number.isFinite(contractSize)||contractSize<=0)) throw new Error('La taille du contrat doit être positive.');
-  const lotStepFixed=0.01;
-  if(lot<0.01)throw new Error('Le lot minimum autorisé est de 0,01.');
-  if(Math.abs(lot/lotStepFixed-Math.round(lot/lotStepFixed))>1e-7)throw new Error('Le lot doit être un multiple de 0,01.');
-  let snapshot = contractSpec ? normalizeContractSpec({...contractSpec,minLot:0.01,lotStep:lotStepFixed,maxLot:null}) : null;
+  const snapshot = contractSpec ? normalizeContractSpec(contractSpec) : null;
+  const lotMin=snapshot?.minLot??0.01,lotStepFixed=snapshot?.lotStep??lotStep,lotMax=snapshot?.maxLot??null;
+  if(!Number.isFinite(lotMin)||lotMin<=0||!Number.isFinite(lotStepFixed)||lotStepFixed<=0||(lotMax!==null&&(!Number.isFinite(lotMax)||lotMax<lotMin)))throw new Error('Spécifications de volume broker invalides.');
+  if(lot<lotMin)throw new Error(`Le lot minimum autorisé est de ${lotMin}.`);
+  if(lotMax!==null&&lot>lotMax)throw new Error(`Le lot maximum autorisé est de ${lotMax}.`);
+  if(Math.abs(lot/lotStepFixed-Math.round(lot/lotStepFixed))>1e-7)throw new Error(`Le lot doit respecter le pas broker de ${lotStepFixed}.`);
   if(snapshot){const checked=validateContractSpec(snapshot);if(!checked.ok)throw new Error(checked.error);}
   const allowedOrders=['MARKET','BUY LIMIT','BUY STOP','BUY STOP LIMIT','SELL LIMIT','SELL STOP','SELL STOP LIMIT'];
   if(!allowedOrders.includes(orderType))throw new Error('Type d’ordre non reconnu.');
@@ -56,6 +58,7 @@ export function createTradeGroup(input) {
   if(tps.some(tp=>direction==='BUY'?tp.price<=entry:tp.price>=entry))throw new Error('Les take-profits doivent être du côté favorable de l’entrée.');
   if (!tps.length) throw new Error('Sélectionnez au moins un take-profit.');
   const volumes = mode==='unique' ? splitVolume(lot,tps.length,lotStepFixed) : tps.map(()=>lot);
+  if(volumes.some(volume=>volume<lotMin||(lotMax!==null&&volume>lotMax)))throw new Error('La répartition des TP ne respecte pas les limites de volume broker.');
   if(volumes.some(volume=>volume<0.01))throw new Error('Chaque TP doit recevoir au moins 0,01 lot.');
   const groupId=id();
   const createdAt=new Date().toISOString();
