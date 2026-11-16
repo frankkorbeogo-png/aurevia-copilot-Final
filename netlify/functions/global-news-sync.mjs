@@ -55,9 +55,9 @@ async function fetchArticles(){
  let response;
  for(let attempt=0;attempt<2;attempt++){
   try{
-   response=await fetch(url,{headers,signal:AbortSignal.timeout(8000)});
+   response=await fetch(url,{headers,signal:AbortSignal.timeout(5000)});
   }catch(error){
-   if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(1500);continue;}
+   if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(500);continue;}
    throw error;
   }
   if(response.status===429&&attempt===0){
@@ -121,7 +121,7 @@ async function syncEconomicCalendar(){
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
   let response;
   for(let attempt=0;attempt<2;attempt++){
-   response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(6500)});
+   response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(3500)});
    if(response.status===429&&attempt===0){await response.text().catch(()=>{});await wait(1200);continue;}
    break;
   }
@@ -199,7 +199,7 @@ function economicReleaseMessage(event){
 }
 async function broadcastDueReleases(){
  if(!env('TELEGRAM_BOT_TOKEN'))return {processed:0,notice:'TELEGRAM_BOT_TOKEN absent.'};
- const now=new Date(),start=now,end=new Date(now.getTime()+65*60*1000);
+ const now=new Date(),start=now,end=new Date(now.getTime()+60*60*1000);
  const cutoff=new Date(now.getTime()-24*60*60*1000);
  const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,source_provider,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(cutoff.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
  const pending=await rest('economic_release_events?'+filter);
@@ -222,12 +222,21 @@ async function syncGlobalNews(){
 export async function handler(event){
  if(!env('SUPABASE_URL')||!env('SUPABASE_SERVICE_ROLE_KEY'))return json(503,{ok:false,error:'Supabase service credentials are missing.'});
  const result={ok:true,source:SOURCE};
- try{result.economicCalendar=await syncEconomicCalendar();result.economicReminders=await broadcastDueReleases();}
- catch(error){result.economicCalendarError=String(error.message||error).slice(0,300);}
- try{Object.assign(result,await syncGlobalNews());}
- catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
+ // Economic calendar/reminders and global news are independent. Run them in
+ // parallel so a slow upstream cannot consume the scheduler's whole time budget.
+ const economicTask=(async()=>{
+  try{result.economicCalendar=await syncEconomicCalendar();}
+  catch(error){result.economicCalendarError=String(error.message||error).slice(0,300);}
+  try{result.economicReminders=await broadcastDueReleases();}
+  catch(error){result.economicRemindersError=String(error.message||error).slice(0,300);}
+ })();
+ const newsTask=(async()=>{
+  try{Object.assign(result,await syncGlobalNews());}
+  catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
+ })();
+ await Promise.all([economicTask,newsTask]);
  result.asOf=new Date().toISOString();
- const failed=Boolean(result.economicCalendarError||result.globalNewsError);
+ const failed=Boolean(result.economicCalendarError||result.economicRemindersError||result.globalNewsError);
  result.ok=!failed;
  return json(failed?502:200,result);
 }
