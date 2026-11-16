@@ -665,7 +665,9 @@ async function persistAccountCurrency(){const button=$('saveAccountCurrency');tr
 function bindEvents(){
   let pendingAdminRoute=false;
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
-  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
+  $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
   window.addEventListener('aurevia:adminchange',event=>{
     const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
     const announcementsLink=document.querySelector('[data-page="annonces"]');
@@ -861,7 +863,46 @@ function bindEvents(){
   $('reduceMotion').addEventListener('change',e=>{localStorage.setItem('aurevia_reduce_motion',e.target.checked?'1':'0');document.documentElement.classList.toggle('reduce-motion',e.target.checked);window.dispatchEvent(new CustomEvent('aurevia:motionchange',{detail:{reduced:e.target.checked}}));});
   $('reduceMotion').checked=localStorage.getItem('aurevia_reduce_motion')==='1';document.documentElement.classList.toggle('reduce-motion',$('reduceMotion').checked);initAppInstallation();
 }
+async function refreshLicenseAccess(){
+ const token=await getAnalysisAccessToken();if(!token)return false;
+ try{
+  const response=await fetch('/api/license',{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
+  const state=await response.json().catch(()=>({}));
+  if(!response.ok||state.ok!==true)throw new Error(state.error||'Vérification de licence indisponible.');
+  window.__aureviaLicense=state;updateLicenseGate(state);return ['trial','licensed'].includes(state.status);
+ }catch(error){updateLicenseGate({status:'unavailable',message:error.message});return false;}
+}
+function updateLicenseGate(state){
+ const gate=$('licenseRequiredGate');if(!gate)return;
+ const active=window.__aureviaAuthenticated&&['trial','licensed'].includes(state?.status);
+ gate.hidden=!window.__aureviaAuthenticated||active;
+ const status=$('licenseGateStatus');
+ if(status){
+  if(state?.status==='expired')status.textContent='Votre période d’essai de 3 jours est terminée. Saisissez une clé de licence fournie par KOMI Group pour retrouver l’accès.';
+  else if(state?.status==='suspended')status.textContent='Votre licence est suspendue. Contactez le support KOMI Group.';
+  else if(state?.status==='revoked')status.textContent='Cette licence a été révoquée. Contactez le support KOMI Group.';
+  else status.textContent=state?.message||'Le statut de votre licence ne peut pas être vérifié pour le moment.';
+ }
+ const trial=$('licenseTrialInfo');
+ if(trial&&state?.status==='trial'&&state.trial_expires_at)trial.textContent=`Démo gratuite active jusqu’au ${new Date(state.trial_expires_at).toLocaleString('fr-FR')} · ${state.days_remaining??'—'} jour(s) restant(s).`;
+}
+async function activateUserLicense(){
+ const button=$('activateLicenseBtn'),input=$('licenseKeyInput'),status=$('licenseGateStatus');
+ const key=String(input?.value||'').trim().toUpperCase();
+ if(!key){if(status)status.textContent='Saisissez votre clé de licence.';return;}
+ const token=await getAnalysisAccessToken();if(!token){if(status)status.textContent='Reconnectez-vous pour activer votre licence.';return;}
+ if(button){button.disabled=true;button.textContent='Vérification…';}
+ try{
+  const response=await fetch('/api/license',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({license_key:key}),cache:'no-store'});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||result.ok!==true)throw new Error(({INVALID_KEY:'Clé invalide ou inconnue.',LICENSE_EXPIRED:'Cette licence a expiré.',LICENSE_SUSPENDED:'Cette licence est suspendue.',LICENSE_REVOKED:'Cette licence a été révoquée.',LICENSE_UNAVAILABLE:'Cette licence n’est pas disponible.'})[result.code]||result.error||'Activation impossible.');
+  window.__aureviaLicense=result;updateLicenseGate(result);if(input)input.value='';
+  if(status)status.textContent='Licence activée. Chargement de votre espace AUREVIA…';
+  location.reload();
+ }catch(error){if(status)status.textContent=error.message;}
+ finally{if(button){button.disabled=false;button.textContent='Activer ma licence';}}
+}
 let authenticatedBooted=false;
 function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
-function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated)bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
+function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();
