@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateOpportunityScenarios} from '../opportunity-engine.js';
-import {buildTradeGroupCloudRows} from '../trade-management.js';
+import {buildTradeGroupCloudRows,editOpenTradeGroup} from '../trade-management.js';
 import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mjs';
 import {validateM5AIConsensus} from '../m5-entry-validation.js';
 import {cleanScenario} from '../netlify/functions/ai-analysis.mjs';
@@ -122,4 +122,23 @@ test('le prix réellement exécuté est conservé dans la synchronisation locale
  const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
  assert.match(auth,/actual_entry_price\?\?row\.entry_price/);
  assert.match(auth,/actual_entry_price,stop_loss,take_profit/);
+});
+
+test('une position unique active tous ses TP enfants après confirmation du prix réel',async()=>{
+ const group={id:'g2',mode:'unique',instrument:'XAU/USD',direction:'BUY',requestedLot:0.1,status:'OPEN',children:[
+  {id:'p1',entry:100,stopLoss:95,takeProfit:105,status:'OPEN',remainingLot:0.05,activatedAt:new Date().toISOString()},
+  {id:'p2',entry:100,stopLoss:95,takeProfit:110,status:'PENDING',remainingLot:0.05}
+ ]};
+ editOpenTradeGroup(group,{entry:101,stopLoss:96,takeProfits:[106,111]});
+ assert.ok(group.children.every(x=>x.status==='OPEN'));
+ assert.ok(group.children.every(x=>x.actualEntryPrice===101));
+ assert.ok(group.children.every(x=>x.entry===101));
+});
+test('la RPC de correction du prix réel active ensemble les TP enfants uniques encore en attente',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const sql=await readFile(new URL('../supabase/migrations/20261116195000_aurevia_activate_unique_group_on_fill.sql',import.meta.url),'utf8');
+ assert.match(sql,/status='OPEN'/);
+ assert.match(sql,/status in \('OPEN','PENDING'\)/);
+ assert.match(sql,/activated_at=coalesce\(activated_at,now\(\)\)/);
+ assert.match(sql,/actual_entry_price=p_actual_entry_price/);
 });
