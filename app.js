@@ -601,14 +601,14 @@ function updatePositionCalculationFields(){
 function bindPositionContractFields(){ $('posCalculationType')?.addEventListener('change',updatePositionCalculationFields);updatePositionCalculationFields(); }
 
 async function refreshTelegramHomeNotice(){
-  const notice=$('telegramHomeNotice');if(!notice)return;
+  const ownerId=String(window.__aureviaUserId||'').trim();const notice=$('telegramHomeNotice');if(!notice||!ownerId)return;
   if(!window.__aureviaAuthenticated){notice.hidden=true;return;}
   try{
-    const prefs=await loadTelegramPreferences();
+    const prefs=await loadTelegramPreferences(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
     notice.hidden=Boolean(prefs?.chat_id);
     notice.dataset.state=prefs?.chat_id?'connected':'disconnected';
   }catch(error){
-    notice.hidden=false;notice.dataset.state='unknown';
+    if(String(window.__aureviaUserId||'').trim()!==ownerId)return;notice.hidden=false;notice.dataset.state='unknown';
     const copy=notice.querySelector('.telegram-home-copy p');
     if(copy)copy.textContent='La liaison Telegram n’a pas pu être vérifiée. Ouvrez cette section pour vérifier votre connexion et activer les notifications.';
   }
@@ -739,28 +739,28 @@ async function closeChildAtCurrentQuote(childId,button=null){
 let announcementCache=[],announcementFilter='all';
 function updateAnnouncementBadge(){const badge=$('announcementUnreadBadge');if(!badge)return;const count=announcementCache.filter(a=>!a.is_read).length;badge.textContent=count>99?'99+':String(count);badge.hidden=count===0;}
 function renderAnnouncements(){const host=$('announcementList');if(!host)return;const items=announcementCache.filter(a=>announcementFilter==='all'||!a.is_read);updateAnnouncementBadge();document.querySelectorAll('[data-announcement-filter]').forEach(b=>b.classList.toggle('active',b.dataset.announcementFilter===announcementFilter));if(!items.length){host.innerHTML=`<div class="empty-cell">${announcementFilter==='unread'?'Aucune annonce non lue.':'Aucune annonce publiée pour le moment.'}</div>`;return;}const now=Date.now();host.innerHTML=items.map(a=>{const expired=a.ends_at&&Date.parse(a.ends_at)<now;const date=a.created_at?new Date(a.created_at).toLocaleString('fr-FR'):'Date inconnue';const url=typeof a.source_url==='string'&&/^https:\/\//i.test(a.source_url)?a.source_url:null;return `<article class="announcement-card ${a.is_read?'is-read':'is-unread'}"><div class="announcement-card-top"><span class="announcement-category">${escapeText(a.category||'Information')}</span><span class="announcement-state">${a.is_read?'Lue':'Non lue'}${expired?' · Archivée':''}</span></div><h3>${escapeText(a.title)}</h3><p>${escapeText(a.body).replace(/\n/g,'<br>')}</p><div class="announcement-meta"><span>${escapeText(date)}</span>${expired?'<span>Annonce expirée · conservée dans l’historique</span>':''}</div><div class="announcement-actions">${url?`<a href="${escapeText(url)}" target="_blank" rel="noopener noreferrer">Consulter la source</a>`:''}${!a.is_read?`<button class="small-btn" type="button" data-announcement-read="${escapeText(a.id)}">Marquer comme lue</button>`:''}</div></article>`;}).join('');host.querySelectorAll('[data-announcement-read]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await markAnnouncementAsRead(btn.dataset.announcementRead);const item=announcementCache.find(a=>a.id===btn.dataset.announcementRead);if(item){item.is_read=true;item.read_at=new Date().toISOString();}renderAnnouncements();showInAppNotice('Annonce marquée comme lue.',{type:'success'});}catch(error){$('announcementStatus').textContent='Lecture non synchronisée : '+error.message;showInAppNotice('Impossible de synchroniser la lecture : '+error.message,{type:'error'});btn.disabled=false;}}));}
-async function loadAnnouncements(){if(!window.__aureviaAuthenticated)return;const status=$('announcementStatus');if(status)status.textContent='Actualisation des annonces…';try{announcementCache=await loadPublishedAnnouncements();renderAnnouncements();if(status)status.textContent=`${announcementCache.length} annonce(s) publiée(s) · ${announcementCache.filter(a=>!a.is_read).length} non lue(s).`;}catch(error){if(status)status.textContent='Impossible de charger les annonces : '+error.message;const host=$('announcementList');if(host)host.innerHTML='<div class="empty-cell">Les annonces ne sont pas disponibles. Réessayez après vérification de votre connexion.</div>';}}
+async function loadAnnouncements(){const ownerId=String(window.__aureviaUserId||'').trim();if(!window.__aureviaAuthenticated||!ownerId)return;const status=$('announcementStatus');if(status)status.textContent='Actualisation des annonces…';try{const announcements=await loadPublishedAnnouncements(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;announcementCache=announcements;renderAnnouncements();if(status)status.textContent=`${announcementCache.length} annonce(s) publiée(s) · ${announcementCache.filter(a=>!a.is_read).length} non lue(s).`;}catch(error){if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(status)status.textContent='Impossible de charger les annonces : '+error.message;const host=$('announcementList');if(host)host.innerHTML='<div class="empty-cell">Les annonces ne sont pas disponibles. Réessayez après vérification de votre connexion.</div>';}}
 async function refreshAccountCurrency(){
- const notice=$('accountCurrencyNotice'),status=$('accountCurrencyStatus'),select=$('profileAccountCurrency'),risk=$('accountCurrency');
- try{accountCurrency=await loadAccountCurrency();if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.';return accountCurrency;}
- catch(error){if(status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return null;const notice=$('accountCurrencyNotice'),status=$('accountCurrencyStatus'),select=$('profileAccountCurrency'),risk=$('accountCurrency');
+ try{const value=await loadAccountCurrency(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;accountCurrency=value;if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.';return accountCurrency;}
+ catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
 }
 function updateBrokerProfileFields(){
  const type=$('brokerProfileCalculationType')?.value||'contract';
  document.querySelectorAll('[data-broker-profile]').forEach(field=>{field.hidden=field.dataset.brokerProfile!==type;});
 }
 async function refreshBrokerProfile(){
- const select=$('brokerProfileInstrument'),status=$('brokerProfileStatus');if(!select)return;
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const select=$('brokerProfileInstrument'),status=$('brokerProfileStatus');if(!select)return;
  if(!select.options.length)select.innerHTML=Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>`<option value="${escapeText(item.label)}">${escapeText(item.label)}</option>`).join('');
  try{
-  const spec=await loadBrokerSettings(select.value);const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
+  const spec=await loadBrokerSettings(select.value,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
   set('brokerProfileCalculationType',spec?.calculationType||'contract');set('brokerProfileLeverage',spec?.leverage);
   set('brokerProfileMinLot',spec?.minLot??0.01);set('brokerProfileLotStep',spec?.lotStep??0.01);set('brokerProfileMaxLot',spec?.maxLot);
   set('brokerProfileContractSize',spec?.contractSize);set('brokerProfilePointSize',spec?.pointSize);set('brokerProfilePointValue',spec?.pointValue);
   set('brokerProfileTickSize',spec?.tickSize);set('brokerProfileTickValue',spec?.tickValue);set('brokerProfileFees',spec?.feesPerLot??0);
   if(status)status.textContent=spec?'Spécifications enregistrées chargées pour '+select.value+'.':'Aucune fiche enregistrée pour '+select.value+'.';
   updateBrokerProfileFields();
- }catch(error){if(status)status.textContent='Chargement impossible : '+error.message;}
+ }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Chargement impossible : '+error.message;}
 }
 async function persistBrokerProfile(){
  const button=$('saveBrokerProfile'),status=$('brokerProfileStatus');
