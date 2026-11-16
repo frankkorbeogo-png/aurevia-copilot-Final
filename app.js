@@ -912,16 +912,17 @@ function bindEvents(){
   $('settingsBtn').addEventListener('click',()=>document.querySelector('[data-page="parametres"]')?.click());
   document.querySelectorAll('[data-announcement-filter]').forEach(btn=>btn.addEventListener('click',()=>{announcementFilter=btn.dataset.announcementFilter;renderAnnouncements();}));
   $('announcementMarkAllRead')?.addEventListener('click',async event=>{
-    const btn=event.currentTarget;
+    const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const btn=event.currentTarget;
     const status=$('announcementStatus');
     if(btn.disabled)return;
     if(!await confirmInApp({title:'Marquer toutes les annonces comme lues ?',message:'Toutes les annonces actuellement non lues seront marquées comme lues sur votre compte.',confirmLabel:'Tout marquer comme lu'}))return;
+    if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
     btn.disabled=true;
     const originalLabel=btn.textContent;
     btn.textContent='Synchronisation…';
     if(status)status.textContent='Mise à jour de vos lectures…';
     try{
-      const latest=await loadPublishedAnnouncements();
+      const latest=await loadPublishedAnnouncements(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
       announcementCache=latest;
       const unread=latest.filter(item=>!item.is_read&&item.id);
       if(!unread.length){
@@ -929,9 +930,9 @@ function bindEvents(){
         if(status)status.textContent='Toutes les annonces sont déjà marquées comme lues.';
         return;
       }
-      const result=await markAllAnnouncementsAsRead(unread.map(item=>item.id));
+      const result=await markAllAnnouncementsAsRead(unread.map(item=>item.id),ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
       if(!result?.success)throw new Error('Le serveur n’a pas confirmé la mise à jour.');
-      const verified=await loadPublishedAnnouncements();
+      const verified=await loadPublishedAnnouncements(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
       announcementCache=verified;
       const remaining=verified.filter(item=>!item.is_read).length;
       renderAnnouncements();
@@ -940,9 +941,9 @@ function bindEvents(){
         : `Mise à jour partielle : ${remaining} annonce(s) restent non lues.`;
       showInAppNotice(remaining===0?`${unread.length} annonce(s) marquée(s) comme lue(s).`:`Mise à jour partielle : ${remaining} annonce(s) restent non lues.`,{type:remaining===0?'success':'info'});
     }catch(error){
-      if(status)status.textContent='Échec du marquage comme lu : '+(error?.message||'Erreur inconnue')+'. Actualisez la page ou reconnectez-vous.';
+      if(String(window.__aureviaUserId||'').trim()===ownerId){if(status)status.textContent='Échec du marquage comme lu : '+(error?.message||'Erreur inconnue')+'. Actualisez la page ou reconnectez-vous.';
       showInAppNotice('Échec du marquage comme lu : '+(error?.message||'Erreur inconnue'),{type:'error'});
-      console.error('AUREVIA mark-all-announcements-read:',error);
+      console.error('AUREVIA mark-all-announcements-read:',error);}
     }finally{
       btn.disabled=false;
       btn.textContent=originalLabel;
