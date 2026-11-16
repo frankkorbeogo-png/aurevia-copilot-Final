@@ -64,7 +64,8 @@ test('the M5-confirmed close becomes the proposed entry and is shown in the app'
   const {readFile}=await import('node:fs/promises');
   const watch=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
   const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
-  assert.match(watch,/entry:m5Entry/);
-  assert.match(watch,/Entrée M5 de référence/);
-  assert.match(app,/Entrée M5 de référence/);
+  assert.match(watch,/entry_confirmation_price:m5Entry/);
+  assert.match(watch,/entry_confirmation_score:confirmation\.score/);
+  assert.match(watch,/Entrée indicative M5 : \$\{m5Entry\}/);
+  assert.match(app,/scenario\.entry_confirmation_price\?\?scenario\.entry/);
 });
