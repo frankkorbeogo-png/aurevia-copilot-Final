@@ -5,7 +5,7 @@ import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade } from './journal.js';
 import { initEconomicCalendar } from './news.js';
 import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase, deleteOpenTradeGroupFromSupabase, deletePendingTradeFromSupabase, deleteTradePositionFromSupabase, deleteLinkedJournalEntryFromSupabase } from './auth.js';
-import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds } from './trade-management.js';
+import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds, markTradeGroupCloudSyncPending, markTradeCloseCloudSyncPending } from './trade-management.js';
 import { validateContractSpec, calculateEstimatedMargin } from './contract-engine.js';
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
 
@@ -15,6 +15,57 @@ let selectedSymbol='XAUUSD', selectedTf='15';
 let accountCurrency=null;
 let tradingViewMountToken=0, tradingViewRetryTimer=null, tradingViewResizeObserver=null;
 let deferredInstallPrompt=null;
+
+const TRADE_SYNC_QUEUE_KEY='aurevia-cloud-sync-retry-v1';
+let tradeSyncFlushBusy=false;
+function readTradeSyncQueue(){
+  try{const value=JSON.parse(localStorage.getItem(TRADE_SYNC_QUEUE_KEY)||'{}');return {groups:Array.isArray(value.groups)?value.groups:[],closes:Array.isArray(value.closes)?value.closes:[]};}
+  catch{return {groups:[],closes:[]};}
+}
+function writeTradeSyncQueue(queue){try{localStorage.setItem(TRADE_SYNC_QUEUE_KEY,JSON.stringify(queue));return true;}catch{return false;}}
+function queueTradeGroupSync(groupId,telegramText=null){
+  const queue=readTradeSyncQueue(),existing=queue.groups.find(item=>item.groupId===groupId);
+  if(existing){if(telegramText)existing.telegramText=telegramText;}else queue.groups.push({groupId,telegramText,queuedAt:new Date().toISOString()});
+  markTradeGroupCloudSyncPending(groupId,true);
+  if(!writeTradeSyncQueue(queue))throw new Error('Impossible de conserver la demande de synchronisation sur cet appareil.');
+}
+function queueTradeCloseSync(groupId,childId,closeId,telegramText=null){
+  const queue=readTradeSyncQueue();if(!queue.closes.some(item=>item.closeId===closeId))queue.closes.push({groupId,childId,closeId,telegramText,queuedAt:new Date().toISOString()});
+  markTradeCloseCloudSyncPending(groupId,childId,closeId,true);
+  if(!writeTradeSyncQueue(queue))throw new Error('Impossible de conserver la clôture en attente de synchronisation.');
+}
+async function flushTradeSyncQueue(){
+  if(tradeSyncFlushBusy||!window.__aureviaAuthenticated)return {synced:0,pending:true};
+  tradeSyncFlushBusy=true;let synced=0;
+  try{
+    let queue=readTradeSyncQueue();
+    for(const item of [...queue.groups]){
+      const group=loadTradeGroups().find(row=>row.id===item.groupId);
+      if(!group){queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue);continue;}
+      try{
+        const result=await syncTradeGroupToSupabase(group);if(!result?.synced)continue;
+        if(result.journalMappings)attachCloudJournalIds(group.id,result.journalMappings);
+        markTradeGroupCloudSyncPending(group.id,false);
+        queue.groups=queue.groups.filter(row=>row.groupId!==item.groupId);writeTradeSyncQueue(queue);synced++;
+        if(item.telegramText)sendTelegramNotification({type:'trade_open',text:item.telegramText}).catch(()=>{});
+        showInAppNotice('Position et journal confirmés dans le cloud AUREVIA.',{type:'success'});
+      }catch(error){console.warn('Synchronisation cloud du trade différée :',error.message);}
+    }
+    queue=readTradeSyncQueue();
+    for(const item of [...queue.closes]){
+      const group=loadTradeGroups().find(row=>row.id===item.groupId),child=group?.children.find(row=>row.id===item.childId),closeEvent=child?.closes?.find(row=>row.id===item.closeId);
+      if(!group||!child||!closeEvent){queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue);continue;}
+      try{
+        const result=await syncTradeCloseToSupabase(group,child,closeEvent);if(!result?.synced)continue;
+        markTradeCloseCloudSyncPending(group.id,child.id,closeEvent.id,false);
+        queue.closes=queue.closes.filter(row=>row.closeId!==item.closeId);writeTradeSyncQueue(queue);synced++;
+        if(item.telegramText)sendTelegramNotification({type:'trade_close',text:item.telegramText}).catch(()=>{});
+        showInAppNotice('Clôture confirmée dans le cloud AUREVIA.',{type:'success'});
+      }catch(error){console.warn('Synchronisation cloud de la clôture différée :',error.message);}
+    }
+    const pending=readTradeSyncQueue();return {synced,pending:pending.groups.length>0||pending.closes.length>0};
+  }finally{tradeSyncFlushBusy=false;}
+}
 async function refreshSelectedQuote(){
   const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
   if(label)label.textContent=symbols[selectedSymbol]?.label||selectedSymbol;
@@ -592,7 +643,7 @@ async function createPositionFromForm(){
       if(!orderCheck.ok)throw new Error(orderCheck.error);
     }
     const contractSpec=readPositionContractSpec();contractSpec.quoteCurrency=inferQuoteCurrency($('posInstrument').value);    if(contractSpec.calculationType==='contract'){      if(!contractSpec.quoteCurrency)throw new Error('Devise de cotation inconnue : marge non calculable.');      if(contractSpec.quoteCurrency!==accountCurrency){        const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous pour récupérer le taux de conversion.');        const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(contractSpec.quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});        const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'Conversion de devise indisponible.');        const fxSnapshot=validateFxSnapshot(data,{from:contractSpec.quoteCurrency,to:accountCurrency});contractSpec.quoteToAccount=fxSnapshot.rate;contractSpec.fxSnapshot=fxSnapshot;      }else contractSpec.quoteToAccount=1;    }    const checked=validateContractSpec(contractSpec);if(!checked.ok)throw new Error(checked.error);const enteredLot=Number($('posLot').value);if(!Number.isFinite(enteredLot)||enteredLot<=0)throw new Error('Saisissez un volume positif.');if(enteredLot<checked.spec.minLot||(checked.spec.maxLot!==null&&enteredLot>checked.spec.maxLot)||Math.abs(enteredLot/checked.spec.lotStep-Math.round(enteredLot/checked.spec.lotStep))>1e-7)throw new Error('Le lot ne respecte pas les limites de volume broker.');const group=createTradeGroup({mode:$('posMode').value,instrument:$('posInstrument').value,direction:$('posDirection').value,lot:enteredLot,lotStep:checked.spec.lotStep,entry:Number($('posEntry').value),stopLoss:Number($('posSL').value),takeProfits:tps,autoJournal:$('posAutoJournal').checked,orderType:$('posOrderType').value,triggerPrice:$('posTrigger').value.trim()?Number($('posTrigger').value):null,limitPrice:$('posLimit').value.trim()?Number($('posLimit').value):null,expiresAt:$('posExpiry').value?new Date($('posExpiry').value).toISOString():null,contractSpec:checked.spec,brokerSnapshot:{brokerName:checked.spec.brokerName,accountType:checked.spec.accountType,accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage}});
-    saveTradeGroup(group);renderPositions();showInAppNotice('Position créée localement dans AUREVIA. Synchronisation cloud en cours…',{type:'info',duration:6500});const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];sendTelegramNotification({type:'trade_open',text:tradeLines.join('\n')}).catch(()=>{});syncTradeGroupToSupabase(group).then(r=>{if(r.synced&&r.journalMappings)attachCloudJournalIds(group.id,r.journalMappings);if(r.synced)showInAppNotice(`Position enregistrée et synchronisée : ${group.children.length} trade(s).`,{type:'success'});else showInAppNotice(`Position enregistrée sur cet appareil : connectez-vous à Supabase pour la synchroniser. ${group.autoJournal?'Fiche locale liée au journal créée.':'Journal automatique désactivé.'}`,{type:'success'});}).catch(error=>showInAppNotice(`Position conservée localement, mais synchronisation cloud impossible : ${error.message}`));
+    saveTradeGroup(group);renderPositions();showInAppNotice('Position créée localement dans AUREVIA. Synchronisation cloud en cours…',{type:'info',duration:6500});const tradeLines=[`AUREVIA COPILOT · TRADE ENREGISTRÉ`,`Instrument : ${group.instrument}`,`Direction : ${group.direction}`,`Type : ${group.orderType}`,`Entrée : ${group.children[0].entry}`,`Stop Loss : ${group.children[0].stopLoss}`,`Take Profits : ${group.children.map(c=>`${c.tpLabel} ${c.takeProfit} (${c.initialLot} lot)`).join(' · ')}`,`Volume total : ${group.requestedLot}`,`Suivi interne AUREVIA uniquement · aucun ordre broker envoyé.`];queueTradeGroupSync(group.id,tradeLines.join('\\n'));const sync=await flushTradeSyncQueue();if(sync.pending)showInAppNotice('Position conservée sur cet appareil. Synchronisation cloud en attente ; nouvelle tentative automatique.',{type:'warning'});
   }catch(error){showInAppNotice(error.message);}
 }
 async function closeChildAtCurrentQuote(childId,button=null){
@@ -650,7 +701,7 @@ async function closeChildAtCurrentQuote(childId,button=null){
     const finalLabel=closeEvent.net>0?'gain':closeEvent.net<0?'perte':'résultat nul';
     showInAppNotice(`Clôture enregistrée : ${finalLabel} de ${Number(closeEvent.net).toFixed(2)} ${finalCurrency}. Volume restant sur ce lot : ${closedChild.remainingLot}.`,{type:closeEvent.net<0?'warning':'success',duration:8000});
     sendTelegramNotification({type:'trade_close',text:`AUREVIA COPILOT · CLÔTURE CONFIRMÉE\n${latestGroup.instrument} · ${closedChild.direction} · ${closedChild.tpLabel}\nVolume clôturé : ${closeEvent.volume}\nCours de référence Twelve Data : ${closeEvent.exit}\nRésultat net estimé : ${Number(closeEvent.net).toFixed(2)} ${finalCurrency}\nVolume restant sur ce lot : ${closedChild.remainingLot}\nSuivi interne AUREVIA uniquement · aucun ordre broker envoyé.`}).catch(()=>{});
-    syncTradeCloseToSupabase(latestGroup,closedChild,closeEvent).then(result=>{if(!result?.synced)showInAppNotice('Clôture enregistrée localement, mais synchronisation cloud non confirmée.',{type:'info'});}).catch(error=>showInAppNotice(`Clôture enregistrée localement, mais synchronisation cloud impossible : ${error.message}`,{type:'error'}));
+    const closeTelegramText=`AUREVIA COPILOT · CLÔTURE ENREGISTRÉE\\n${latestGroup.instrument} · ${latestGroup.direction}\\n${closedChild.tpLabel} · ${closeEvent.volume} lot(s)\\nRésultat net : ${closeEvent.net}`;queueTradeCloseSync(latestGroup.id,closedChild.id,closeEvent.id,closeTelegramText);const sync=await flushTradeSyncQueue();if(sync.pending)showInAppNotice('Clôture conservée localement. Synchronisation cloud en attente ; Aucune notification Telegram ne partira avant confirmation cloud.',{type:'warning',duration:9000});
   }catch(error){showInAppNotice(error.message,{type:'error'});}
   finally{if(button)button.disabled=false;}
 }
@@ -952,6 +1003,6 @@ async function activateUserLicense(){
  finally{if(button){button.disabled=false;button.textContent='Activer ma licence';}}
 }
 let authenticatedBooted=false;
-function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();renderPositions();renderLinkedJournal();setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;authenticatedBooted=true;refreshAccountCurrency();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();renderPositions();renderLinkedJournal();flushTradeSyncQueue();setInterval(()=>{if(window.__aureviaAuthenticated)flushTradeSyncQueue();},30000);setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15 / M5.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
 function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();
