@@ -265,7 +265,6 @@ async function openTradeValidation(scenario){
   updateValidationContractFields();
  }catch(error){$('validationTradeStatus').textContent='Chargement des paramètres broker impossible : '+error.message;}
 
- $('validationTradeStatus').textContent=accountCurrency?`Devise du profil : ${accountCurrency}. Vérifiez les niveaux, choisissez le mode et renseignez les paramètres techniques du trade.`:'Devise du compte absente du profil. Configurez-la dans Paramètres avant de valider ce trade.';
  $('validationTradeNav').hidden=false;
  document.querySelector('[data-page="validation-trade"]')?.click();
 }
@@ -800,7 +799,8 @@ async function issueAdminLicenses(){
 }
 function bindEvents(){
   let pendingAdminRoute=false;
-  $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);\n  $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);\n  $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);\n  $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
+  $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
+  $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);\n  $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);\n  $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
   window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshBrokerProfile();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
   $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
