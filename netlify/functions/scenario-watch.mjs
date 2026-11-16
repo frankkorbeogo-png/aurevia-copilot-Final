@@ -109,7 +109,7 @@ export async function handler(){
       indicators:calculateIndicators(closedM5),
       structure:detectMarketStructure(closedM5.slice(0,-1))
      });
-     const proposalPatch={last_m5_analysis_at:new Date(closedAt).toISOString(),entry_confirmation_score:confirmation.score,entry_confirmation_components:confirmation.components||[],m5_ai_reason:confirmation.reason,m5_ai_proposal:confirmation.proposal||null,updated_at:new Date().toISOString()};
+     const proposalPatch={last_m5_analysis_at:new Date(closedAt).toISOString(),entry_confirmation_score:confirmation.score,entry_confirmation_components:confirmation.components||[],m5_ai_reason:confirmation.reason,m5_ai_proposal:{proposal:confirmation.proposal||null,review:confirmation.review||null,audit:confirmation.audit||null,priceAgreement:confirmation.priceAgreement??false,priceTolerance:confirmation.priceTolerance??null},updated_at:new Date().toISOString()};
      if(!confirmation.confirmed||!Number.isFinite(Number(confirmation.entryReference))){
       await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=eq.zone_reached`,{method:'PATCH',body:proposalPatch,prefer:'return=minimal'});
       continue;
