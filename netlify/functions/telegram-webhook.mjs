@@ -161,9 +161,9 @@ async function showReview(token,chatId,setup,scenario){
  ]);
 }
 async function handleGuidedMessage(token,chatId,userId,text){
- if(!await ensureTelegramAccess(token,chatId,userId))return true;
  const prefs=await getPreferences(userId),setup=prefs.telegram_trade_setup;
  if(!setup)return false;
+ if(!await ensureTelegramAccess(token,chatId,userId))return true;
  if(Date.now()-Date.parse(setup.startedAt)>30*60*1000){await saveSetup(userId,null);await telegramSend(token,chatId,'Cette configuration a expiré. Attends une nouvelle confirmation d’entrée.');return true;}
  const value=text.trim(),skip=/^(ignorer|aucun|aucune)$/i.test(value),n=numberInput(value),step=setup.step;
  if(step==='lot'){
