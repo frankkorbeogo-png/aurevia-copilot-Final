@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {validateM5AIConsensus} from '../m5-entry-validation.js';
+import {runAureviaM5Confirmation} from '../netlify/functions/ai-collaboration.mjs';
 
 function consensus(direction){
  const buy=direction==='BUY';
@@ -91,4 +92,54 @@ test('le worker M5 respecte le budget de 30 secondes des fonctions planifiées',
  const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
  assert.match(source,/AbortSignal\.timeout\(5000\)/);
+});
+
+function configureM5Providers(t){
+ const keys=['GROQ_API_KEY','OPENROUTER_API_KEY','CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID'];
+ const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+ process.env.GROQ_API_KEY='test-groq';process.env.OPENROUTER_API_KEY='test-openrouter';process.env.CLOUDFLARE_API_TOKEN='test-cloudflare';process.env.CLOUDFLARE_ACCOUNT_ID='test-account';
+ t.after(()=>keys.forEach(k=>old[k]===undefined?delete process.env[k]:process.env[k]=old[k]));
+}
+function providerResponse(value){return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(value)}}]}),{status:200,headers:{'content-type':'application/json'}});}
+const m5Fixture={
+ scenario:{direction:'BUY',entryZoneLow:100,entryZoneHigh:102,stopLoss:98,takeProfits:[106]},
+ candles:Array.from({length:40},(_,i)=>({time:Date.now()-((39-i)*300000),open:100,high:101,low:99,close:100.5})),
+ indicators:{atr14:0.5},structure:{bos:'bullish',choch:null}
+};
+const leadFixture={decision:'CONFIRM',entryPrice:100.5,entryZoneLow:100.2,entryZoneHigh:100.8,score:82,reasoning:'Retest M5 confirmé'};
+const reviewFixture={decision:'CONFIRM',entryPrice:100.5,score:78,verdict:'CONFIRME',reasoning:'Prix cohérent',criticalBlockers:[]};
+const auditFixture={decision:'CONFIRM',veto:false,score:75,reasoning:'Risque acceptable',criticalBlockers:[]};
+
+test('la confirmation M5 appelle Groq puis les deux contrôles indépendants en parallèle',async t=>{
+ configureM5Providers(t);
+ const oldFetch=globalThis.fetch;const calls=[];let activeReviewers=0,maxActiveReviewers=0;
+ globalThis.fetch=async url=>{
+  const host=new URL(url).hostname;calls.push(host);
+  if(host==='api.groq.com')return providerResponse(leadFixture);
+  activeReviewers++;maxActiveReviewers=Math.max(maxActiveReviewers,activeReviewers);
+  await new Promise(resolve=>setTimeout(resolve,80));
+  activeReviewers--;
+  return providerResponse(host==='openrouter.ai'?reviewFixture:auditFixture);
+ };
+ t.after(()=>globalThis.fetch=oldFetch);
+ const result=await runAureviaM5Confirmation(m5Fixture);
+ assert.equal(result.confirmed,true);
+ assert.deepEqual(calls,['api.groq.com','openrouter.ai','api.cloudflare.com']);
+ assert.equal(maxActiveReviewers,2);
+ assert.equal(result.entryReference,100.5);
+});
+
+test('une réponse HTTP 503 d’OpenRouter bloque la confirmation M5 même si Groq et Cloudflare répondent',async t=>{
+ configureM5Providers(t);
+ const oldFetch=globalThis.fetch;
+ globalThis.fetch=async url=>{
+  const host=new URL(url).hostname;
+  if(host==='api.groq.com')return providerResponse(leadFixture);
+  if(host==='openrouter.ai')return new Response('unavailable',{status:503});
+  return providerResponse(auditFixture);
+ };
+ t.after(()=>globalThis.fetch=oldFetch);
+ const result=await runAureviaM5Confirmation(m5Fixture);
+ assert.equal(result.confirmed,false);
+ assert.match(result.reason,/OpenRouter indisponible/);
 });
