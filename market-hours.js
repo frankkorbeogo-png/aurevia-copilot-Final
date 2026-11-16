@@ -33,9 +33,10 @@ function holidayWindows(y){
   for(const x of EXCEPTIONAL_CLOSURES){const start=new Date(x.start),end=new Date(x.end);if(Number.isFinite(+start)&&Number.isFinite(+end)&&end>start)out.push({start,end,label:x.label||'Fermeture exceptionnelle'});}
   return out;
 }
-function holidayClosure(now){
-  const y=+parts(now).year;
-  return [...holidayWindows(y-1),...holidayWindows(y),...holidayWindows(y+1)].find(x=>now>=x.start&&now<x.end)||null;
+function holidayClosure(_now){
+  // Generic US holiday dates are informational only. They are not proof that
+  // an OTC Forex or broker XAU/USD feed is closed.
+  return null;
 }
 function addDaysFromParts(p,n){return addDay(new Date(Date.UTC(+p.year,+p.month-1,+p.day)),n);}
 function fmtBF(date,withDate=false){return new Intl.DateTimeFormat('fr-FR',{timeZone:BF,...(withDate?{weekday:'long',day:'2-digit',month:'long'}:{}),hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date);}
@@ -126,6 +127,6 @@ export function getMarketStatus(symbol,now=new Date()){
   }
   const market=FX.has(code)?'FOREX':METALS.has(code)?'METALS':'UNKNOWN';
   if(market==='UNKNOWN')return {tradable:true,status:'UNRESTRICTED',market,checkedAt:now.toISOString()};
-  const holiday=holidayClosure(now),session=sessionClosure(now,market),closed=!!(holiday||session),reopen=holiday?.end||session?.reopen||null,label=holiday?.label||session?.label||null;
-  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now,market),closureType:holiday?'HOLIDAY':session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
+  const holiday=holidayClosure(now),session=sessionClosure(now,market),closed=!!session,reopen=session?.reopen||null,label=session?.label||null;
+  return {tradable:!closed,status:closed?'CLOSED':'OPEN',market,timezone:BF,schedule:weeklySchedule(now,market),closureType:session?.type||null,closureLabel:label,reopensAt:reopen?.toISOString()||null,reason:closed?`Marché fermé : ${label}. ${reopen?`Réouverture prévue le ${fmtBF(reopen,true)} à ${fmtBF(reopen)} (heure du Burkina Faso).` : ''} Aucune nouvelle analyse ne peut être lancée pendant cette fermeture.`:null,checkedAt:now.toISOString()};
 }
