@@ -295,6 +295,46 @@ export async function saveAccountCurrency(currency,expectedUserId=null){
  const preferences={...(data?.preferences||{}),account_currency:value};
  const saved=await supabase.from('user_preferences').upsert({user_id:userId,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return value;
 }
+export async function loadRiskManagementSettings(expectedUserId=null){
+ await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return null;
+ const saved=data?.preferences?.risk_management||{};
+ const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
+ return {
+  brokerName:String(saved.brokerName||'').slice(0,80),
+  accountType:['standard','raw_ec n','pro','demo','other'].includes(String(saved.accountType||'').toLowerCase())?String(saved.accountType).toLowerCase():'standard',
+  balance:number(saved.balance),equity:number(saved.equity),marginUsed:number(saved.marginUsed),
+  peakEquity:number(saved.peakEquity),dailyLossLimit:number(saved.dailyLossLimit),weeklyLossLimit:number(saved.weeklyLossLimit),
+  defaultLeverage:number(saved.defaultLeverage,2000)
+ };
+}
+export async function saveRiskManagementSettings(settings,expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant d’enregistrer la gestion du compte.');const userId=currentUser.id;
+ if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
+ const accountType=String(settings?.accountType||'standard').toLowerCase();
+ if(!['standard','raw_ec n','pro','demo','other'].includes(accountType))throw new Error('Type de compte invalide.');
+ const brokerName=String(settings?.brokerName||'').trim().slice(0,80);
+ const number=(value,name,{min=0}={})=>{const n=Number(value);if(!Number.isFinite(n)||n<min)throw new Error('Valeur invalide : '+name);return n;};
+ const clean={
+  brokerName,accountType,
+  balance:number(settings?.balance,'solde'),
+  equity:number(settings?.equity,'equity'),
+  marginUsed:number(settings?.marginUsed,'marge utilisée'),
+  peakEquity:number(settings?.peakEquity,'pic d’equity'),
+  dailyLossLimit:number(settings?.dailyLossLimit,'limite quotidienne'),
+  weeklyLossLimit:number(settings?.weeklyLossLimit,'limite hebdomadaire'),
+  defaultLeverage:number(settings?.defaultLeverage,'levier',{min:1})
+ };
+ clean.peakEquity=Math.max(clean.peakEquity,clean.equity);
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
+ const preferences={...(data?.preferences||{}),risk_management:clean};
+ const saved=await supabase.from('user_preferences').upsert({user_id:userId,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+ if(saved.error)throw new Error(saved.error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');
+ return clean;
+}
+
 export async function loadBrokerSettings(instrument,expectedUserId=null){
  await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;
  const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();
