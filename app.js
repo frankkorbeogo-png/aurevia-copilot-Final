@@ -366,7 +366,7 @@ async function refreshScenarioWatchList(){
   host.querySelectorAll('[data-scenario-validate]').forEach(button=>button.addEventListener('click',()=>{
    const scenario=rows.find(x=>x.id===button.dataset.scenarioValidate);if(scenario)openTradeValidation(scenario);
   }));
- }catch(error){host.textContent=error.message||'Impossible de charger les scénarios.';}
+ }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId)host.textContent=error.message||'Impossible de charger les scénarios.';}
 }
 
 function renderAIScenarios(state){
