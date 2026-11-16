@@ -37,7 +37,7 @@ test('scenario-api refuse de créer une position avec une cotation de scénario 
 test('les interfaces et le bandeau TradingView n’affichent plus les indices/énergies retirés',async()=>{
  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
  const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
- assert.doesNotMatch(html,/US30|NAS100|SPX500|WTIUSD|WTI\/USD/);
+ assert.doesNotMatch(html,/US30|NAS100|SPX500|WTIUSD|WTI\/USD|optgroup label="Énergie"/);
  assert.doesNotMatch(app,/PEPPERSTONE:US30|NASDAQ:NDX|SP:SPX|TVC:USOIL/);
  assert.match(app,/TVC:DXY/);
 });
