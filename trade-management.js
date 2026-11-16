@@ -254,7 +254,7 @@ export function editOpenTradeGroup(group, {entry,stopLoss,takeProfits}){
   if(group.direction==='SELL'&&stopLoss<=entry)throw new Error('Pour un SELL, le Stop Loss doit rester au-dessus de l’entrée.');
   if(!Array.isArray(takeProfits)||takeProfits.length!==group.children.length||takeProfits.some(v=>!Number.isFinite(v)||v<=0||(group.direction==='BUY'?v<=entry:v>=entry)))throw new Error('Chaque TP doit être valide et rester du côté favorable de l’entrée.');
   const actualFillKnown=group.children.some(child=>child.status==='OPEN');
-  group.children.forEach((child,i)=>{child.entry=entry;if(actualFillKnown)child.actualEntryPrice=entry;child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
+  group.children.forEach((child,i)=>{child.entry=entry;if(actualFillKnown){child.actualEntryPrice=entry;child.status='OPEN';child.activatedAt=child.activatedAt||new Date().toISOString();child.activationPrice=entry;}child.stopLoss=stopLoss;child.takeProfit=takeProfits[i];});
   if(actualFillKnown)group.actualEntryPrice=entry;
   group.updatedAt=new Date().toISOString();return group;
 }
