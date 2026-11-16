@@ -12,7 +12,7 @@ const pending=[
  '20261116223000','20261116230000','20261116230100','20261116230200','20261116230300','20261116230400','20261116230500'
 ];
 
-test('le dossier de production contient 63 migrations historiques canoniques et 17 migrations de livraison',()=>{
+test('le dossier de production contient 63 migrations historiques canoniques et 19 migrations de livraison',()=>{
  assert.equal(names.length,82);
  assert.equal(new Set(versions).size,82);
  assert.ok(names.some(x=>x.startsWith('20261110073307_create_aurevia_core_tables')));
