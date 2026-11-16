@@ -318,7 +318,7 @@ async function confirmTradeValidation(){
   const actualEntryPrice=isMarketOrder?Number($('validationActualFill').value):null;
   if(isMarketOrder&&(!Number.isFinite(actualEntryPrice)||actualEntryPrice<=0||(s.direction==='BUY'?(actualEntryPrice<=Number(s.stop_loss)||actualEntryPrice>=Number(s.take_profits?.[0])):(actualEntryPrice>=Number(s.stop_loss)||actualEntryPrice<=Number(s.take_profits?.[0])))))throw new Error('Saisissez le prix réellement obtenu lors de votre exécution manuelle, cohérent avec le SL et le TP1.');
   if(!Number.isFinite(volume)||volume<=0)throw new Error('Saisissez un volume positif.');
-  const rawSpec=await validationContractSpec(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!rawSpec)return;const checked=validateContractSpec(rawSpec);
+  const rawSpec=await validationContractSpec(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!rawSpec)return;rawSpec.actualEntryPrice=actualEntryPrice;const checked=validateContractSpec(rawSpec);
   if(!checked.ok)throw new Error(checked.error);
   checked.spec.actualEntryPrice=actualEntryPrice;
   if(volume<checked.spec.minLot||(checked.spec.maxLot!==null&&volume>checked.spec.maxLot))throw new Error('Le lot saisi dépasse les limites indiquées dans les paramètres techniques.');
