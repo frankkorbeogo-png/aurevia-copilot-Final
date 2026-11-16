@@ -96,7 +96,7 @@ export async function handler(event){
   }
   const target=String(body.user_id||'');
   if(['suspend','activate','delete_user','permanent_delete_user','revoke_session'].includes(action)&&!UUID.test(target))return json(400,{error:'Identifiant utilisateur invalide.'});
-  if(['suspend','activate','delete_user','revoke_session'].includes(action)&&target===caller.id)return json(409,{error:'Cette action ne peut pas viser votre propre compte depuis la console.'});
+  if(['suspend','activate','delete_user','permanent_delete_user','revoke_session'].includes(action)&&target===caller.id)return json(409,{error:'Cette action ne peut pas viser votre propre compte depuis la console.'});
   if(['suspend','activate','delete_user','permanent_delete_user'].includes(action)){
    const targetIsAdmin=await rpc(base,key,'aurevia_is_admin',{p_user_id:target});
    if(targetIsAdmin===true)return json(409,{error:'Un compte administrateur ne peut pas être suspendu ou supprimé depuis la console utilisateurs.'});
