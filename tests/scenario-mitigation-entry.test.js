@@ -28,3 +28,12 @@ test('le worker utilise les trois fournisseurs IA configurés pour le contrôle 
  assert.match(ai,/configuredAIProviders\(\)/);
  assert.match(ai,/Groq/);assert.match(ai,/OpenRouter/);assert.match(ai,/Cloudflare/);
 });
+
+test('les prompts M5 utilisent CONFIRM/WAIT sans hériter du vocabulaire BUY/SELL de M15',async()=>{
+ const ai=await readFile(new URL('../netlify/functions/ai-collaboration.mjs',import.meta.url),'utf8');
+ const m5=ai.slice(ai.indexOf('export async function runAureviaM5Confirmation'));
+ assert.match(m5,/const m5Base=.*CONFIRM et WAIT sont les seules décisions autorisées/);
+ assert.match(m5,/const system=m5Base/);
+ assert.match(m5,/const criticSystem=m5Base/);
+ assert.match(m5,/const controlSystem=m5Base/);
+});
