@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateOpportunityScenarios} from '../opportunity-engine.js';
-import {buildTradeGroupCloudRows,editOpenTradeGroup} from '../trade-management.js';
+import {buildTradeGroupCloudRows,createTradeGroup,editOpenTradeGroup,recordPartialClose} from '../trade-management.js';
 import {evaluateEntryTrigger} from '../netlify/functions/_trade-entry-trigger.mjs';
 import {validateM5AIConsensus} from '../m5-entry-validation.js';
 import {cleanScenario} from '../netlify/functions/ai-analysis.mjs';
@@ -146,4 +146,21 @@ test('la RPC de correction du prix réel active ensemble les TP enfants uniques 
 test('un scénario IA M15 sans cinq facteurs détaillés est rejeté',()=>{
  const candidate={direction:'BUY',entryZone:{low:99,high:101},entry:100,stopLoss:98,takeProfits:[104],orderType:'BUY LIMIT',limitPrice:100,confirmationScore:90,scoreComponents:[{label:'Structure',passed:true,weight:100}]};
  assert.equal(cleanScenario(candidate,'BUY',100),null);
+});
+
+test('une position MARKET créée manuellement conserve le prix d’entrée réel pour le P/L',()=>{
+ const group=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2020}],orderType:'MARKET',contractSpec:{calculationType:'contract',contractSize:100,quoteToAccount:1,accountCurrency:'USD',minLot:0.01,lotStep:0.01,feesPerLot:0}});
+ assert.equal(group.actualEntryPrice,2000);
+ assert.equal(group.children[0].actualEntryPrice,2000);
+ const result=recordPartialClose(group,group.children[0].id,{volume:0.1,exit:2010,contractSpec:group.contractSpec});
+ assert.equal(result.pnl.gross,100);
+});
+
+test('un ordre conditionnel activé sans prix réel manuel ne peut pas calculer de P/L',()=>{
+ const group=createTradeGroup({instrument:'XAU/USD',direction:'BUY',lot:0.1,entry:2000,stopLoss:1990,takeProfits:[{label:'TP1',price:2020}],orderType:'BUY LIMIT',limitPrice:2000,contractSpec:{calculationType:'contract',contractSize:100,quoteToAccount:1,accountCurrency:'USD',minLot:0.01,lotStep:0.01,feesPerLot:0}});
+ const child=group.children[0];child.status='OPEN';child.activatedAt=new Date().toISOString();child.activationPrice=2000.5;
+ assert.throws(()=>recordPartialClose(group,child.id,{volume:0.1,exit:2010,contractSpec:group.contractSpec}),/prix réel d’exécution manuelle doit être confirmé/i);
+ child.actualEntryPrice=2001;
+ const result=recordPartialClose(group,child.id,{volume:0.1,exit:2010,contractSpec:group.contractSpec});
+ assert.equal(result.pnl.gross,90);
 });
