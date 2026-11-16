@@ -10,7 +10,7 @@ test('l’enregistrement direct dans AUREVIA n’est proposé qu’après valida
  assert.match(app,/Proposition M5 validée par les trois IA|confirmée par M5/i);
  assert.match(api,/scenario\.status!=='entry_confirmed'/);
  assert.match(api,/validée par l’analyse M5 après mitigation/i);
- assert.match(watch,/evaluateM5EntryConfirmation/);
+ assert.match(watch,/runAureviaM5Confirmation/);assert.match(watch,/rpc\/aurevia_claim_m5_analysis/);
  assert.doesNotMatch(watch,/evaluateMitigationEntryConfirmation|candles\(s\.instrument,'1min'/);
 });
 test('le mode direct utilise la même RPC transactionnelle que Telegram',()=>{
