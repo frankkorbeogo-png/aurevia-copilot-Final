@@ -114,20 +114,33 @@ async function syncEconomicCalendar(){
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
  if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000)return {status:'fresh_cache',synced:0};
  const {today,end}=getFredDateRange(new Date());
- const results=await Promise.all(RELEASES.map(async release=>{
+ const fetchRelease=async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
   url.searchParams.set('release_id',String(release.id));url.searchParams.set('api_key',key);url.searchParams.set('file_type','json');
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
-  const response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(9000)});
-  if(!response.ok)throw new Error('FRED release '+release.id+' HTTP '+response.status);
+  let response;
+  for(let attempt=0;attempt<2;attempt++){
+   response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(6500)});
+   if(response.status===429&&attempt===0){await response.text().catch(()=>{});await wait(1200);continue;}
+   break;
+  }
+  if(!response?.ok)throw new Error('FRED release '+release.id+' HTTP '+(response?.status||'unavailable'));
   const data=await response.json();if(data.error_message)throw new Error(data.error_message);
   return (Array.isArray(data.release_dates)?data.release_dates:[]).map(row=>{
-   const date=String(row.date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return null;
+   const date=String(row.date||'');if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return null;
    const scheduledAt=zonedTimeToUtc(date,release.hour,release.minute);
    if(Date.parse(scheduledAt)<Date.now()-60*60*1000||Date.parse(scheduledAt)>Date.now()+15*86400000)return null;
    return {external_id:'FRED-'+release.id+'-'+date,release_id:release.id,event_name:release.name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:release.url,source_provider:'FRED release calendar',time_basis:'standard_release_time'};
   }).filter(Boolean);
- }));
+ };
+ // FRED permits two requests per second. Keep concurrency at two and leave a
+ // full second between batches so a scheduled run does not trip the API limit.
+ const results=[];
+ for(let i=0;i<RELEASES.length;i+=2){
+  const batch=await Promise.all(RELEASES.slice(i,i+2).map(fetchRelease));
+  results.push(...batch);
+  if(i+2<RELEASES.length)await wait(1100);
+ }
  const fredEvents=results.flat(),fomcEvents=buildOfficialFomcEvents(new Date()),events=[...fredEvents,...fomcEvents];
  if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
  const now=new Date(),horizon=new Date(now.getTime()+15*86400000);
