@@ -74,3 +74,15 @@ test('le worker limite les appels M5 IA et mutualise les cotations pour respecte
  assert.match(source,/quoteCache\.get\(s\.instrument\)/);
  assert.match(source,/order=updated_at\.asc/);
 });
+
+test('la contre-analyse OpenRouter et le veto Cloudflare M5 sont parallélisés après la proposition Groq',async()=>{
+ const source=await readFile(new URL('../netlify/functions/ai-collaboration.mjs',import.meta.url),'utf8');
+ const i=source.indexOf('export async function runAureviaM5Confirmation');
+ const j=source.indexOf('\n}',i);
+ const m5=source.slice(i,j);
+ assert.match(m5,/const \[reviewResult,auditResult\]=await Promise\.allSettled/);
+ assert.match(m5,/ask\(openrouter,[\s\S]*?\],7500\)/);
+ assert.match(m5,/ask\(cloudflare,[\s\S]*?\],7500\)/);
+ assert.match(m5,/if\(reviewResult\.status!==\x27fulfilled\x27\)/);
+ assert.match(m5,/if\(auditResult\.status!==\x27fulfilled\x27\)/);
+});
