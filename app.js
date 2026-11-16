@@ -310,6 +310,7 @@ async function confirmTradeValidation(){
   if(mode==='unique'&&Math.floor((volume/count)/checked.spec.lotStep)*checked.spec.lotStep<checked.spec.minLot)throw new Error('Le lot est trop faible pour être réparti entre les TP sélectionnés.');
   const approved=await confirmInApp({title:'Confirmer l’enregistrement du trade',message:s.instrument+' · '+s.direction+'\nLot total : '+volume+'\nGestion : '+(mode==='unique'?'Position unique':'Trades séparés')+'\nEntrée M5 : '+(s.entry_confirmation_price??s.entry)+'\nStop Loss : '+s.stop_loss+'\nObjectifs : '+(s.take_profits||[]).join(' · ')+'\n\nSuivi interne AUREVIA uniquement. Aucun ordre broker ne sera envoyé.',confirmLabel:'Enregistrer le trade'});
   if(!approved)return;
+  await saveBrokerSettings(s.instrument,{...checked.spec});
   button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
   const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const brokerSnapshot={accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
