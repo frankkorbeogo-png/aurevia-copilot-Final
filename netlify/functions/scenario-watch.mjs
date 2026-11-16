@@ -25,6 +25,12 @@ export async function handler(){
   let checked=0,zones=0,entries=0,invalidated=0,errors=0,m5AiCalls=0;const m15Cache=new Map(),m5Cache=new Map(),quoteCache=new Map(),accessCache=new Map();
   for(const s of rows||[]){
    try{
+    let access=accessCache.get(s.user_id);
+    if(!access){access=await rest('rpc/aurevia_telegram_access_status',{method:'POST',body:{p_user_id:s.user_id}});accessCache.set(s.user_id,access);}
+    if(access?.allowed!==true){
+     await rest(`aurevia_analysis_scenarios?id=eq.${s.id}&status=in.(monitoring,zone_reached,entry_confirmed)`,{method:'PATCH',body:{status:'stopped',lot_confirmation_code:null,lot_confirmation_expires_at:null,stopped_at:new Date().toISOString(),stop_reason:'Accès AUREVIA suspendu ou licence expirée',updated_at:new Date().toISOString()},prefer:'return=minimal'});
+     continue;
+    }
     const market=getMarketInstrument(s.instrument);if(!market){errors++;continue;}
     const marketStatus=getMarketStatus(market.label);if(!marketStatus.tradable)continue;
     let bars=m15Cache.get(s.instrument);if(!bars){bars=await candles(s.instrument,'15min','4');m15Cache.set(s.instrument,bars);}
