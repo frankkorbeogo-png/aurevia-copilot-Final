@@ -139,7 +139,7 @@ async function syncEconomicCalendar(){
  for(const row of (Array.isArray(current)?current:[])){
   if(!live.has(row.external_id)){await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});deactivated++;}
  }
- const oldFomc=await rest('economic_release_events?select=id,external_id,release_id,source_provider&scheduled_at=gte.'+encodeURIComponent(new Date(now.getTime()-24*60*60*1000).toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.(101,102,103)&limit=500');
+ const oldFomc=await rest('economic_release_events?select=id,external_id,release_id,source_provider&is_active=eq.true&release_id=in.(101,102,103)&limit=500');
  const liveFomc=new Set(fomcEvents.map(x=>x.external_id));let staleFomcDeactivated=0;
  for(const row of (Array.isArray(oldFomc)?oldFomc:[])){
   if(!liveFomc.has(row.external_id)){await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});staleFomcDeactivated++;}
