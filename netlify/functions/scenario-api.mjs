@@ -36,15 +36,15 @@ export async function handler(event){
    const orderType=String(scenario.order_type|| (scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();
    const marketOrder=orderType==='BUY MARKET'||orderType==='SELL MARKET'||orderType==='MARKET';
    const actualEntry=contractSpec.actualEntryPrice==null||contractSpec.actualEntryPrice===''?null:Number(contractSpec.actualEntryPrice);
-   if(marketOrder){
+   if(marketOrder&&actualEntry!==null){
     const tp1=Number(scenario.take_profits?.[0]),sl=Number(scenario.stop_loss);
-    if(!Number.isFinite(actualEntry)||actualEntry<=0||(scenario.direction==='BUY'?(actualEntry<=sl||actualEntry>=tp1):(actualEntry>=sl||actualEntry<=tp1)))return json(400,{error:'Le prix réellement exécuté est obligatoire et doit rester cohérent avec le SL et le TP1.'});
-   }else if(actualEntry!==null)return json(400,{error:'Un ordre conditionnel non exécuté ne peut pas avoir de prix réel d’exécution.'});
+    if(!Number.isFinite(actualEntry)||actualEntry<=0||(scenario.direction==='BUY'?(actualEntry<=sl||actualEntry>=tp1):(actualEntry>=sl||actualEntry<=tp1)))return json(400,{error:'Le prix réel saisi doit rester cohérent avec le Stop Loss et le TP1.'});
+   }else if(!marketOrder&&actualEntry!==null)return json(400,{error:'Le prix réel ne peut être renseigné avant l’activation d’un ordre conditionnel.'});
    contractSpec.actualEntryPrice=actualEntry;
    const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot,p_auto_journal:body.auto_journal!==false}});
    const groupId=typeof created==='string'?created:created?.[0]?.aurevia_create_position_from_scenario||created?.aurevia_create_position_from_scenario;
    if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
-   return json(201,{group_id:groupId,instrument:scenario.instrument,direction:scenario.direction,actual_entry_price:actualEntry,message:'Position enregistrée. Suivi et journal AUREVIA activés.'});
+   return json(201,{group_id:groupId,instrument:scenario.instrument,direction:scenario.direction,entry_price:scenario.entry_confirmation_price??scenario.entry,actual_entry_price:actualEntry,message:'Position enregistrée. Suivi et journal AUREVIA activés.'});
   }
   const id=String(body.id||'');
   if(action==='stop'){
