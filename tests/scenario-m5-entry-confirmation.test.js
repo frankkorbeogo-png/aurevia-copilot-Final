@@ -57,3 +57,12 @@ test('the confirmed M5 price is applied to the selected conditional order level'
  assert.match(watch,/orderType\.endsWith\('LIMIT'\)/);
  assert.match(watch,/entry:m5Entry,trigger_price:trigger,limit_price:limit/);
 });
+
+test('le worker limite les appels M5 IA et mutualise les cotations pour respecter le budget planifié',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/m5AiCalls>=1/);
+ assert.match(source,/m5AiCalls\+\+/);
+ assert.match(source,/quoteCache\.get\(s\.instrument\)/);
+ assert.match(source,/order=updated_at\.asc/);
+});
