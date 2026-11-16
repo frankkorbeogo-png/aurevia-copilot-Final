@@ -33,7 +33,7 @@ test('CME scheduler retries one transient upstream 503 and then stores the offic
  process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service-test';
  let sourceCalls=0,saved=null;
  globalThis.setTimeout=callback=>{queueMicrotask(callback);return 0;};
- const html='<html><h1>CME Group Holiday and Trading Hours</h1><h2>2026 CME Globex Trading Schedule</h2><table><tr><th>U.S. HOLIDAY</th><th>INCLUDES THE FOLLOWING DATES</th><th>HOLIDAY HOURS</th></tr><tr><td>Thanksgiving</td><td>26 - 28 November 2026</td><td>Holiday Schedule</td></tr></table></html>';
+ const html=('<html><h1>CME Group Holiday and Trading Hours</h1><h2>2026 CME Globex Trading Schedule</h2><table><tr><th>U.S. HOLIDAY</th><th>INCLUDES THE FOLLOWING DATES</th><th>HOLIDAY HOURS</th></tr><tr><td>Thanksgiving</td><td>26 - 28 November 2026</td><td>Holiday Schedule</td></tr></table></html>').padEnd(1200,' ');
  globalThis.fetch=async(input,options={})=>{
   const url=String(input);
   if(url==='https://www.cmegroup.com/trading-hours.html'){
