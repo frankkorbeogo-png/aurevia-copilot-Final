@@ -1,5 +1,5 @@
-export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitValuePerLot,quoteToAccount=1,rewardDistance=null,entryPrice=null,leverage=null}){
-  const lotStep=0.01;
+export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitValuePerLot,quoteToAccount=1,rewardDistance=null,entryPrice=null,leverage=null,minLot=0.01,lotStep=0.01,maxLot=null}){
+  if(!Number.isFinite(minLot)||minLot<=0||!Number.isFinite(lotStep)||lotStep<=0||(maxLot!==null&&(!Number.isFinite(maxLot)||maxLot<minLot)))return {error:'Vérifiez le lot minimum, le pas de volume et le lot maximum.'};
   const nums=[riskAmount,stopDistance,unitValuePerLot,quoteToAccount];
   if(!nums.every(Number.isFinite)||riskAmount<=0||stopDistance<=0||unitValuePerLot<=0||quoteToAccount<=0)
     return {error:'Vérifiez le risque, la distance du stop, la valeur par lot et le taux de conversion.'};
@@ -8,7 +8,8 @@ export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitVal
   const rawLots=riskAmount/(stopDistance*accountUnitValuePerLot);
   const precision=Math.max(0,Math.min(8,(String(lotStep).split('.')[1]||'').length));
   const lots=Number((Math.floor((rawLots+1e-10)/lotStep)*lotStep).toFixed(precision));
-  if(lots<0.01)return {error:'Le montant à risquer est trop faible pour atteindre le lot minimum de 0,01.'};
+  if(lots<minLot)return {error:`Le risque saisi est trop faible pour atteindre le lot minimum de ${minLot}.`};
+  if(maxLot!==null&&lots>maxLot){const capped=Number((Math.floor((maxLot+1e-10)/lotStep)*lotStep).toFixed(precision));if(capped<minLot)return {error:'Le lot maximum est inférieur au minimum exploitable avec ce pas.'};return calculatePositionRisk({balance,riskAmount:Math.min(riskAmount,capped*stopDistance*accountUnitValuePerLot),stopDistance,unitValuePerLot,quoteToAccount,rewardDistance,entryPrice,leverage,minLot,lotStep,maxLot:null});}
   const riskMoney=lots*stopDistance*accountUnitValuePerLot;
   const gain=Number.isFinite(rewardDistance)&&rewardDistance>0?lots*rewardDistance*accountUnitValuePerLot:null;
   const rr=gain===null?null:gain/riskMoney;
