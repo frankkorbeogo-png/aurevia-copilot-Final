@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const migration = readFileSync(new URL('../supabase/migrations/20261116144803_aurevia_atomic_manual_trade_group_sync.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../supabase/migrations/20261116154522_aurevia_atomic_manual_trade_group_sync.sql', import.meta.url), 'utf8');
 const auth = readFileSync(new URL('../auth.js', import.meta.url), 'utf8');
 
 test('la synchronisation manuelle passe par une seule RPC transactionnelle', () => {
