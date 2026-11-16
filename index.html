@@ -192,6 +192,7 @@
 <div class="risk-fields">
 <label>Mode de gestion<select id="validationMode"><option value="unique">Position unique · lot total réparti entre les TP</option><option value="separate">Trades séparés · lot appliqué à chaque TP</option></select></label>
 <label>Lot à enregistrer<input id="validationLot" type="number" min="0.00000001" step="any" placeholder="Ex. 0.05" required></label>
+<label id="validationActualFillField">Prix réellement exécuté sur le broker<input id="validationActualFill" type="number" min="0.00000001" step="any" placeholder="Prix exact obtenu après exécution manuelle"><small>Distinct du prix indicatif proposé par l’IA M5. Obligatoire pour une entrée au marché.</small></label>
 </div>
 <p class="footnote" id="validationModeHelp">Position unique : le lot saisi est réparti entre les TP sélectionnés, avec une seule fiche journal.</p>
 <div class="field-section-title"><b>Paramètres techniques du trade</b><small>Saisissez les spécifications de calcul applicables à cet instrument. La devise du compte est reprise automatiquement depuis votre profil.</small></div>
