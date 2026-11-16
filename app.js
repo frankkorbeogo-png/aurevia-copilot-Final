@@ -491,11 +491,11 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
   const query=new URLSearchParams({page:String(adminPage)});if(adminSearchValue)query.set('q',adminSearchValue);
   const data=await adminRequest(null,`?${query.toString()}`);
   adminHasMore=Boolean(data.pagination?.has_more);$('adminUsersPage').textContent=`Page ${adminPage} · ${data.pagination?.total??0} compte(s)`;$('adminUsersPrev').disabled=adminPage<=1;$('adminUsersNext').disabled=!adminHasMore;
-  $('adminUnlocked')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
+  $('adminUnlocked')?.removeAttribute('hidden');$('adminLicensesPanel')?.removeAttribute('hidden');$('adminUsersPanel')?.removeAttribute('hidden');$('adminAnnouncementsPanel')?.removeAttribute('hidden');$('adminAuditPanel')?.removeAttribute('hidden');
   const stats=data.stats||{};$('adminStatProfiles').textContent=stats.profiles??'—';$('adminStatOnline').textContent=stats.users_online??'—';$('adminStatSessions').textContent=stats.active_sessions??'—';$('adminStatSuspended').textContent=stats.suspended??'—';$('adminStatTrades').textContent=stats.trading_journal??'—';$('adminStatPositions').textContent=stats.trading_position_groups??'—';$('adminStatTelegram').textContent=stats.telegram_connections??'—';
   adminUsersCache=data.users||[];renderAdminUsers(adminUsersCache);renderAnnouncementRecipientPicker();renderAdminAnnouncements(data.announcements||[]);renderAdminAudit(data.auditLog||[]);loadServiceStatus();
  }catch(error){
-  $('adminUnlocked')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
+  $('adminUnlocked')?.setAttribute('hidden','');$('adminLicensesPanel')?.setAttribute('hidden','');$('adminUsersPanel')?.setAttribute('hidden','');$('adminAnnouncementsPanel')?.setAttribute('hidden','');$('adminAuditPanel')?.setAttribute('hidden','');
   if(error.status===403||error.status===409){window.__aureviaAdminVerified=false;document.querySelector('[data-page="admin"]')?.setAttribute('hidden','');$('page-admin')?.setAttribute('hidden','');if(location.hash==='#admin')history.replaceState(null,'','#accueil');}
   if($('adminUsersNote'))$('adminUsersNote').textContent=error.message;
  }
