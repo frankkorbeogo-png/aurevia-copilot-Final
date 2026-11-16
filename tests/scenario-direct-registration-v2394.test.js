@@ -50,7 +50,7 @@ test('la migration SQL valide la devise du profil sans exiger de broker ni de ty
  assert.match(migration,/PROFILE_ACCOUNT_CURRENCY_MISMATCH/);
  assert.doesNotMatch(migration,/brokerName|accountType|BROKER_ACCOUNT_SETTINGS_REQUIRED/);
  assert.match(migration,/p_auto_journal boolean/);
- assert.match(migration,/p_broker_snapshot jsonb\n\) returns uuid/);
+ assert.match(migration,/p_broker_snapshot jsonb,\s*p_auto_journal boolean\s*\)\s*returns uuid/);
  assert.match(migration,/p_scenario_id, p_user_id, p_mode, p_volume/);
  assert.match(migration,/grant execute on function public\.aurevia_create_position_from_scenario/);
 });
@@ -76,7 +76,7 @@ test('la confirmation d’un scénario exige un prix récent et un marché ouver
  assert.match(watch,/last_price_at:quote\.quoteAt/);
 });
 test('la base bloque elle-même la création d’un trade à partir d’un prix périmé',()=>{
- const migration=readFileSync(new URL('../supabase/migrations/20261116112758_aurevia_require_fresh_scenario_price_for_trade.sql',import.meta.url),'utf8');
+ const migration=readFileSync(new URL('../supabase/migrations/20261116154520_aurevia_require_fresh_scenario_price_for_trade.sql',import.meta.url),'utf8');
  assert.match(migration,/before update of trade_group_id/i);
  assert.match(migration,/SCENARIO_PRICE_STALE/);
  assert.match(migration,/interval '2 minutes'/);
