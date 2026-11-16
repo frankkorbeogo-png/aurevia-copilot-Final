@@ -164,3 +164,20 @@ test('le worker serveur calcule aussi les instruments à valeur de point ou de t
  const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
  assert.equal(point.gross,25);assert.equal(point.net,25);assert.equal(tick.gross,7.5);assert.equal(tick.net,7.5);
 });
+
+test('la surveillance vérifie l’expiration avant de demander une cotation',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/isPendingOrderExpired\(p,Date\.now\(\)\)/);
+ assert.ok(source.indexOf('isPendingOrderExpired(p,Date.now())')<source.indexOf('let prices=priceCache.get'));
+ assert.match(source,/rpc\/aurevia_expire_pending_position_worker/);
+});
+test('la migration d’expiration synchronise expires_at et expose un worker service_role',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const sql=await readFile(new URL('../supabase/migrations/20261115220000_pending_order_expiry.sql',import.meta.url),'utf8');
+ assert.match(sql,/add column if not exists expires_at/);
+ assert.match(sql,/add column if not exists expired_at/);
+ assert.match(sql,/aurevia_expire_pending_position_worker/);
+ assert.match(sql,/grant execute .* to service_role/i);
+ assert.match(sql,/EXPIRED/);
+});
