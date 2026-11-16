@@ -66,3 +66,16 @@ test('FRED release windows use the New York calendar date across UTC midnight',(
  assert.equal(range.today,'2026-11-15');
  assert.equal(range.end,'2026-11-29');
 });
+
+test('global-news and FRED sync run concurrently and stay within the scheduled function budget',async()=>{
+ const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
+ assert.match(source,/Promise\.all\(\[economicTask,newsTask\]\)/);
+ assert.match(source,/AbortSignal\.timeout\(5000\)/);
+ assert.match(source,/AbortSignal\.timeout\(3500\)/);
+});
+
+test('les rappels économiques ne sont pas envoyés plus de 60 minutes avant l’événement',async()=>{
+ const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
+ assert.match(source,/new Date\(now\.getTime\(\)\+60\*60\*1000\)/);
+ assert.doesNotMatch(source,/new Date\(now\.getTime\(\)\+65\*60\*1000\)/);
+});
