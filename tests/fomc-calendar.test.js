@@ -35,3 +35,8 @@ test('la migration désactive les anciennes alertes quotidiennes FOMC issues de 
  assert.match(cleanup,/source_provider = 'FRED release calendar'/);
  assert.match(cleanup,/SET is_active = false/);
 });
+
+test('le calendrier couvre aussi la réunion confirmée de janvier 2028',()=>{
+ const events=buildOfficialFomcEvents(new Date('2028-01-12T12:00:00.000Z'));
+ assert.ok(events.some(x=>x.event_name==='FOMC monetary policy decision'&&x.release_date==='2028-01-26'));
+});
