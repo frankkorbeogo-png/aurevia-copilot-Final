@@ -13,6 +13,16 @@ async function rest(path,{method='GET',body,prefer}={}){
 async function telegramCall(token,method,payload){const r=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});const d=await r.json().catch(()=>({}));if(!r.ok||d.ok!==true)throw new Error(`Telegram ${method} failed (HTTP ${r.status}).`);return d.result;}
 const telegramSend=(token,chatId,text,reply_markup)=>telegramCall(token,'sendMessage',{chat_id:chatId,text,disable_web_page_preview:true,...(reply_markup?{reply_markup}:{})});
 const keyboard=rows=>({inline_keyboard:rows});
+async function ensureTelegramAccess(token,chatId,userId){
+ const access=await rest('rpc/aurevia_telegram_access_status',{method:'POST',body:{p_user_id:userId}});
+ if(access?.allowed===true)return true;
+ await saveSetup(userId,null);
+ const message=access?.code==='ACCOUNT_SUSPENDED'
+  ?'⛔ Ton compte AUREVIA est suspendu. Les opérations Telegram sont désactivées. Contacte l’administrateur.'
+  :'🔒 Ton accès AUREVIA est expiré ou ta licence n’est pas active. Réactive ta licence depuis AUREVIA pour reprendre les opérations Telegram.';
+ await telegramSend(token,chatId,message);
+ return false;
+}
 async function getOwner(chatId){const owners=await rest(`telegram_connections?select=user_id&chat_id=eq.${encodeURIComponent(chatId)}&limit=2`);if(!owners?.length)return null;if(owners.length!==1)throw new Error('Association Telegram ambiguë.');return owners[0].user_id;}
 async function getPreferences(userId){const rows=await rest(`user_preferences?select=preferences&user_id=eq.${encodeURIComponent(userId)}&limit=1`);return rows?.[0]?.preferences||{};}
 async function saveSetup(userId,setup){const prefs=await getPreferences(userId);const next={...prefs};if(setup)next.telegram_trade_setup=setup;else delete next.telegram_trade_setup;await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:next,updated_at:now()}});}
@@ -20,6 +30,7 @@ async function getScenario(userId,code){const rows=await rest(`aurevia_analysis_
 const numberInput=value=>{const n=Number(String(value).trim().replace(',','.'));return Number.isFinite(n)?n:null;};
 const ask=(token,chatId,text,buttons)=>telegramSend(token,chatId,text,buttons?keyboard(buttons):undefined);
 async function beginSetup(token,chatId,userId,code,mode){
+ if(!await ensureTelegramAccess(token,chatId,userId))return;
  const preferences=await getPreferences(userId);
  const accountCurrency=String(preferences.account_currency||'').trim().toUpperCase();
  if(!/^[A-Z]{3}$/.test(accountCurrency)){await telegramSend(token,chatId,'Avant d’enregistrer une position, renseigne une seule fois la devise de ton compte dans AUREVIA → Paramètres → Devise du compte. Reviens ensuite confirmer le scénario ici.');return;}
@@ -150,6 +161,7 @@ async function showReview(token,chatId,setup,scenario){
  ]);
 }
 async function handleGuidedMessage(token,chatId,userId,text){
+ if(!await ensureTelegramAccess(token,chatId,userId))return true;
  const prefs=await getPreferences(userId),setup=prefs.telegram_trade_setup;
  if(!setup)return false;
  if(Date.now()-Date.parse(setup.startedAt)>30*60*1000){await saveSetup(userId,null);await telegramSend(token,chatId,'Cette configuration a expiré. Attends une nouvelle confirmation d’entrée.');return true;}
