@@ -207,3 +207,22 @@ test('la fonction SQL refuse une activation après expiration même si le worker
  assert.match(source,/activation\?\.status==='EXPIRED'/);
  assert.match(source,/rpc\/aurevia_expire_pending_position_worker/);
 });
+
+test('le suivi TP/SL refuse les cours REST sans last_quote_at',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/api\.twelvedata\.com\/quote/);
+ assert.match(source,/last_quote_at/);
+ assert.match(source,/Twelve Data REST Quote · timestamp verified/);
+ assert.doesNotMatch(source,/api\.twelvedata\.com\/price/);
+ assert.match(source,/trustedSources/);
+});
+
+test('le worker WebSocket ne déclenche aucune position avec un tick sans timestamp vérifié',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../workers/market-quote-stream.mjs',import.meta.url),'utf8');
+ assert.match(source,/Number\(d\.timestamp\)/);
+ assert.match(source,/age<0\|\|age>120000/);
+ assert.match(source,/timestamp verified/);
+ assert.doesNotMatch(source,/new Date\(\)\.toISOString\(\);const prices/);
+});
