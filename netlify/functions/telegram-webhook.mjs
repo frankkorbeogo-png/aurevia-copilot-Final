@@ -16,7 +16,7 @@ const keyboard=rows=>({inline_keyboard:rows});
 async function getOwner(chatId){const owners=await rest(`telegram_connections?select=user_id&chat_id=eq.${encodeURIComponent(chatId)}&limit=2`);if(!owners?.length)return null;if(owners.length!==1)throw new Error('Association Telegram ambiguë.');return owners[0].user_id;}
 async function getPreferences(userId){const rows=await rest(`user_preferences?select=preferences&user_id=eq.${encodeURIComponent(userId)}&limit=1`);return rows?.[0]?.preferences||{};}
 async function saveSetup(userId,setup){const prefs=await getPreferences(userId);const next={...prefs};if(setup)next.telegram_trade_setup=setup;else delete next.telegram_trade_setup;await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:next,updated_at:now()}});}
-async function getScenario(userId,code){const rows=await rest(`aurevia_analysis_scenarios?select=id,instrument,direction,entry,last_price,last_price_at,stop_loss,take_profits,lot_confirmation_expires_at,trade_group_id&user_id=eq.${encodeURIComponent(userId)}&lot_confirmation_code=eq.${encodeURIComponent(code)}&status=eq.entry_confirmed&limit=2`);if(rows?.length!==1)return null;const s=rows[0];if(s.trade_group_id||!s.lot_confirmation_expires_at||Date.parse(s.lot_confirmation_expires_at)<Date.now())return null;return s;}
+async function getScenario(userId,code){const rows=await rest(`aurevia_analysis_scenarios?select=id,instrument,direction,entry,entry_confirmation_price,last_price,last_price_at,stop_loss,take_profits,lot_confirmation_expires_at,trade_group_id&user_id=eq.${encodeURIComponent(userId)}&lot_confirmation_code=eq.${encodeURIComponent(code)}&status=eq.entry_confirmed&limit=2`);if(rows?.length!==1)return null;const s=rows[0];if(s.trade_group_id||!s.lot_confirmation_expires_at||Date.parse(s.lot_confirmation_expires_at)<Date.now())return null;return s;}
 const numberInput=value=>{const n=Number(String(value).trim().replace(',','.'));return Number.isFinite(n)?n:null;};
 const ask=(token,chatId,text,buttons)=>telegramSend(token,chatId,text,buttons?keyboard(buttons):undefined);
 async function beginSetup(token,chatId,userId,code,mode){
@@ -27,7 +27,7 @@ async function beginSetup(token,chatId,userId,code,mode){
  if(existing&&existing.code!==code){await telegramSend(token,chatId,'Une autre configuration de trade est déjà en cours. Termine-la ou envoie /annuler avant d’en commencer une nouvelle.');return;}
  const scenario=await getScenario(userId,code);
  if(!scenario){await telegramSend(token,chatId,'Ce scénario n’est plus disponible ou son code a expiré. Relance la surveillance depuis AUREVIA.');return;}
- const setup={code,mode,step:'lot',volume:null,spec:{accountCurrency,leverage:null,minLot:0.01,lotStep:0.01,maxLot:null,feesPerLot:0},autoJournal:true,startedAt:now()};
+ const savedSpecs=preferences.broker_specs?.[scenario.instrument]||preferences.broker_specs?.default||{};\n const setup={code,mode,step:'lot',volume:null,spec:{...savedSpecs,accountCurrency,leverage:savedSpecs.leverage??null,minLot:savedSpecs.minLot??0.01,lotStep:savedSpecs.lotStep??0.01,maxLot:savedSpecs.maxLot??null,feesPerLot:savedSpecs.feesPerLot??0},autoJournal:true,startedAt:now()};
  await saveSetup(userId,setup);
  await ask(token,chatId,`Très bien. Configurons ta position ${scenario.instrument} ${scenario.direction}.\n\nQuel volume souhaites-tu utiliser ?\nExemple : 0.05\n\nMode : ${mode==='unique'?'Position unique (lot total réparti entre les TP)':'Trades séparés (lot appliqué à chaque TP)'}`);
 }
@@ -58,7 +58,7 @@ async function promptStep(token,chatId,setup){
 }
 
 function summary(setup,scenario){
- const s=setup.spec,entry=scenario.last_price??scenario.entry??'Non renseignée';
+ const s=setup.spec,entry=scenario.entry_confirmation_price??scenario.entry??scenario.last_price??'Non renseignée';
  const tps=Array.isArray(scenario.take_profits)?scenario.take_profits.join(' · '):'Non renseignés';
  const calc=s.calculationType==='contract'
   ?`Taille du contrat : ${s.contractSize}\nDevise de cotation : ${s.quoteCurrency||'Non identifiée'}\nConversion vers ${s.accountCurrency} : ${s.quoteToAccount}`
@@ -89,12 +89,12 @@ async function finishSetup(token,chatId,userId,setup){
   setup.step='lot';await saveSetup(userId,setup);
   await telegramSend(token,chatId,`Le lot doit respecter le minimum ${spec.minLot}, le pas ${spec.lotStep}${spec.maxLot!==null?` et le maximum ${spec.maxLot}`:''}. Saisis un autre volume.`);return false;
  }
- const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};
+ const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};\n const preferences=await getPreferences(userId);const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...spec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
  const result=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenario.id,p_user_id:userId,p_mode:setup.mode,p_volume:volume,p_contract_spec:spec,p_broker_snapshot:brokerSnapshot,p_auto_journal:setup.autoJournal!==false}});
  const groupId=typeof result==='string'?result:result?.[0]?.aurevia_create_position_from_scenario||result?.aurevia_create_position_from_scenario;
  if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
  await saveSetup(userId,null);
- await telegramSend(token,chatId,`✅ POSITION ENREGISTRÉE\n${scenario.instrument} · ${scenario.direction}\nEntrée : ${scenario.entry??'—'} · SL : ${scenario.stop_loss??'—'}\nLot : ${volume}\nMéthode : ${spec.calculationType}\nDevise : ${spec.accountCurrency}\nJournal automatique : ${setup.autoJournal!==false?'activé':'désactivé'}\n\nLe suivi interne AUREVIA est activé. Aucun ordre n’a été envoyé au broker.`);
+ await telegramSend(token,chatId,`✅ POSITION ENREGISTRÉE\n${scenario.instrument} · ${scenario.direction}\nEntrée de référence M5 : ${scenario.entry_confirmation_price??scenario.entry??'—'} · SL : ${scenario.stop_loss??'—'}\nLot : ${volume}\nMéthode : ${spec.calculationType}\nDevise : ${spec.accountCurrency}\nJournal automatique : ${setup.autoJournal!==false?'activé':'désactivé'}\n\nLe suivi interne AUREVIA est activé. Aucun ordre n’a été envoyé au broker.`);
  return true;
 }
 
