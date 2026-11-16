@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {cleanScenario} from '../netlify/functions/ai-analysis.mjs';
 
 test('V2.3.72 accepte une directive M15 exploitable sans estimation de probabilité',()=>{
- const scenario={direction:'BUY',entryZone:{low:1998,high:2002},entry:2000,stopLoss:1990,takeProfits:[2010,2020],confirmationScore:62,reason:'Structure M15 haussière et momentum en reprise.',orderType:'BUY LIMIT'};
+ const scenario={direction:'BUY',entryZone:{low:1998,high:2002},entry:2000,stopLoss:1990,takeProfits:[2010,2020],confirmationScore:62,reason:'Structure M15 haussière et momentum en reprise.',orderType:'BUY LIMIT',limitPrice:2000};
  const result=cleanScenario(scenario,'BUY',2001);
  assert.ok(result);
  assert.equal(result.probability,null);
