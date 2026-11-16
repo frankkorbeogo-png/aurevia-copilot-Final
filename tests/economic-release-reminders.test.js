@@ -18,7 +18,7 @@ test('FRED synchronise les dates, désactive les dates retirées et rappelle au 
   if(url.includes('/rest/v1/economic_release_events?on_conflict=external_id')){inserted.push(...JSON.parse(options.body));return response([],201);}
   if(url.includes('/rest/v1/economic_release_events?select=id,external_id,release_id,source_provider')&&url.includes('release_id=in.(101,102,103)'))return response([{id:'old-fomc',external_id:'FRED-101-2026-11-20',release_id:101,source_provider:'FRED release calendar'}]);
   if(url.includes('/rest/v1/economic_release_events?select=id,external_id'))return response([{id:'old-event',external_id:'FRED-10-old',release_id:10,telegram_broadcast_started_at:null}]);
-  if(url.includes('/rest/v1/economic_release_events?id=eq.old-event')){patches.push(JSON.parse(options.body));return response([]);}
+  if(url.includes('/rest/v1/economic_release_events?id=eq.old-event')||url.includes('/rest/v1/economic_release_events?id=eq.old-fomc')){patches.push(JSON.parse(options.body));return response([]);}
   if(url.includes('/rest/v1/economic_release_sync_state?on_conflict=id'))return response([],201);
   if(url.includes('/rest/v1/economic_release_events?select=id,event_name')){
    assert.match(url,/scheduled_at=gte/);assert.match(url,/scheduled_at\.lte/);
