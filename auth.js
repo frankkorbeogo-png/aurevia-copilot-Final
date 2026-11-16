@@ -276,6 +276,28 @@ export async function saveAccountCurrency(currency){
  const preferences={...(data?.preferences||{}),account_currency:value};
  const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return value;
 }
+export async function loadBrokerSettings(instrument){
+ await ensureUser();if(!currentUser)return null;
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();
+ if(error)throw new Error(error.message);
+ const profiles=data?.preferences?.broker_specs||{};
+ return profiles[instrument]||profiles.default||null;
+}
+export async function saveBrokerSettings(instrument,spec){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant d’enregistrer les paramètres broker.');
+ const key=String(instrument||'').trim();if(!key)throw new Error('Choisissez un instrument.');
+ const calculationType=String(spec?.calculationType||'').toLowerCase();
+ if(!['contract','point','tick'].includes(calculationType))throw new Error('Choisissez une méthode de calcul.');
+ const number=(value,name,{optional=false,zero=false}={})=>{if(optional&&(value===null||value===undefined||value===''))return null;const n=Number(value);if(!Number.isFinite(n)||(zero?n<0:n<=0))throw new Error('Valeur invalide : '+name);return n;};
+ const clean={calculationType,leverage:number(spec.leverage,'levier',{optional:true}),minLot:number(spec.minLot,'lot minimum'),lotStep:number(spec.lotStep,'pas de volume'),maxLot:number(spec.maxLot,'lot maximum',{optional:true}),feesPerLot:number(spec.feesPerLot??0,'frais par lot',{zero:true})};
+ if(clean.maxLot!==null&&clean.maxLot<clean.minLot)throw new Error('Le lot maximum doit être supérieur ou égal au lot minimum.');
+ if(calculationType==='contract')clean.contractSize=number(spec.contractSize,'taille du contrat');
+ if(calculationType==='point'){clean.pointSize=number(spec.pointSize,'taille du point');clean.pointValue=number(spec.pointValue,'valeur du point');}
+ if(calculationType==='tick'){clean.tickSize=number(spec.tickSize,'taille du tick');clean.tickValue=number(spec.tickValue,'valeur du tick');}
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);
+ const preferences={...(data?.preferences||{}),broker_specs:{...(data?.preferences?.broker_specs||{}),[key]:clean}};
+ const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return clean;
+}
 export async function loadTelegramPreferences(){await ensureUser();if(!currentUser)return null;const {data,error}=await supabase.from('telegram_connections').select('chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements,notify_product_announcements').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);return data;}
 export async function unlinkTelegramAccount(){
  await ensureUser();
