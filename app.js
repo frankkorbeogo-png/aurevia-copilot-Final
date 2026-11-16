@@ -944,6 +944,7 @@ function bindEvents(){
 
   document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-page="${b.dataset.goto}"]`)?.click()));
   document.querySelectorAll('.home-asset').forEach(b=>b.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(b.dataset.symbol);}));
+  ['riskEquity','riskMarginUsed','riskPeakEquity','riskDailyLossLimit','riskWeeklyLossLimit'].forEach(id=>$(id)?.addEventListener('input',renderRiskControls));
   $('saveRiskControls')?.addEventListener('click',async()=>{
     const button=$('saveRiskControls'),ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;
     if(button)button.disabled=true;
