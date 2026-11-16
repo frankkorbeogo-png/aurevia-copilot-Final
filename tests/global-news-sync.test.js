@@ -12,7 +12,7 @@ test('global-news-sync reports a failed GDELT subsystem instead of claiming succ
 
 test('global news distinguishes source observation time from publisher publication time',async()=>{
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
- const sql=await readFile(new URL('../supabase/migrations/20261115235000_global_news_seen_at.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116144849_aurevia_global_news_seen_at.sql',import.meta.url),'utf8');
  assert.match(source,/seen_at/);assert.match(source,/published_at/);
  assert.match(sql,/add column if not exists seen_at timestamptz/);
  assert.match(sql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);
