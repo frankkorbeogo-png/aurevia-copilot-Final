@@ -70,10 +70,12 @@ export function buildFomcReleaseEvents(now=new Date(),horizonDays=15){
  }).filter(event=>Date.parse(event.scheduled_at)>=start-60*60*1000&&Date.parse(event.scheduled_at)<=end);
 }
 
+export function isFredCacheFresh(lastSyncedAt,now=Date.now()){const synced=Date.parse(lastSyncedAt||'');const age=now-synced;return Number.isFinite(synced)&&age>=0&&age<6*60*60*1000;}
+
 async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
- const cacheFresh=Boolean(key&&state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000);
+ const cacheFresh=Boolean(key&&isFredCacheFresh(state?.[0]?.last_synced_at));
  const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
  let results=[],fredSyncError=null;
  if(key&&!cacheFresh){
