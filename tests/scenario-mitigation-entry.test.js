@@ -58,3 +58,22 @@ test('le surveillant de scénarios utilise le quote horodaté et le catalogue ca
  assert.doesNotMatch(source,/api\.twelvedata\.com\/price/);
  assert.doesNotMatch(source,/US30|NAS100/);
 });
+
+test('les transitions de scénario sont atomiques avant les notifications Telegram',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/status=eq\.zone_reached&zone_notified=eq\.false/);
+ assert.match(source,/status=eq\.entry_confirmed&entry_notified=eq\.false/);
+ assert.match(source,/if\(!confirmed\?\.length\)continue/);
+ assert.match(source,/status=in\.\(monitoring,zone_reached,entry_confirmed\).*return=representation/);
+ assert.match(source,/if\(!sent\)await rest/);
+});
+
+test('les notifications de zone et d’entrée peuvent être retentées après un échec Telegram',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/zone_notified:false/);
+ assert.match(source,/entry_notified:false/);
+ assert.match(source,/zone_notified:true/);
+ assert.match(source,/entry_notified:true/);
+});
