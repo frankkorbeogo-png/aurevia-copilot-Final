@@ -11,8 +11,8 @@ import {selectClosedMarketCandles} from './market-candle-validation.js';
 import {buildMacroContextForAI} from './macro-context-forwarding.js';
 const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
-// H4/H1/M30 restent des contextes optionnels ; M5/M1 sont consultés sur TradingView
-// pour affiner l'entrée, sans ajouter quatre appels OHLC à chaque analyse.
+// H4/H1/M30 restent des contextes optionnels. M5 est réservé au surveillant
+// de scénario : il valide l'entrée après mitigation, sans être chargé à chaque analyse initiale.
 const FRAMES={H4:'4h',H1:'1h',M30:'30min',M15:'15min'};
 const FRAME_MINUTES={H4:240,H1:60,M30:30,M15:15,M5:5};
 let latest={message:'En attente',tableMessage:'Sélectionnez un instrument pour commencer.',signalReason:'Aucune conclusion avant validation des données.'};

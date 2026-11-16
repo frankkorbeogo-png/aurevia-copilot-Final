@@ -32,7 +32,7 @@ export async function handler(event){
    const marketInstrument=getMarketInstrument(scenario.instrument);if(!marketInstrument)return json(409,{error:'Cet instrument n’est plus pris en charge par AUREVIA.'});
    const marketStatus=getMarketStatus(marketInstrument.label);if(!marketStatus.tradable)return json(409,{error:marketStatus.reason||'Marché fermé : validation suspendue.',code:'MARKET_CLOSED'});
    const quoteAt=Date.parse(scenario.last_price_at||''),quoteAge=Date.now()-quoteAt;if(!Number.isFinite(quoteAge)||quoteAge< -5000||quoteAge>120000)return json(409,{error:'La dernière cotation est trop ancienne. Attendez la prochaine mise à jour du suivi avant de valider.',code:'SCENARIO_PRICE_STALE'});
-   if(scenario.status!=='entry_confirmed'||!scenario.lot_confirmation_expires_at||Date.parse(scenario.lot_confirmation_expires_at)<=Date.now())return json(409,{error:'L’entrée n’est pas encore confirmée par la surveillance M15 ou le délai de validation a expiré.'});
+   if(scenario.status!=='entry_confirmed'||!scenario.lot_confirmation_expires_at||Date.parse(scenario.lot_confirmation_expires_at)<=Date.now())return json(409,{error:'L’entrée n’est pas encore validée par l’analyse M5 après mitigation, ou le délai de validation a expiré.'});
    const created=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenarioId,p_user_id:user,p_mode:mode,p_volume:volume,p_contract_spec:contractSpec,p_broker_snapshot:brokerSnapshot,p_auto_journal:body.auto_journal!==false}});
    const groupId=typeof created==='string'?created:created?.[0]?.aurevia_create_position_from_scenario||created?.aurevia_create_position_from_scenario;
    if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');
