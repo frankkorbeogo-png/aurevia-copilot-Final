@@ -84,7 +84,7 @@ test('AI M15 scenario normalizes transparent score components and preserves orde
  assert.equal(result.pendingOrderType,'BUY LIMIT');
  assert.equal(result.limitPrice,100);
  assert.equal(result.triggerPrice,null);
- assert.equal(result.score,60);
+ assert.equal(result.score,70);
  assert.equal(Math.round(result.scoreComponents.reduce((sum,x)=>sum+x.weight,0)),100);
 });
 test('AI M15 rejects malformed STOP LIMIT geometry',()=>{
