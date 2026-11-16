@@ -21,8 +21,8 @@ async function notify(userId,message,reply_markup=null){const cs=await rest(`tel
 export async function handler(){
  if(!BASE()||!KEY()||!process.env.TWELVEDATA_API_KEY)return {statusCode:503,body:'Monitor not configured'};
  try{
-  const rows=await rest('aurevia_analysis_scenarios?select=*&status=in.(monitoring,zone_reached,entry_confirmed)&limit=100');
-  let checked=0,zones=0,entries=0,invalidated=0,errors=0;const m15Cache=new Map(),m5Cache=new Map();
+  const rows=await rest('aurevia_analysis_scenarios?select=*&status=in.(monitoring,zone_reached,entry_confirmed)&order=updated_at.asc&limit=100');
+  let checked=0,zones=0,entries=0,invalidated=0,errors=0,m5AiCalls=0;const m15Cache=new Map(),m5Cache=new Map(),quoteCache=new Map();
   for(const s of rows||[]){
    try{
     const market=getMarketInstrument(s.instrument);if(!market){errors++;continue;}
@@ -30,7 +30,7 @@ export async function handler(){
     let bars=m15Cache.get(s.instrument);if(!bars){bars=await candles(s.instrument,'15min','4');m15Cache.set(s.instrument,bars);}
     const lastClosed=bars.filter(x=>x.time+15*60000<=Date.now()).at(-1);
     if(!lastClosed||Date.now()-(lastClosed.time+15*60000)>35*60*1000)throw new Error('Bougie M15 clôturée trop ancienne : surveillance suspendue.');
-    const quote=await livePrice(s.instrument),price=quote.price;checked++;
+    let quote=quoteCache.get(s.instrument);if(!quote){quote=await livePrice(s.instrument);quoteCache.set(s.instrument,quote);}const price=quote.price;checked++;
     await rest(`aurevia_analysis_scenarios?id=eq.${s.id}`,{method:'PATCH',body:{last_price:price,last_price_at:quote.quoteAt,updated_at:new Date().toISOString()},prefer:'return=minimal'});
     if(s.trade_group_id)continue;
     const invalid=s.direction==='BUY'?price<=Number(s.stop_loss):price>=Number(s.stop_loss);
@@ -64,8 +64,10 @@ export async function handler(){
      const lastAnalysisAt=Date.parse(s.last_m5_analysis_at||'');
      const closedAt=lastClosedM5.time+5*60000;
      if(Number.isFinite(lastAnalysisAt)&&closedAt<=lastAnalysisAt)continue;
+     if(m5AiCalls>=1)continue;
      const claim=await rest('rpc/aurevia_claim_m5_analysis',{method:'POST',body:{p_scenario_id:s.id,p_closed_at:new Date(closedAt).toISOString()}});
      if(claim!==true&&claim?.claimed!==true)continue;
+     m5AiCalls++;
      const confirmation=await runAureviaM5Confirmation({
       scenario:{instrument:s.instrument,direction:s.direction,orderType:s.order_type||null,triggerPrice:s.trigger_price??null,limitPrice:s.limit_price??null,entryZoneLow:Number(s.entry_low),entryZoneHigh:Number(s.entry_high),stopLoss:Number(s.stop_loss),takeProfits:s.take_profits||[]},
       candles:closedM5,
