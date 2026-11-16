@@ -3,7 +3,47 @@ import crypto from 'node:crypto';
 const SOURCE_URL = 'https://www.cmegroup.com/trading-hours.html';
 const SOURCE_KEY = 'cme-globex-holiday-calendar';
 const MAX_EXCERPT = 60000;
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 8000;
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function retryDelay(response) {
+  const raw = String(response?.headers?.get('retry-after') || '').trim();
+  const seconds = Number(raw);
+  const date = Date.parse(raw);
+  const requested = Number.isFinite(seconds) ? seconds * 1000 : Number.isFinite(date) ? Math.max(0, date - Date.now()) : 2000;
+  return Math.min(5000, Math.max(1500, requested));
+}
+
+async function fetchCmeSource() {
+  let response;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      response = await fetch(SOURCE_URL, {
+        headers: {
+          accept: 'text/html,application/xhtml+xml',
+          'user-agent': 'Mozilla/5.0 (compatible; AUREVIA-COPILOT-calendar-sync/2.0)'
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      });
+    } catch (error) {
+      if (attempt === 0) {
+        console.warn('[AUREVIA CME sync] transient source network error; retrying once', String(error.message || error).slice(0, 180));
+        await wait(1500);
+        continue;
+      }
+      throw error;
+    }
+    if ((response.status === 429 || response.status >= 500) && attempt === 0) {
+      const delay = response.status === 429 ? retryDelay(response) : 1500;
+      await response.text().catch(() => '');
+      console.warn('[AUREVIA CME sync] upstream HTTP ' + response.status + '; retrying after ' + delay + 'ms');
+      await wait(delay);
+      continue;
+    }
+    return response;
+  }
+  return response;
+}
 
 function cleanText(value = '') {
   return value
@@ -78,13 +118,7 @@ export async function handler() {
 
   let stage = 'cme_fetch';
   try {
-    const response = await fetch(SOURCE_URL, {
-      headers: {
-        accept: 'text/html,application/xhtml+xml',
-        'user-agent': 'Mozilla/5.0 (compatible; AUREVIA-COPILOT-calendar-sync/2.0)'
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
-    });
+    const response = await fetchCmeSource();
     if (!response.ok) {
       const error = new Error(`CME source returned HTTP ${response.status}`);
       error.code = 'CME_HTTP_ERROR';
@@ -136,7 +170,7 @@ export async function handler() {
         prefer: 'resolution=merge-duplicates,return=minimal'
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(12000)
+      signal: AbortSignal.timeout(10000)
     });
     if (!saved.ok) {
       const detail = (await saved.text()).slice(0, 300);
