@@ -256,12 +256,12 @@ export async function initAuth(){
  $('deleteOwnAccountBtn')?.addEventListener('click',async(event)=>{const btn=event.currentTarget;if(!currentUser||!sessionReady){showStatus('Connectez-vous pour supprimer votre compte.',true);return;}const email=currentUser.email||'ce compte';const deletedUserId=currentUser.id;const confirmed=await confirmInApp({title:'Supprimer le compte AUREVIA ?',message:`Compte : ${email}. Cette action est définitive et supprimera les données associées à AUREVIA. Votre compte Google ne sera pas supprimé. Pour confirmer, saisissez SUPPRIMER.`,phrase:'SUPPRIMER',confirmLabel:'Supprimer définitivement',danger:true});if(!confirmed)return;btn.disabled=true;btn.textContent='Suppression en cours…';try{const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous puis réessayez.');const response=await fetch('/api/account-delete',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({confirmation:'SUPPRIMER'}),cache:'no-store'});const result=await response.json().catch(()=>({}));if(!response.ok||result.deleted!==true)throw new Error(result.error||'Le serveur n’a pas confirmé la suppression.');stopHeartbeat();sessionReady=false;pendingSession=null;currentUser=null;currentProfile=null;window.__aureviaUserId=null;setAdminVisibility(false);await supabase.auth.signOut({scope:'local'}).catch(()=>{});try{localStorage.removeItem('aurevia_active_session_id');localStorage.removeItem(LOCAL_DATA_OWNER_KEY);}catch{}clearLocalAccountData(deletedUserId);forgetAccountSession(String(email).toLowerCase());saveRememberedAccounts(getRememberedAccounts().filter(x=>x.email!==String(email).toLowerCase()));render();const status=$('authGateStatus');if(status)status.textContent='Votre compte AUREVIA et toutes ses anciennes données ont été supprimés. Pour revenir, choisissez « Créer un compte » ; Google ne restaurera pas l’ancien compte.';showStatus('Compte AUREVIA et données associées supprimés. Une nouvelle inscription sera nécessaire.');showInAppNotice('Compte AUREVIA et données associées supprimés.',{type:'success'});}catch(error){showStatus(error.message,true);showInAppNotice('Suppression du compte impossible : '+error.message,{type:'error'});btn.disabled=false;btn.textContent='Supprimer définitivement mon compte';}});
 }
 
-export async function createTelegramPairingCode(){
- await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de lier Telegram.');
+export async function createTelegramPairingCode(expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant de lier Telegram.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez la liaison.');
  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';const bytes=new Uint8Array(8);crypto.getRandomValues(bytes);const code=Array.from(bytes,b=>alphabet[b%alphabet.length]).join('');
- const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',currentUser.id).maybeSingle();if(error)throw new Error(error.message);
+ const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez la liaison.');
  const preferences={...(data?.preferences||{}),telegram_pair_code:code,telegram_pair_expires_at:new Date(Date.now()+10*60*1000).toISOString()};
- const saved=await supabase.from('user_preferences').upsert({user_id:currentUser.id,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);return code;
+ const saved=await supabase.from('user_preferences').upsert({user_id:userId,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return code;
 }
 export async function loadAccountCurrency(expectedUserId=null){
  await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;
@@ -300,10 +300,10 @@ export async function saveBrokerSettings(instrument,spec,expectedUserId=null){
  const saved=await supabase.from('user_preferences').upsert({user_id:userId,preferences,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(saved.error)throw new Error(saved.error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé.');return clean;
 }
 export async function loadTelegramPreferences(expectedUserId=null){await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;const {data,error}=await supabase.from('telegram_connections').select('chat_id,notify_all_analyses,notify_validated_signals,notify_economic_announcements,notify_product_announcements').eq('user_id',userId).maybeSingle();if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return null;return data;}
-export async function unlinkTelegramAccount(){
+export async function unlinkTelegramAccount(expectedUserId=null){
  await ensureUser();
- if(!currentUser)throw new Error('Connectez-vous avant de délier Telegram.');
- const token=await getAnalysisAccessToken();
+ if(!currentUser)throw new Error('Connectez-vous avant de délier Telegram.');if(expectedUserId&&currentUser.id!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez la déliaison.');
+ const token=await getAnalysisAccessToken();if(expectedUserId&&currentUser?.id!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez la déliaison.');
  const response=await fetch('/api/telegram-unlink',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:'{}',cache:'no-store'});
  const result=await response.json().catch(()=>({}));
  if(!response.ok||result.ok!==true||result.unlinked!==true)throw new Error(result.error||'Le serveur n’a pas confirmé la déliaison Telegram.');
@@ -457,7 +457,7 @@ export async function syncTradeCloseToSupabase(group,child,closeEvent,expectedUs
  return {synced:true,...(data||{})};
 }
 
-export async function sendTelegramTest(){return sendTelegramNotification({type:'test',text:'✅ Test de réception AUREVIA COPILOT\n\nLa liaison Telegram fonctionne. Si vous voyez ce message, votre compte reçoit bien les notifications privées.'});}
+export async function sendTelegramTest(expectedUserId=null){return sendTelegramNotification({type:'test',text:'✅ Test de réception AUREVIA COPILOT\n\nLa liaison Telegram fonctionne. Si vous voyez ce message, votre compte reçoit bien les notifications privées.'},expectedUserId);}
 
 export async function loadPublishedAnnouncements(expectedUserId=null){
  await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour consulter les annonces.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return [];
