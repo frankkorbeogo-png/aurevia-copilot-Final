@@ -38,7 +38,7 @@ test('M5 refuses a proposal outside the original M15 zone or beyond SL and TP1',
 test('the scheduled M5 watcher only analyses closed post-mitigation candles and atomically claims each candle once',async()=>{
  const {readFile}=await import('node:fs/promises');
  const watch=await readFile(new URL('../netlify/functions/scenario-watch.mjs',import.meta.url),'utf8');
- const sql=await readFile(new URL('../supabase/migrations/20261116192000_aurevia_atomic_m5_analysis_claim.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116193000_aurevia_atomic_m5_analysis_claim.sql',import.meta.url),'utf8');
  const ai=await readFile(new URL('../netlify/functions/ai-collaboration.mjs',import.meta.url),'utf8');
  assert.match(watch,/s\.status==='zone_reached'&&!s\.entry_notified/);
  assert.match(watch,/x\.time\+5\*60000<=Date\.now\(\)/);
