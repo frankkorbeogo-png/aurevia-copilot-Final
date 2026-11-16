@@ -459,13 +459,13 @@ export async function syncTradeCloseToSupabase(group,child,closeEvent,expectedUs
 
 export async function sendTelegramTest(){return sendTelegramNotification({type:'test',text:'✅ Test de réception AUREVIA COPILOT\n\nLa liaison Telegram fonctionne. Si vous voyez ce message, votre compte reçoit bien les notifications privées.'});}
 
-export async function loadPublishedAnnouncements(){
- await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour consulter les annonces.');
+export async function loadPublishedAnnouncements(expectedUserId=null){
+ await ensureUser();if(!currentUser)throw new Error('Connectez-vous pour consulter les annonces.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return [];
  const now=new Date().toISOString();
  const {data:announcements,error}=await supabase.from('announcements').select('*').eq('is_published',true).or(`starts_at.is.null,starts_at.lte.${now}`).order('created_at',{ascending:false}).limit(200);
- if(error)throw new Error(error.message);
- const {data:reads,error:readError}=await supabase.from('announcement_reads').select('announcement_id,read_at').eq('user_id',currentUser.id);
- if(readError)throw new Error(readError.message);
+ if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return [];
+ const {data:reads,error:readError}=await supabase.from('announcement_reads').select('announcement_id,read_at').eq('user_id',userId);
+ if(readError)throw new Error(readError.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return [];
  const readMap=new Map((reads||[]).map(row=>[row.announcement_id,row.read_at]));
  return (announcements||[]).map(item=>({...item,read_at:readMap.get(item.id)||null,is_read:readMap.has(item.id)}));
 }
