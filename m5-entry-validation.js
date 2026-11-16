@@ -24,7 +24,8 @@ export function validateM5AIConsensus({scenario,lead,review,audit,atr=null}){
  if(!levelsValid)reasons.push('prix incompatible avec le SL ou le TP1');
  if(!reviewClear)reasons.push(priceAgreement?'contre-analyse OpenRouter non concluante':'désaccord sur le prix entre Groq et OpenRouter');
  if(!auditClear)reasons.push(audit?.vetoReason||'contrôle Cloudflare non validé');
- if(!allScores)reasons.push('scores IA absents ou hors de l’intervalle 0–100');\n if(Number(lead?.score)<65||Number(review?.score)<60||Number(audit?.score)<60)reasons.push('seuil de qualité IA non atteint');
+ if(!allScores)reasons.push('scores IA absents ou hors de l’intervalle 0–100');
+ if(Number(lead?.score)<65||Number(review?.score)<60||Number(audit?.score)<60)reasons.push('seuil de qualité IA non atteint');
  if(blockers.length)reasons.push(...blockers);
  return {confirmed,score,entryReference:confirmed?price:null,entryZoneLow:validPrice?low:null,entryZoneHigh:validPrice?high:null,reason:confirmed?'Entrée M5 proposée par Groq, prix corroboré par OpenRouter et risque accepté par Cloudflare.': 'ATTENDRE : '+reasons.join(' ; '),components,priceAgreement,priceTolerance:tolerance,blockers};
 }
