@@ -55,8 +55,8 @@ function nextPrompt(setup){
   tickSize:'Quelle est la taille d’un tick ?',
   tickValue:'Quelle est la valeur monétaire d’un tick pour 1 lot, dans la devise de ton compte ?',
   feesPerLot:'Quels sont les frais/commissions par lot dans la devise de ton compte ? Réponds 0 si aucun.',
-  minLot:'Quel est le lot minimum autorisé par ton broker ? Réponds « ignorer » pour conserver 0,01.',
-  lotStep:'Quel est le pas de volume autorisé ? Exemple : 0.001. Réponds « ignorer » pour conserver 0,01.',
+  minLot:'Quel est le lot minimum autorisé sur ta plateforme ? Réponds « ignorer » pour conserver 0,01.',
+  lotStep:'Quel est le pas de volume autorisé sur ta plateforme ? Exemple : 0.001. Réponds « ignorer » pour conserver 0,01.',
   maxLot:'Quel est le lot maximum autorisé ? Réponds « ignorer » si aucun maximum ne s’applique.'
  };
  return prompts[setup.step]||'Réponse non reconnue. Envoie /annuler pour recommencer.';
