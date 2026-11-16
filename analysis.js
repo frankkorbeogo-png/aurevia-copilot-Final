@@ -36,7 +36,7 @@ async function fetchMacroContext(instrument){try{const token=await getAnalysisAc
 async function requestAureviaAnalysis(symbol,m15,context){
  const token=await getAnalysisAccessToken();
  if(!token)throw new Error('Connexion requise pour solliciter le moteur IA.');
- const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
+ const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),timezone:m15.timezone||'UTC',indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
  const d=await r.json().catch(()=>({}));
  if(!r.ok){
   const attempts=d.providerDiagnostics?.attempts||[];
