@@ -67,7 +67,7 @@ test('surveillance refuse de clôturer si les métadonnées de calcul P/L sont a
 });
 test('surveillance calcule le P/L BUY et SELL avec volume, contrat, conversion et frais',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
- const p={volume_remaining:0.1,entry_price:2000,contract_size:100,quote_to_account:1,fees_per_lot:2};
+ const p={volume_remaining:0.1,entry_price:2000,actual_entry_price:2000,contract_size:100,quote_to_account:1,fees_per_lot:2};
  assert.deepEqual(calculateInternalClosePnl(p,'BUY',2010),{gross:100,fees:0.2,net:99.8,volume:0.1});
  assert.deepEqual(calculateInternalClosePnl(p,'SELL',1990),{gross:100,fees:0.2,net:99.8,volume:0.1});
 });
@@ -143,10 +143,10 @@ test('un prix absent ne déclenche aucune entrée',()=>{
  assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'BUY',order_type:'BUY LIMIT'},{bid:2000,ask:2000.2}),null);
 });
 
-test('le calcul P/L utilise le prix d’activation enregistré plutôt que le prix indicatif',async()=>{
+test('le P/L refuse le prix d’activation observé tant que le prix réel manuel manque',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
  const p={volume_remaining:0.1,entry_price:2000,activation_price:2002,contract_size:100,quote_to_account:1,fees_per_lot:0};
- assert.deepEqual(calculateInternalClosePnl(p,'BUY',2010),{gross:80,fees:0,net:80,volume:0.1});
+ assert.throws(()=>calculateInternalClosePnl(p,'BUY',2010),/prix réel d’exécution manuelle absent/i);
 });
 test('la migration autorise PENDING et réserve l’activation au worker service_role',async()=>{
  const {readFile}=await import('node:fs/promises');
@@ -160,8 +160,8 @@ test('la migration autorise PENDING et réserve l’activation au worker service
 
 test('le worker serveur calcule aussi les instruments à valeur de point ou de tick',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
- const point=calculateInternalClosePnl({volume_remaining:2,entry_price:100,contract_spec:{brokerName:'B',accountCurrency:'EUR',calculationType:'point',pointSize:1,pointValue:2.5,minLot:0.1,lotStep:0.1,feesPerLot:0}},'BUY',105);
- const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
+ const point=calculateInternalClosePnl({volume_remaining:2,entry_price:100,actual_entry_price:100,contract_spec:{brokerName:'B',accountCurrency:'EUR',calculationType:'point',pointSize:1,pointValue:2.5,minLot:0.1,lotStep:0.1,feesPerLot:0}},'BUY',105);
+ const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,actual_entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
  assert.equal(point.gross,25);assert.equal(point.net,25);assert.equal(tick.gross,7.5);assert.equal(tick.net,7.5);
 });
 
@@ -187,11 +187,11 @@ test('le P/L privilégie le prix réellement exécuté au prix d’activation ob
  const result=calculateInternalClosePnl({volume_remaining:0.1,entry_price:1999,activation_price:2000,actual_entry_price:2005,contract_size:100,quote_to_account:1,fees_per_lot:2},'BUY',2010);
  assert.deepEqual(result,{gross:50,fees:0.2,net:49.8,volume:0.1});
 });
-test('un ordre conditionnel sans prix réel manuel utilise le prix d’activation comme référence P/L',async()=>{
+test('un ordre conditionnel reste suivi mais son P/L et sa clôture sont suspendus sans prix réel manuel',async()=>{
  const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
- assert.doesNotMatch(source,/Conditional orders remain observed-only/);
- assert.match(source,/actual_entry_price\?\?position\.activation_price\?\?position\.entry_price/);
- assert.match(source,/prix observé au déclenchement/);
+ assert.match(source,/if\(!Number\.isFinite\(Number\(p\.actual_entry_price\)\)\|\|Number\(p\.actual_entry_price\)<=0\)continue/);
+ assert.match(source,/actual_entry_price/);
+ assert.doesNotMatch(source,/actual_entry_price\?\?position\.activation_price/);
 });
 
 test('une position unique ne génère qu’une notification d’activation pour tous ses TP',async()=>{
