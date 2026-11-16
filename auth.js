@@ -303,7 +303,7 @@ export async function loadRiskManagementSettings(expectedUserId=null){
  const number=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
  return {
   brokerName:String(saved.brokerName||'').slice(0,80),
-  accountType:['standard','raw_ec n','pro','demo','other'].includes(String(saved.accountType||'').toLowerCase())?String(saved.accountType).toLowerCase():'standard',
+  accountType:['standard','raw_ecn','pro','demo','other'].includes(String(saved.accountType||'').toLowerCase())?String(saved.accountType).toLowerCase():'standard',
   balance:number(saved.balance),equity:number(saved.equity),marginUsed:number(saved.marginUsed),
   peakEquity:number(saved.peakEquity),dailyLossLimit:number(saved.dailyLossLimit),weeklyLossLimit:number(saved.weeklyLossLimit),
   defaultLeverage:number(saved.defaultLeverage,2000)
@@ -313,7 +313,7 @@ export async function saveRiskManagementSettings(settings,expectedUserId=null){
  await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant d’enregistrer la gestion du compte.');const userId=currentUser.id;
  if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
  const accountType=String(settings?.accountType||'standard').toLowerCase();
- if(!['standard','raw_ec n','pro','demo','other'].includes(accountType))throw new Error('Type de compte invalide.');
+ if(!['standard','raw_ecn','pro','demo','other'].includes(accountType))throw new Error('Type de compte invalide.');
  const brokerName=String(settings?.brokerName||'').trim().slice(0,80);
  const number=(value,name,{min=0}={})=>{const n=Number(value);if(!Number.isFinite(n)||n<min)throw new Error('Valeur invalide : '+name);return n;};
  const clean={
