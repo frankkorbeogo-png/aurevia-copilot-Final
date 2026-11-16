@@ -73,7 +73,9 @@ begin
   if v_order like '%STOP%' and v_order not like '%STOP LIMIT' and v_trigger is null then raise exception 'STOP_REQUIRES_TRIGGER'; end if;
   if v_order like '%LIMIT%' and v_limit is null then raise exception 'LIMIT_REQUIRES_LIMIT_PRICE'; end if;
   v_actual_entry := nullif(p_contract_spec->>'actualEntryPrice','')::numeric;
-  if not v_pending and (v_actual_entry is null or v_actual_entry<=0) then raise exception 'ACTUAL_FILL_PRICE_REQUIRED'; end if;
+  -- New API and Telegram flows validate real market fills before this RPC.
+  -- Keep null backward-compatible during the staged migration/deploy window; old clients
+  -- continue using the stored M5 reference entry until the new UI is published.
   v_entry := case
     when v_order like '%STOP LIMIT' then v_limit
     when v_order like '%LIMIT%' then v_limit
