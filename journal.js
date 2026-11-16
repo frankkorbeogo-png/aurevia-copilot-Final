@@ -7,7 +7,14 @@ export function deleteJournalTrade(tradeId){const rows=read();const next=rows.fi
 export function addJournalTrade(trade){
   if(!trade.instrument?.trim()||!['BUY','SELL'].includes(trade.direction)||!Number.isFinite(trade.result)||!trade.date)return {ok:false,error:'Renseignez un instrument, une direction, un résultat numérique et une date.'};
   const rows=read();rows.unshift({...trade,id:crypto.randomUUID?.()||String(Date.now()),createdAt:new Date().toISOString()});
-  return write(rows)?{ok:true}:{ok:false,error:'Le stockage local est indisponible sur cet appareil.'};
+  return write(rows)?{ok:true,id:rows[0].id}:{ok:false,error:'Le stockage local est indisponible sur cet appareil.'};
+}
+export function mergeJournalTrades(remoteRows){
+  if(!Array.isArray(remoteRows)||!remoteRows.length)return read();
+  const rows=read(),byId=new Map(rows.map(row=>[row.id,row]));
+  for(const row of remoteRows){if(row?.id&&!byId.has(row.id))byId.set(row.id,row);}
+  const merged=[...byId.values()].sort((a,b)=>String(b.createdAt||b.date||'').localeCompare(String(a.createdAt||a.date||'')));
+  write(merged);return merged;
 }
 export function renderJournal(){
   const rows=read(),wins=rows.filter(r=>Number(r.result)>0).length,losses=rows.filter(r=>Number(r.result)<0).length,closed=rows.filter(r=>Number(r.result)!==0).length,net=rows.reduce((s,r)=>s+Number(r.result||0),0);
