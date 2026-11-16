@@ -7,7 +7,7 @@ const watch=readFileSync(new URL('../netlify/functions/scenario-watch.mjs',impor
 const webhook=readFileSync(new URL('../netlify/functions/telegram-webhook.mjs',import.meta.url),'utf8');
 test('l’enregistrement direct dans AUREVIA n’est proposé qu’après validation M5',()=>{
  assert.match(app,/s\.status==='entry_confirmed'/);
- assert.match(app,/validation M5|confirmée par M5/i);
+ assert.match(app,/Proposition M5 validée par les trois IA|confirmée par M5/i);
  assert.match(api,/scenario\.status!=='entry_confirmed'/);
  assert.match(api,/validée par l’analyse M5 après mitigation/i);
  assert.match(watch,/evaluateM5EntryConfirmation/);
