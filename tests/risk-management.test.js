@@ -21,6 +21,7 @@ test('le gestionnaire expose broker, type, equity, marge, levier, drawdown et li
   assert.ok(html.includes('id="'+id+'"'),'champ manquant: '+id);
  }
  assert.doesNotMatch(html,/id="accountBalance"[^>]*value="200"/);
+ assert.match(html,/P\/L de ces limites repose sur les clôtures enregistrées, pas sur le P\/L flottant/);
 });
 
 test('les résultats journaliers et hebdomadaires sont calculés depuis les clôtures enregistrées et le journal manuel',()=>{
