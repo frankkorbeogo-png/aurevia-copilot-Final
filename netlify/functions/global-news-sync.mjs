@@ -128,7 +128,7 @@ async function syncEconomicCalendar(){
   if(!response?.ok)throw new Error('FRED release '+release.id+' HTTP '+(response?.status||'unavailable'));
   const data=await response.json();if(data.error_message)throw new Error(data.error_message);
   return (Array.isArray(data.release_dates)?data.release_dates:[]).map(row=>{
-   const date=String(row.date||'');if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return null;
+   const date=String(row.date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return null;
    const scheduledAt=zonedTimeToUtc(date,release.hour,release.minute);
    if(Date.parse(scheduledAt)<Date.now()-60*60*1000||Date.parse(scheduledAt)>Date.now()+15*86400000)return null;
    return {external_id:'FRED-'+release.id+'-'+date,release_id:release.id,event_name:release.name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:release.url,source_provider:'FRED release calendar',time_basis:'standard_release_time'};
