@@ -12,6 +12,7 @@ function mockFetch({userId=UUID,email='frankkorbeogo@gmail.com',active=true,admi
   const u=String(url);onCall(u,options);
   if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:userId,email}),{status:200});
   if(u.endsWith('/rpc/aurevia_session_is_active_for_user'))return new Response(String(active),{status:200});
+  if(u.endsWith('/rpc/aurevia_license_status'))return new Response(JSON.stringify({ok:true,status:'trial'}),{status:200});
   if(u.endsWith('/rpc/aurevia_is_admin')){const body=JSON.parse(options.body||'{}');return new Response(String(body.p_user_id===userId?admin:adminIds.includes(body.p_user_id)),{status:200});}
   if(u.endsWith('/rpc/aurevia_admin_user_list'))return new Response(JSON.stringify({users,total:users.length,has_more:false}),{status:200});
   if(u.endsWith('/rpc/aurevia_admin_stats'))return new Response(JSON.stringify({profiles:1,users_online:1,active_sessions:1,suspended:0,trading_journal:3,trading_position_groups:2,telegram_connections:0}),{status:200});
