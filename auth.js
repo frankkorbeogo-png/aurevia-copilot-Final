@@ -192,7 +192,13 @@ async function activateSession(session,action){
    pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;renderRememberedAccounts();render();
    const message='Deux comptes sont déjà mémorisés sur cet appareil. Retirez-en un avant de connecter un troisième compte.';const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);return;
   }
-  await sessionRequest(action,session.access_token);bindLocalDataOwner(session.user?.id);cacheAccountSession(session);sessionReady=true;pendingSession=null;render();
+  await sessionRequest(action,session.access_token);
+  const licenseResponse=await fetch('/api/license',{headers:{authorization:`Bearer ${session.access_token}`},cache:'no-store'});
+  const licenseState=await licenseResponse.json().catch(()=>({}));
+  if(!licenseResponse.ok||licenseState.ok!==true)throw new Error(licenseState.error||'Impossible de vérifier la licence AUREVIA.');
+  window.__aureviaLicense=licenseState;
+  bindLocalDataOwner(session.user?.id);cacheAccountSession(session);sessionReady=true;pendingSession=null;render();
+  window.dispatchEvent(new CustomEvent('aurevia:licensechange',{detail:licenseState}));
   const retry=$('retrySessionBtn');if(retry)retry.hidden=true;
   startHeartbeat();
  }catch(error){
