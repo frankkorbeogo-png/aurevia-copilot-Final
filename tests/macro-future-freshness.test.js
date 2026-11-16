@@ -17,6 +17,8 @@ test('macro-context marks future DXY and FRED timestamps as future, not recent',
   const u=String(input);
   if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:'future-user'}),{status:200});
   if(u.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});
+  if(u.includes('/rpc/aurevia_is_admin'))return new Response('false',{status:200});
+  if(u.includes('/rpc/aurevia_license_status'))return new Response(JSON.stringify({ok:true,status:'trial'}),{status:200});
   if(u.includes('api.twelvedata.com/quote'))return new Response(JSON.stringify({symbol:'DXY',close:'105.2',timestamp:futureEpoch,last_quote_at:futureEpoch}),{status:200});
   if(u.includes('showmytrades.com'))return new Response(JSON.stringify({events:[]}),{status:200});
   if(u.includes('api.stlouisfed.org'))return new Response(JSON.stringify({observations:[{date:tomorrow,value:'100'},{date:'2026-11-01',value:'99'}]}),{status:200});
