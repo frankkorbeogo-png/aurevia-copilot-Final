@@ -130,7 +130,7 @@ begin
       v_child,v_child,case when v_calc='contract' then v_contract else null end,
       case when v_calc='contract' then v_quote else 1 end,v_fees,
       p_contract_spec,case when v_pending then 'PENDING' else 'OPEN' end,
-      case when v_pending then null else now() end,
+      now(),
       case when v_order like '%STOP%' then v_trigger else null end,
       case when v_order like '%LIMIT%' then v_limit else null end,
       false,false,case when v_pending then now()+interval '24 hours' else null end
