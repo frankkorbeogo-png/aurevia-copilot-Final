@@ -47,7 +47,7 @@ test('le calendrier FOMC inclut les jours de dÃ©cision officiels et exclut la rÃ
 });
 
 test('la migration distingue seen_at de published_at sans perdre les anciens articles',async()=>{
- const sql=await readFile(new URL('../supabase/migrations/20261115235000_global_news_seen_at.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116090000_global_news_seen_at.sql',import.meta.url),'utf8');
  assert.match(sql,/add column if not exists seen_at timestamptz/);
  assert.match(sql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);
  assert.match(sql,/alter column published_at drop not null/);
