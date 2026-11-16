@@ -95,7 +95,7 @@ test('le worker M5 respecte le budget de 30 secondes des fonctions planifiées',
 });
 
 function configureM5Providers(t){
- const keys=['GROQ_API_KEY','OPENROUTER_API_KEY','CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID'];
+ const keys=['GROQ_API_KEY','OPENROUTER_API_KEY','CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID','GEMINI_API_KEY'];
  const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
  process.env.GROQ_API_KEY='test-groq';process.env.OPENROUTER_API_KEY='test-openrouter';process.env.CLOUDFLARE_API_TOKEN='test-cloudflare';process.env.CLOUDFLARE_ACCOUNT_ID='test-account';
  t.after(()=>keys.forEach(k=>old[k]===undefined?delete process.env[k]:process.env[k]=old[k]));
@@ -142,4 +142,13 @@ test('une réponse HTTP 503 d’OpenRouter bloque la confirmation M5 même si Gr
  const result=await runAureviaM5Confirmation(m5Fixture);
  assert.equal(result.confirmed,false);
  assert.match(result.reason,/OpenRouter indisponible/);
+});
+
+test('une IA M5 obligatoire absente suspend immédiatement la validation sans appeler de fournisseur',async t=>{
+ configureM5Providers(t);delete process.env.OPENROUTER_API_KEY;
+ const oldFetch=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;return providerResponse(leadFixture);};
+ t.after(()=>globalThis.fetch=oldFetch);
+ const result=await runAureviaM5Confirmation(m5Fixture);
+ assert.equal(result.confirmed,false);assert.equal(calls,0);
+ assert.match(result.reason,/les trois IA/);
 });
