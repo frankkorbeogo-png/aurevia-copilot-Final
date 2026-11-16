@@ -662,19 +662,62 @@ async function refreshAccountCurrency(){
  catch(error){if(status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
 }
 async function persistAccountCurrency(){const button=$('saveAccountCurrency');try{const selected=$('profileAccountCurrency').value;if(!selected)throw new Error('Choisissez une devise avant de continuer.');if(!await confirmInApp({title:'Enregistrer la devise du compte ?',message:'La devise '+selected+' sera utilisée pour les calculs de risque et le suivi des positions.',confirmLabel:'Enregistrer la devise'}))return;if(button)button.disabled=true;const value=await saveAccountCurrency(selected);accountCurrency=value;if($('accountCurrency').value!==undefined)$('accountCurrency').value=value;if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=true;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=`Devise enregistrée : ${value}.`;showInAppNotice(`Devise du compte enregistrée : ${value}.`,{type:'success'});}catch(error){if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}finally{if(button)button.disabled=false;}}
+async function adminLicenseRequest(action,payload={}){
+ const token=await getAnalysisAccessToken();if(!token)throw new Error('Session administrateur absente.');
+ const response=await fetch('/api/admin-licenses'+(action==='list'?'':'?'),{method:action==='list'?'GET':'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},...(action==='list'?{}:{body:JSON.stringify({action,...payload})}),cache:'no-store'});
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok||result.ok!==true)throw new Error(result.error||'Action de licence impossible.');
+ return result;
+}
+async function loadAdminLicenses(){
+ const body=$('adminLicensesRows');if(!body)return;
+ body.innerHTML='<tr><td colspan="7" class="empty-cell">Chargement…</td></tr>';
+ try{
+  const result=await adminLicenseRequest('list');
+  body.replaceChildren();
+  for(const license of result.licenses||[]){
+   const tr=document.createElement('tr');
+   const values=[license.key_prefix,license.plan_code,license.duration_days===null?'Illimitée':`${license.duration_days} jours`,license.status,license.assigned_user_id||'—',license.expires_at?new Date(license.expires_at).toLocaleDateString('fr-FR'):'—'];
+   for(const value of values){const td=document.createElement('td');td.textContent=String(value);tr.append(td);}
+   const action=document.createElement('td');
+   if(['issued','active'].includes(license.status)){
+    const btn=document.createElement('button');btn.type='button';btn.className='small-btn';btn.textContent='Suspendre';btn.addEventListener('click',async()=>{if(!await confirmInApp({title:'Suspendre cette licence ?',message:'L’accès associé sera bloqué immédiatement.',confirmLabel:'Suspendre',danger:true}))return;try{await adminLicenseRequest('set_status',{license_id:license.id,status:'suspended'});await loadAdminLicenses();}catch(error){showInAppNotice(error.message,{type:'error'});}});action.append(btn);
+    const revoke=document.createElement('button');revoke.type='button';revoke.className='small-btn';revoke.textContent='Révoquer';revoke.addEventListener('click',async()=>{if(!await confirmInApp({title:'Révoquer définitivement ?',message:'Cette clé ne pourra plus être utilisée.',confirmLabel:'Révoquer',danger:true}))return;try{await adminLicenseRequest('set_status',{license_id:license.id,status:'revoked'});await loadAdminLicenses();}catch(error){showInAppNotice(error.message,{type:'error'});}});action.append(revoke);
+   }else action.textContent='—';
+   tr.append(action);body.append(tr);
+  }
+  if(!body.children.length)body.innerHTML='<tr><td colspan="7" class="empty-cell">Aucune licence générée.</td></tr>';
+ }catch(error){body.innerHTML=`<tr><td colspan="7" class="empty-cell">${error.message}</td></tr>`;}
+}
+async function issueAdminLicenses(){
+ const button=$('adminIssueLicenses'),status=$('adminLicenseStatus'),output=$('adminIssuedKeys');
+ if(button){button.disabled=true;button.textContent='Génération…';}
+ if(output){output.hidden=true;output.textContent='';}
+ try{
+  const duration=$('adminLicenseDuration').value;
+  const result=await adminLicenseRequest('issue',{count:Number($('adminLicenseCount').value),duration_days:duration==='unlimited'?'unlimited':Number(duration),plan_code:$('adminLicensePlan').value});
+  const keys=(result.issued||[]).map(item=>item.license_key);
+  if(output){output.hidden=false;output.textContent=keys.join('\n');}
+  if(status)status.textContent=`${keys.length} clé(s) créée(s). Copiez-les maintenant : elles ne seront plus affichées intégralement.`;
+  await loadAdminLicenses();
+ }catch(error){if(status)status.textContent=error.message;}
+ finally{if(button){button.disabled=false;button.textContent='Générer les clés';}}
+}
 function bindEvents(){
   let pendingAdminRoute=false;
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
   window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const access=await refreshLicenseAccess();if(!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshTelegramHomeNotice();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase();if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
   $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
+  $('adminIssueLicenses')?.addEventListener('click',issueAdminLicenses);
+  $('adminRefreshLicenses')?.addEventListener('click',loadAdminLicenses);
   window.addEventListener('aurevia:adminchange',event=>{
     const allowed=event.detail?.isAdmin===true;window.__aureviaAdminVerified=allowed;
     const announcementsLink=document.querySelector('[data-page="annonces"]');
     if(announcementsLink)announcementsLink.hidden=false;
     const announcementsView=$('page-annonces');
     if(announcementsView)announcementsView.hidden=false;
-    if(allowed)loadAnnouncements();
+    if(allowed){loadAnnouncements();loadAdminLicenses();}
     if(allowed&&pendingAdminRoute){pendingAdminRoute=false;showPage('admin');}
     else if(!allowed){pendingAdminRoute=false;if(location.hash==='#admin')showPage('accueil');}
     else if(allowed&&location.hash==='#admin')loadAdminConsole();
