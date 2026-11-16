@@ -26,6 +26,6 @@ test('le calendrier 2027 distingue la réunion stratégique sans décision de ta
 });
 
 test('la réunion de politique monétaire de novembre 2027 est au 17 novembre',()=>{
- const events=buildOfficialFomcEvents(new Date('2027-11-01T12:00:00.000Z'));
+ const events=buildOfficialFomcEvents(new Date('2027-11-03T12:00:00.000Z'));
  assert.ok(events.some(x=>x.event_name==='FOMC monetary policy decision'&&x.release_date==='2027-11-17'));
 });
