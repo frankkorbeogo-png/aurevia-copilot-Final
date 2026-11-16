@@ -254,7 +254,7 @@ function openTradeValidation(scenario){
  pendingValidationScenario=scenario;
  $('validationScenarioTitle').textContent=`${scenario.instrument} · ${scenario.direction}`;
  $('validationScenarioStatus').textContent='Entrée validée par M5';
- $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Entrée <b>${escapeText(scenario.last_price??scenario.entry)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
+ $('validationScenarioLevels').innerHTML=`<span>Instrument <b>${escapeText(scenario.instrument)}</b></span><span>Direction <b>${escapeText(scenario.direction)}</b></span><span>Entrée <b>${escapeText(scenario.entry??scenario.last_price)}</b></span><span>Stop Loss <b>${escapeText(scenario.stop_loss)}</b></span><span>Take Profits <b>${(scenario.take_profits||[]).map(escapeText).join(' · ')}</b></span>`;
  $('validationLot').value='';
  $('validationTradeStatus').textContent=accountCurrency?`Devise du profil : ${accountCurrency}. Vérifiez les niveaux, choisissez le mode et renseignez les paramètres techniques du trade.`:'Devise du compte absente du profil. Configurez-la dans Paramètres avant de valider ce trade.';
  $('validationTradeNav').hidden=false;
@@ -333,7 +333,7 @@ async function refreshScenarioWatchList(){
    const already=Boolean(s.trade_group_id);
    const expires=confirmed?` · validation jusqu’à ${new Date(s.lot_confirmation_expires_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`:'';
    return `<article class="scenario-watch-card"><header><strong>${escapeText(s.instrument)} · ${escapeText(s.direction)}</strong><span>${escapeText(statusLabel[s.status]||s.status)}</span></header>
-    <div class="scenario-watch-levels"><span>Zone <b>${escapeText(s.entry_low)} – ${escapeText(s.entry_high)}</b></span><span>Entrée indicative <b>${escapeText(s.entry)}</b></span><span>SL <b>${escapeText(s.stop_loss)}</b></span><span>TP <b>${(s.take_profits||[]).map(escapeText).join(' · ')}</b></span><span>Dernier prix <b>${escapeText(s.last_price??'—')}</b></span></div>
+    <div class="scenario-watch-levels"><span>Zone <b>${escapeText(s.entry_low)} – ${escapeText(s.entry_high)}</b></span><span>${s.status==='entry_confirmed'?'Entrée M5 de référence':'Entrée indicative'} <b>${escapeText(s.entry)}</b></span><span>SL <b>${escapeText(s.stop_loss)}</b></span><span>TP <b>${(s.take_profits||[]).map(escapeText).join(' · ')}</b></span><span>Dernier prix <b>${escapeText(s.last_price??'—')}</b></span></div>
     ${already?'<p class="muted">Position déjà créée. Le suivi et le journal sont actifs.</p>':confirmed?`<div class="scenario-direct-entry"><button class="primary-btn" type="button" data-scenario-validate="${escapeText(s.id)}">Ouvrir « Validation et enregistrement du trade » →</button><small>Renseignez le lot, le mode de gestion et les paramètres contractuels dans l’interface dédiée.${expires}</small></div>`:s.status==='monitoring'||s.status==='zone_reached'?'<p class="muted">L’enregistrement sera proposé après validation effective de l’entrée par M5.</p>':'<p class="muted">Ce scénario n’est plus actif.</p>'}
    </article>`;
   }).join('');
