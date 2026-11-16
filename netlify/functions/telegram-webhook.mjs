@@ -27,7 +27,8 @@ async function beginSetup(token,chatId,userId,code,mode){
  if(existing&&existing.code!==code){await telegramSend(token,chatId,'Une autre configuration de trade est déjà en cours. Termine-la ou envoie /annuler avant d’en commencer une nouvelle.');return;}
  const scenario=await getScenario(userId,code);
  if(!scenario){await telegramSend(token,chatId,'Ce scénario n’est plus disponible ou son code a expiré. Relance la surveillance depuis AUREVIA.');return;}
- const savedSpecs=preferences.broker_specs?.[scenario.instrument]||preferences.broker_specs?.default||{};\n const setup={code,mode,step:'lot',volume:null,spec:{...savedSpecs,accountCurrency,leverage:savedSpecs.leverage??null,minLot:savedSpecs.minLot??0.01,lotStep:savedSpecs.lotStep??0.01,maxLot:savedSpecs.maxLot??null,feesPerLot:savedSpecs.feesPerLot??0},autoJournal:true,startedAt:now()};
+ const savedSpecs=preferences.broker_specs?.[scenario.instrument]||preferences.broker_specs?.default||{};
+ const setup={code,mode,step:'lot',volume:null,spec:{...savedSpecs,accountCurrency,leverage:savedSpecs.leverage??null,minLot:savedSpecs.minLot??0.01,lotStep:savedSpecs.lotStep??0.01,maxLot:savedSpecs.maxLot??null,feesPerLot:savedSpecs.feesPerLot??0},autoJournal:true,startedAt:now()};
  await saveSetup(userId,setup);
  await ask(token,chatId,`Très bien. Configurons ta position ${scenario.instrument} ${scenario.direction}.\n\nQuel volume souhaites-tu utiliser ?\nExemple : 0.05\n\nMode : ${mode==='unique'?'Position unique (lot total réparti entre les TP)':'Trades séparés (lot appliqué à chaque TP)'}`);
 }
