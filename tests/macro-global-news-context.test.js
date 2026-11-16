@@ -7,11 +7,13 @@ test('le contexte macro expose les actualités GDELT stockées sans inventer de 
  const oldFetch=globalThis.fetch,oldEnv={...process.env};
  Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'publishable',SUPABASE_SERVICE_ROLE_KEY:'service'});
  delete process.env.FRED_API_KEY;delete process.env.TWELVEDATA_API_KEY;
- const claims=Buffer.from(JSON.stringify({sub:'macro-user',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
+ const claims=Buffer.from(JSON.stringify({sub:'3ed0c702-03f1-4264-9e85-746d66401b51',session_id:'9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0'})).toString('base64url');
  globalThis.fetch=async input=>{
   const url=String(input);
-  if(url.includes('/auth/v1/user'))return response({id:'macro-user'});
+  if(url.includes('/auth/v1/user'))return response({id:'3ed0c702-03f1-4264-9e85-746d66401b51'});
   if(url.includes('/rpc/aurevia_session_is_active_for_user'))return response(true);
+  if(url.includes('/rpc/aurevia_is_admin'))return response(false);
+  if(url.includes('/rpc/aurevia_license_status'))return response({ok:true,status:'trial',days_remaining:3});
   if(url.includes('showmytrades.com/api/public/calendar/v1'))return response({events:[]});
   if(url.includes('/rest/v1/economic_release_events'))return response([]);
   if(url.includes('/rest/v1/global_news_events'))return response([{title:'Central bank announces a rate decision',source_url:'https://news.example.com/rates',source_domain:'news.example.com',source_country:'US',source_language:'English',published_at:null,seen_at:new Date().toISOString(),category:'macro_geopolitics',tone:-1.2,source_provider:'GDELT DOC 2.0'}]);
