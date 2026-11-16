@@ -54,6 +54,13 @@ test('global-news-sync backs off after GDELT HTTP 429 and stores the recovered a
 });
 
 
+test('FRED requests respect the two-requests-per-second limit and retry HTTP 429',async()=>{
+ const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
+ assert.match(source,/for\(let i=0;i<RELEASES\.length;i\+=2\)/);
+ assert.match(source,/await wait\(1100\)/);
+ assert.match(source,/response\.status===429&&attempt===0/);
+});
+
 test('FRED release windows use the New York calendar date across UTC midnight',()=>{
  const range=getFredDateRange(new Date('2026-11-16T02:00:00.000Z'));
  assert.equal(range.today,'2026-11-15');
