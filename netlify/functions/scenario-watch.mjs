@@ -6,17 +6,46 @@ import {detectMarketStructure} from '../../structure.js';
 import {runAureviaM5Confirmation} from './ai-collaboration.mjs';
 // Scheduled monitor for manually saved AUREVIA scenarios. No broker access or order execution.
 const BASE=()=>process.env.SUPABASE_URL,KEY=()=>process.env.SUPABASE_SERVICE_ROLE_KEY;
+const candleCache=new Map(),providerCooldownUntil=new Map();
 async function rest(path,{method='GET',body,prefer}={}){const r=await fetch(`${BASE()}/rest/v1/${path}`,{method,headers:{apikey:KEY(),authorization:`Bearer ${KEY()}`,'content-type':'application/json',...(prefer?{prefer}:{})},...(body?{body:JSON.stringify(body)}:{})});const t=await r.text();if(!r.ok)throw new Error(`Supabase ${r.status}: ${t.slice(0,180)}`);return t?JSON.parse(t):null;}
 async function candles(instrument,interval='15min',outputsize='4'){
  const market=getMarketInstrument(instrument);if(!market)throw new Error('Instrument non pris en charge par le catalogue AUREVIA.');
- const u=new URL('https://api.twelvedata.com/time_series');u.searchParams.set('symbol',market.provider);u.searchParams.set('interval',interval);u.searchParams.set('outputsize',outputsize);u.searchParams.set('timezone','UTC');u.searchParams.set('apikey',process.env.TWELVEDATA_API_KEY||'');
+ const intervalMs=interval==='15min'?15*60000:5*60000,expectedClosedAt=Math.floor(Date.now()/intervalMs)*intervalMs-intervalMs;
+ const cacheKey=market.provider+':'+interval+':'+outputsize,cached=candleCache.get(cacheKey);
+ if(cached&&cached.lastClosedAt===expectedClosedAt)return cached.rows;
+ const apiKey=String(process.env.TWELVEDATA_API_KEY||''),blockedUntil=providerCooldownUntil.get(apiKey)||0;
+ if(Date.now()<blockedUntil)throw new Error('Quota Twelve Data temporairement bloqué. Surveillance M5/M15 suspendue jusqu’à la fin de la temporisation.');
+ const u=new URL('https://api.twelvedata.com/time_series');u.searchParams.set('symbol',market.provider);u.searchParams.set('interval',interval);u.searchParams.set('outputsize',outputsize);u.searchParams.set('timezone','UTC');u.searchParams.set('apikey',apiKey);
  const r=await fetch(u,{signal:AbortSignal.timeout(5000)}),d=await r.json();
- if(!r.ok||d.status==='error'||!Array.isArray(d.values)||d.values.length<3)throw new Error(d.message||`Bougies ${interval} indisponibles`);
+ if(!r.ok||d.status==='error'||!Array.isArray(d.values)||d.values.length<3){
+  const quota=r.status===429||Number(d.code)===429||/quota|credits|rate limit|requests per minute/i.test(String(d.message||''));
+  if(quota)providerCooldownUntil.set(apiKey,Date.now()+60000);
+  throw new Error(quota?'Quota Twelve Data atteint. Temporisation de 60 secondes activée.':d.message||`Bougies ${interval} indisponibles`);
+ }
  const rows=d.values.map(x=>({time:Date.parse(String(x.datetime).replace(' ','T')+'Z'),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close)})).filter(x=>[x.time,x.open,x.high,x.low,x.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
  if(rows.length<3)throw new Error(`Historique ${interval} invalide`);
+ const lastClosed=rows.filter(x=>x.time+intervalMs<=Date.now()).at(-1);
+ if(!lastClosed||lastClosed.time!==expectedClosedAt)throw new Error(`La dernière bougie ${interval} clôturée est absente ou périmée.`);
+ candleCache.set(cacheKey,{lastClosedAt:lastClosed.time,rows});
  return rows;
 }
-async function livePrice(instrument){const market=getMarketInstrument(instrument);if(!market)throw new Error('Instrument non pris en charge par le catalogue AUREVIA.');const u=new URL('https://api.twelvedata.com/time_series');u.searchParams.set('symbol',market.provider);u.searchParams.set('interval','1min');u.searchParams.set('outputsize','1');u.searchParams.set('timezone','UTC');u.searchParams.set('apikey',process.env.TWELVEDATA_API_KEY||'');u.searchParams.set('format','JSON');const r=await fetch(u,{signal:AbortSignal.timeout(5000)});const d=await r.json();const candle=d.values?.[0],price=Number(candle?.close),quoteAt=candle?.datetime?Date.parse(candle.datetime.replace(' ','T')+'Z'):NaN,age=Date.now()-quoteAt;if(!r.ok||d.status==='error'||!Number.isFinite(price)||price<=0||!Number.isFinite(age)||age<0||age>90000)throw new Error(d.message||'Dernière bougie 1 minute absente ou trop ancienne.');return {price,quoteAt:new Date(quoteAt).toISOString()};}
+async function livePrice(instrument){
+ const market=getMarketInstrument(instrument);if(!market)throw new Error('Instrument non pris en charge par le catalogue AUREVIA.');
+ const storedRows=await rest(`aurevia_market_quotes?select=price,quote_at,source&symbol=eq.${encodeURIComponent(market.provider)}`);
+ const stored=storedRows?.[0],storedPrice=Number(stored?.price),storedAge=Date.now()-Date.parse(stored?.quote_at||'');
+ if(stored&&Number.isFinite(storedPrice)&&storedPrice>0&&Number.isFinite(storedAge)&&storedAge>=0&&storedAge<=90000)return {price:storedPrice,quoteAt:stored.quote_at,source:stored.source||'flux marché partagé'};
+ const apiKey=String(process.env.TWELVEDATA_API_KEY||''),blockedUntil=providerCooldownUntil.get(apiKey)||0;
+ if(Date.now()<blockedUntil)throw new Error('Quota Twelve Data temporairement bloqué. Cotation live indisponible.');
+ const u=new URL('https://api.twelvedata.com/time_series');u.searchParams.set('symbol',market.provider);u.searchParams.set('interval','1min');u.searchParams.set('outputsize','1');u.searchParams.set('timezone','UTC');u.searchParams.set('apikey',apiKey);u.searchParams.set('format','JSON');
+ const r=await fetch(u,{signal:AbortSignal.timeout(5000)}),d=await r.json(),candle=d.values?.[0],price=Number(candle?.close),quoteAt=candle?.datetime?new Date(candle.datetime.replace(' ','T')+'Z').toISOString():null,age=quoteAt?Date.now()-Date.parse(quoteAt):Infinity;
+ if(!r.ok||d.status==='error'||!Number.isFinite(price)||price<=0||!Number.isFinite(age)||age<0||age>90000){
+  const quota=r.status===429||Number(d.code)===429||/quota|credits|rate limit|requests per minute/i.test(String(d.message||''));
+  if(quota)providerCooldownUntil.set(apiKey,Date.now()+60000);
+  throw new Error(quota?'Quota Twelve Data atteint. Temporisation de 60 secondes activée.':d.message||'Dernière bougie 1 minute absente ou trop ancienne.');
+ }
+ await rest('aurevia_market_quotes?on_conflict=symbol',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{symbol:market.provider,price,quote_at:quoteAt,source:'Twelve Data 1min candle',updated_at:new Date().toISOString()}});
+ return {price,quoteAt,source:'Twelve Data 1min candle'};
+}
 async function notify(userId,message,reply_markup=null){const cs=await rest(`telegram_connections?select=chat_id,notify_validated_signals&user_id=eq.${encodeURIComponent(userId)}`);const c=cs?.[0];if(!c?.chat_id||!c.notify_validated_signals||!process.env.TELEGRAM_BOT_TOKEN)return false;const r=await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:c.chat_id,text:message,disable_web_page_preview:true,...(reply_markup?{reply_markup}:{})})});const d=await r.json().catch(()=>null);return Boolean(r.ok&&d?.ok);}
 export async function handler(){
  if(!BASE()||!KEY()||!process.env.TWELVEDATA_API_KEY)return {statusCode:503,body:'Monitor not configured'};

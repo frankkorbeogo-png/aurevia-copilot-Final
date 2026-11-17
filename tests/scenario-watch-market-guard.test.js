@@ -21,3 +21,14 @@ test('le prix de surveillance provient d’une bougie 1 minute horodatée et fra
  assert.match(source,/age>90000/);
  assert.doesNotMatch(source,/api\.twelvedata\.com\/price/);
 });
+
+test('la surveillance partage les cotations persistantes avec trade-watch au lieu de redemander le même cours',()=>{
+ assert.match(source,/aurevia_market_quotes\?select=price,quote_at,source/);
+ assert.match(source,/aurevia_market_quotes\?on_conflict=symbol/);
+ assert.match(source,/storedAge<=90000/);
+});
+test('les bougies M5/M15 sont mises en cache jusqu’à la prochaine clôture et le quota est temporisé',()=>{
+ assert.match(source,/const candleCache=new Map\(\)/);
+ assert.match(source,/cached\.lastClosedAt===expectedClosedAt/);
+ assert.match(source,/providerCooldownUntil\.set\(apiKey,Date\.now\(\)\+60000\)/);
+});
