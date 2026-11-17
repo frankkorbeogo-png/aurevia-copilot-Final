@@ -4,10 +4,10 @@ import {readFile} from 'node:fs/promises';
 import {handler as quoteHandler} from '../netlify/functions/market-quote.mjs';
 const source=await readFile(new URL('../netlify/functions/market-data.mjs',import.meta.url),'utf8');
 test('le flux OHLC évite les nouvelles tentatives coûteuses et limite la durée fournisseur',()=>{
- assert.doesNotMatch(source,/attempt<2/);assert.match(source,/AbortSignal\\.timeout\\(9000\\)/);
+ assert.doesNotMatch(source,/attempt<2/);assert.ok(source.includes('AbortSignal.timeout(9000)'));
 });
 test('le cache OHLC conserve un marqueur explicite pour les données de diagnostic périmées',()=>{
- assert.match(source,/CACHE_STALE_MAX_MS=30\\*60\\*1000/);
+ assert.ok(source.includes('CACHE_STALE_MAX_MS=30*60*1000'));
  assert.match(source,/stale:true/);assert.match(source,/staleAgeSeconds/);
 });
 test('le cache périmé ne masque pas une panne sans historique valide',()=>{
