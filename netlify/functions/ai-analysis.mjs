@@ -3,6 +3,7 @@ import {getMarketStatus} from '../../market-hours.js';
 import {runAureviaCollaboration} from './ai-collaboration.mjs';
 import {MARKET_IDS} from '../../market-catalog.js';
 const finite=n=>Number.isFinite(Number(n));
+const MAX_M15_CANDLES=250;
 // Réduit les blocs de contexte facultatifs sans supprimer les données techniques utiles.
 function compactAIContext(value, depth=0) {
  if (value == null || typeof value === 'boolean' || typeof value === 'number') return value;
@@ -55,7 +56,9 @@ export async function handler(event){
  if(m30?.available!==true||!Number.isFinite(m30Stamp)||!Number.isFinite(m30Age)||m30Age< -5*60000||m30Age>45*60000)
   return json(409,{error:'Données M30 absentes ou trop anciennes : la préparation structurelle M30 est obligatoire avant une décision M15.',code:'M30_CONTEXT_REQUIRED'});
  const marketStatus=getMarketStatus(instrument);if(!marketStatus.tradable)return json(409,{error:'Marché fermé pour le week-end. Aucune directive de trading ne peut être générée avant la réouverture.',code:'MARKET_CLOSED',marketStatus});
- const candles=m15.candles.slice(-40).map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
+ const sourceCandles=m15.candles.slice(-MAX_M15_CANDLES);
+ const candles=sourceCandles.map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
+ if(candles.some((c,i)=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)||!c.t||(i>0&&Date.parse(c.t)<=Date.parse(candles[i-1].t))))return json(400,{error:'Bougies M15 invalides ou non chronologiques.'});
  if(candles.some(c=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)))return json(400,{error:'Bougies M15 invalides.'});
  const last=candles.at(-1),prior=candles.at(-2);if(Date.now()-Date.parse(last.t)>35*60*1000||Date.parse(last.t)>Date.now()+5*60*1000)return json(409,{error:'Dernière bougie M15 trop ancienne ou horodatage invalide.'});
  const payload={instrument,decisionTimeframe:'M15',candles,indicators:compactAIContext(m15.indicators||{}),structure:compactAIContext(m15.structure||{}),patterns:compactAIContext((m15.patterns||[]).slice(-8)),volumeProfile:compactAIContext(m15.volumeProfile||null),fibonacci:compactAIContext(m15.fibonacci||null),price:last.c,previousClose:prior.c,context:{timeframes:compactAIContext(context.timeframes||{}),macro:compactMacroContext(context.macro||'non disponible')}};
@@ -77,7 +80,7 @@ SI AUCUN SCÉNARIO BUY/SELL N’EST DÉFENDABLE : explique-le dans noScenarioRea
    const collaboration=out.collaboration&&typeof out.collaboration==='object'?{...out.collaboration,decisionAfterReview:decision,...(decision!==out.decision?{synthesisReason:(out.collaboration.synthesisReason||'')+' La validation des niveaux par AUREVIA a également ramené la décision à WAIT.'}:{})}:null;
    const watchDirectives=Array.isArray(out.watchDirectives)?out.watchDirectives.slice(0,6).map(x=>({condition:String(x.condition||'').slice(0,280),expectedReaction:String(x.expectedReaction||'').slice(0,280),confirmation:String(x.confirmation||'').slice(0,280),invalidation:String(x.invalidation||'').slice(0,280)})).filter(x=>x.condition||x.confirmation):[];
   const noScenarioReason=String(out.noScenarioReason||'').slice(0,1200);
-  return json(200,{decision,collaboration,summary:String(out.summary||'').slice(0,2500),marketReading:String(out.marketReading||'').slice(0,5000),noScenarioReason,watchDirectives,risks:Array.isArray(out.risks)?out.risks.slice(0,10):[],missingData:Array.isArray(out.missingData)?out.missingData.slice(0,10):[],scenarios:{buy,sell},provider:'AUREVIA',decisionTimeframe:'M15',probabilityDisclaimer:'Estimation subjective non calibrée statistiquement. À ne pas interpréter comme une fréquence de réussite démontrée.'});
+  return json(200,{decision,candleCountM15:candles.length,candleHistoryTarget:MAX_M15_CANDLES,candleHistoryComplete:candles.length===MAX_M15_CANDLES,collaboration,summary:String(out.summary||'').slice(0,2500),marketReading:String(out.marketReading||'').slice(0,5000),noScenarioReason,watchDirectives,risks:Array.isArray(out.risks)?out.risks.slice(0,10):[],missingData:Array.isArray(out.missingData)?out.missingData.slice(0,10):[],scenarios:{buy,sell},provider:'AUREVIA',decisionTimeframe:'M15',probabilityDisclaimer:'Estimation subjective non calibrée statistiquement. À ne pas interpréter comme une fréquence de réussite démontrée.'});
  } catch(e) {
    console.error('[AUREVIA ai-analysis] échec multi-fournisseur',JSON.stringify({code:e.code,attempts:e.attempts||[]}));
    return json(e.statusCode||502,{error:e.message||'Moteur IA temporairement indisponible.',code:e.code||'AI_ERROR',retryable:true,providerDiagnostics:{attempts:e.attempts||[],elapsedMs:e.elapsedMs||null}});
