@@ -163,3 +163,12 @@ test('le logo de marque reste visible sans fusion d’écran avec le fond galact
   assert.ok(css.includes('.brand-logo{display:block!important'));
   assert.ok(css.includes('mix-blend-mode:normal!important'));
 });
+
+test('tous les logos affichés par l’interface sont présents dans les assets',async()=>{
+ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+ const komi=await readFile(new URL('../assets/komi-group-logo.svg',import.meta.url),'utf8');
+ const aurevia=await readFile(new URL('../assets/aurevia-logo-mark.png',import.meta.url));
+ assert.ok(html.includes('assets/komi-group-logo.svg'));
+ assert.ok(komi.includes('<svg')&&komi.includes('KOMI Group'));
+ assert.ok(aurevia.byteLength>1000);
+});
