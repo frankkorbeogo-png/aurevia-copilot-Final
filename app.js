@@ -80,7 +80,7 @@ async function flushTradeSyncQueue(){
   }finally{tradeSyncFlushBusy=false;}
 }
 async function refreshSelectedQuote(){
-  const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
+  const symbolAtRequest=selectedSymbol;const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
   if(label)label.textContent=symbols[selectedSymbol]?.label||selectedSymbol;
   if(price)price.textContent='—';
   if(status)status.textContent='Chargement du cours vérifié…';
@@ -91,10 +91,15 @@ async function refreshSelectedQuote(){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||'Cours indisponible');
     const checked=validateMarketQuote(data,{maxFetchedAgeMs:45000});if(!checked.ok)throw new Error(checked.error);
-    const value=checked.price,digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
-    if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-    if(status)status.textContent=`Twelve Data · bougie 1 min · ${new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} · ${Number.isFinite(Number(data.ageSeconds))?`${data.ageSeconds}s`:''}`;
-  }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
+    if(symbolAtRequest!==selectedSymbol)return;
+    const value=checked.price,digits=symbolAtRequest.endsWith('JPY')?3:(symbols[symbolAtRequest]?.market==='FOREX'?5:2);
+    const formatted=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
+    if(price)price.textContent=formatted;
+    const quoteTime=new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    if(status)status.textContent=`Twelve Data · dernière cotation ${quoteTime} · actualisation automatique chaque minute`;
+    document.querySelectorAll(`.ticker[data-symbol="${symbolAtRequest}"] .ticker-select-hint`).forEach(node=>{node.textContent=formatted;node.classList.add('ticker-live-price');});
+    document.querySelectorAll(`.home-asset[data-symbol="${symbolAtRequest}"] strong`).forEach(node=>{node.textContent=formatted;node.classList.add('ticker-live-price');});
+  }catch(error){if(symbolAtRequest===selectedSymbol&&status)status.textContent=error.message||'Cours non disponible';}
 }
 function initAppInstallation(){
  const button=$('installAppBtn'),status=$('installAppStatus');if(!button||!status)return;
@@ -892,7 +897,7 @@ function bindEvents(){
   $('refreshDxyOverview')?.addEventListener('click',refreshDxyOverview);
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
   $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);
-  $('saveBrokerAccountProfile')?.addEventListener('click',persistBrokerAccountProfile);
+
   $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);
   $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
   window.addEventListener('aurevia:localownerchange',()=>{accountCurrency=null;if($('profileAccountCurrency'))$('profileAccountCurrency').value='';if($('accountCurrency'))$('accountCurrency').value='À configurer dans Paramètres';if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=false;if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=false;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent='Chargement de la devise du compte…';if($('brokerProfileStatus'))$('brokerProfileStatus').textContent='Chargement des paramètres techniques…';['brokerProfileLeverage','brokerProfileMaxLot','brokerProfileContractSize','brokerProfilePointSize','brokerProfilePointValue','brokerProfileTickSize','brokerProfileTickValue'].forEach(id=>{if($(id))$(id).value='';});if($('brokerProfileCalculationType'))$('brokerProfileCalculationType').value='contract';if($('brokerProfileMinLot'))$('brokerProfileMinLot').value='0.01';if($('brokerProfileLotStep'))$('brokerProfileLotStep').value='0.01';if($('brokerProfileFees'))$('brokerProfileFees').value='0';updateBrokerProfileFields();if($('telegramConnectionStatus'))$('telegramConnectionStatus').textContent='Chargement des préférences Telegram…';if($('telegramChatId'))$('telegramChatId').value='';if($('telegramPairCode'))$('telegramPairCode').textContent='Aucun code généré.';if($('telegramPairStatus'))$('telegramPairStatus').textContent='Aucune liaison Telegram chargée.';['saveTelegramPrefs','sendTelegramTest','unlinkTelegramAccount'].forEach(id=>{if($(id))$(id).disabled=true;});if($('notifyAll'))$('notifyAll').checked=false;if($('notifySignals'))$('notifySignals').checked=true;if($('notifyEconomic'))$('notifyEconomic').checked=false;if($('notifyProductAnnouncements'))$('notifyProductAnnouncements').checked=false;announcementCache=[];announcementFilter='all';renderAnnouncements();if($('announcementStatus'))$('announcementStatus').textContent='Chargement des annonces…';if($('scenarioWatchList'))$('scenarioWatchList').innerHTML='<div class="empty-cell">Chargement des scénarios du compte…</div>';pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;if($('validationScenarioTitle'))$('validationScenarioTitle').textContent='Aucun scénario sélectionné';if($('validationScenarioStatus'))$('validationScenarioStatus').textContent='En attente';if($('validationScenarioLevels'))$('validationScenarioLevels').innerHTML='<span>Instrument <b>—</b></span><span>Direction <b>—</b></span><span>Type d’ordre <b>—</b></span><span>Prix proposé par l’IA M5 <b>—</b></span><span>Stop Loss <b>—</b></span><span>Take Profits <b>—</b></span>';if($('validationTradeStatus'))$('validationTradeStatus').textContent='En attente de votre validation manuelle.';initJournal();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();restoreMyAnalysis();restoreScenarioDraft();});
