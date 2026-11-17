@@ -195,8 +195,9 @@ async function activateSession(session,action){
   }
   if(consumedAuthIntent?.mode==='signup'){
    if(consumedAuthIntent.privacyPolicyVersion!==PRIVACY_POLICY_VERSION||!consumedAuthIntent.privacyAcceptedAt||!Number.isFinite(Date.parse(consumedAuthIntent.privacyAcceptedAt)))throw new Error('L’acceptation de la politique de confidentialité est absente ou invalide. Recommencez la création du compte.');
-   const consentSave=await supabase.from('privacy_policy_acceptances').upsert({user_id:session.user.id,policy_version:PRIVACY_POLICY_VERSION,accepted_at:consumedAuthIntent.privacyAcceptedAt,acceptance_method:'google_oauth_pre_signup'},{onConflict:'user_id,policy_version'});
-   if(consentSave.error)throw new Error('Impossible d’enregistrer votre acceptation de la politique de confidentialité : '+consentSave.error.message);
+   const consentResponse=await fetch('/api/privacy-consent',{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${session.access_token}`},body:JSON.stringify({policyVersion:PRIVACY_POLICY_VERSION,acceptedAt:consumedAuthIntent.privacyAcceptedAt,acceptanceMethod:'google_oauth_pre_signup'}),cache:'no-store'});
+   const consentResult=await consentResponse.json().catch(()=>({}));
+   if(!consentResponse.ok||consentResult.accepted!==true)throw new Error(consentResult.error||'Impossible d’enregistrer votre acceptation de la politique de confidentialité.');
   }
   await sessionRequest(action,session.access_token);
   const licenseResponse=await fetch('/api/license',{headers:{authorization:`Bearer ${session.access_token}`},cache:'no-store'});
