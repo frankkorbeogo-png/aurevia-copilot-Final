@@ -12,7 +12,7 @@ export async function handler(event){
  try{const context=await verifyBearerUser(event);await assertActiveSession(context);}catch(error){return json(error.statusCode||401,{error:error.message||'Connexion requise.',code:error.code||null});}
  const symbol=(new URLSearchParams(event.rawQuery||'').get('symbol')||'').toUpperCase();
  if(!ALLOWED.has(symbol))return json(400,{error:'Instrument non autorisé.'});
- const marketStatus=getMarketStatus(symbol);if(!marketStatus.tradable)return json(409,{error:marketStatus.reason||'Marché fermé.',code:'MARKET_CLOSED',marketStatus});
+ const marketStatus=getMarketStatus(symbol);
  const key=process.env.TWELVEDATA_API_KEY;if(!key)return json(503,{error:'Flux Twelve Data non configuré côté serveur.'});
  const cached=cache.get(symbol),now=Date.now();
  if(cached&&now-cached.at<QUOTE_CACHE_TTL_MS&&now-Date.parse(cached.value.quoteAt)<=MAX_QUOTE_AGE_MS)return json(200,{...cached.value,cached:true,ageSeconds:Math.max(0,Math.floor((now-Date.parse(cached.value.quoteAt))/1000))});
@@ -30,8 +30,9 @@ export async function handler(event){
     if(quota)quotaBlockedUntil.set(key,Date.now()+60000);
     return json(quota?429:502,{error:quota?'Quota Twelve Data atteint. AUREVIA suspend les nouveaux appels pendant 60 secondes.':data.message||'Cours Twelve Data indisponible.',code:quota?'TWELVEDATA_QUOTA':'TWELVEDATA_QUOTE_ERROR',retryAfterSeconds:quota?60:undefined});
    }
-   if(!Number.isFinite(age)||age< -5000||age>MAX_QUOTE_AGE_MS)return json(502,{error:'La dernière cotation est trop ancienne ou son horodatage est invalide.',code:'QUOTE_STALE',quoteAt:Number.isFinite(quoteAt)?new Date(quoteAt).toISOString():null});
-   const value={symbol,price,quoteAt:new Date(quoteAt).toISOString(),ageSeconds:Math.floor(age/1000),fetchedAt:new Date().toISOString(),source:'Twelve Data Quote',interval:'1min'};
+   if(!Number.isFinite(age)||age< -5000||age>7*24*60*60*1000)return json(502,{error:'La dernière cotation est trop ancienne ou son horodatage est invalide.',code:'QUOTE_STALE',quoteAt:Number.isFinite(quoteAt)?new Date(quoteAt).toISOString():null});
+   const freshness=age<=MAX_QUOTE_AGE_MS?'recent':'last_close';
+   const value={symbol,price,quoteAt:new Date(quoteAt).toISOString(),ageSeconds:Math.max(0,Math.floor(age/1000)),fetchedAt:new Date().toISOString(),source:'Twelve Data Quote',interval:'1min',freshness,marketOpen:marketStatus.tradable,marketStatus:marketStatus.tradable?'OPEN':(marketStatus.reason||'CLOSED'),displayLabel:freshness==='recent'?'Cours récent':'Dernière cotation disponible · marché fermé ou sans nouvelle cotation'};
    cache.set(symbol,{at:Date.now(),value});return json(200,value);
   }catch(error){return json(502,{error:error.name==='TimeoutError'?'Délai Twelve Data dépassé.':'Impossible de récupérer le cours Twelve Data.'});}
  })();
