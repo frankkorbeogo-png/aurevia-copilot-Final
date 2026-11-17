@@ -59,7 +59,6 @@ export async function handler(event){
  const sourceCandles=m15.candles.slice(-MAX_M15_CANDLES);
  const candles=sourceCandles.map(c=>({t:c.time,o:Number(c.open),h:Number(c.high),l:Number(c.low),c:Number(c.close),v:c.volume==null?null:Number(c.volume)}));
  if(candles.some((c,i)=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)||!c.t||!Number.isFinite(Date.parse(c.t))||(i>0&&Date.parse(c.t)<=Date.parse(candles[i-1].t))))return json(400,{error:'Bougies M15 invalides ou non chronologiques.'});
- if(candles.some(c=>![c.o,c.h,c.l,c.c].every(Number.isFinite)||c.h<Math.max(c.o,c.c)||c.l>Math.min(c.o,c.c)))return json(400,{error:'Bougies M15 invalides.'});
  const last=candles.at(-1),prior=candles.at(-2);if(Date.now()-Date.parse(last.t)>35*60*1000||Date.parse(last.t)>Date.now()+5*60*1000)return json(409,{error:'Dernière bougie M15 trop ancienne ou horodatage invalide.'});
  const payload={instrument,decisionTimeframe:'M15',candles,indicators:compactAIContext(m15.indicators||{}),structure:compactAIContext(m15.structure||{}),patterns:compactAIContext((m15.patterns||[]).slice(-8)),volumeProfile:compactAIContext(m15.volumeProfile||null),fibonacci:compactAIContext(m15.fibonacci||null),price:last.c,previousClose:prior.c,context:{timeframes:compactAIContext(context.timeframes||{}),macro:compactMacroContext(context.macro||'non disponible')}};
   const system=`AUREVIA COPILOT — analyste multi-actifs. Réponds en français, uniquement en JSON valide. Aucune exécution d'ordre.
