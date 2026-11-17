@@ -823,12 +823,12 @@ async function refreshBrokerProfile(){
  populateBrokerProfileInstruments();
  if(!ownerId){if(status)status.textContent='Connectez-vous pour charger les spécifications enregistrées.';return;}
  try{
-  const spec=await loadBrokerSettings(select.value,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
+  const [spec,brokerAccount]=await Promise.all([loadBrokerSettings(select.value,ownerId),loadRiskManagementSettings(ownerId)]);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};if($('riskBrokerName'))$('riskBrokerName').value=brokerAccount?.brokerName||'';if($('riskAccountType'))$('riskAccountType').value=brokerAccount?.accountType||'standard';
   set('brokerProfileCalculationType',spec?.calculationType||'contract');set('brokerProfileLeverage',spec?.leverage);
   set('brokerProfileMinLot',spec?.minLot??0.01);set('brokerProfileLotStep',spec?.lotStep??0.01);set('brokerProfileMaxLot',spec?.maxLot);
   set('brokerProfileContractSize',spec?.contractSize);set('brokerProfilePointSize',spec?.pointSize);set('brokerProfilePointValue',spec?.pointValue);
   set('brokerProfileTickSize',spec?.tickSize);set('brokerProfileTickValue',spec?.tickValue);set('brokerProfileFees',spec?.feesPerLot??0);
-  if(status)status.textContent=spec?'Spécifications enregistrées chargées pour '+select.value+'.':'Aucune fiche enregistrée pour '+select.value+'.';if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=Boolean(spec);
+  if(status)status.textContent=spec?'Spécifications enregistrées chargées pour '+select.value+'.':'Aucune fiche enregistrée pour '+select.value+'.';if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=Boolean(spec&&brokerAccount?.brokerName);
   updateBrokerProfileFields();
  }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Chargement impossible : '+error.message;}
 }
@@ -841,7 +841,7 @@ async function persistBrokerAccountProfile(){
   if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   await saveRiskManagementSettings({...current,brokerName:$('riskBrokerName').value,accountType:$('riskAccountType').value},ownerId);
   if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
-  showInAppNotice('Profil broker enregistré dans Paramètres.',{type:'success'});
+  showInAppNotice('Profil broker enregistré dans Paramètres.',{type:'success'});await refreshBrokerProfile();
  }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){if($('brokerProfileStatus'))$('brokerProfileStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}}
  finally{if(button)button.disabled=false;}
 }
@@ -854,7 +854,7 @@ async function persistBrokerProfile(){
   if(button)button.disabled=true;
   await saveBrokerSettings(instrument,spec,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
   if(status)status.textContent='Spécifications enregistrées pour '+instrument+'. Elles seront réutilisées dans AUREVIA et Telegram.';if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=true;
-  showInAppNotice('Paramètres techniques enregistrés pour '+instrument+'.',{type:'success'});
+  showInAppNotice('Paramètres techniques enregistrés pour '+instrument+'.',{type:'success'});await refreshBrokerProfile();
  }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){if(status)status.textContent=error.message;showInAppNotice(error.message,{type:'error'});}}
  finally{if(button)button.disabled=false;}
 }
