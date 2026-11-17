@@ -8,12 +8,13 @@ const cases = [
 ];
 
 for (const [file, deletionMarker] of cases) {
-  test(`${file} requires an active AUREVIA session before deleting an Auth user`, async () => {
+  test(`${file} requires an authenticated active session before deleting an Auth user`, async () => {
     const source = await readFile(new URL(`../netlify/functions/${file}`, import.meta.url), 'utf8');
-    assert.ok(source.includes('assertActiveSession'));
+    assert.ok(source.includes('assertSessionIsActive'));
+    assert.ok(!source.includes('assertActiveSession'));
     assert.ok(source.includes("from './_session-auth.mjs'"));
     const authCheck = source.indexOf('await verifyBearerUser(event)');
-    const sessionCheck = source.indexOf('await assertActiveSession(context)');
+    const sessionCheck = source.indexOf('await assertSessionIsActive(context)');
     const deletion = source.indexOf(deletionMarker);
     assert.ok(authCheck >= 0, 'must authenticate the bearer token');
     assert.ok(sessionCheck > authCheck, 'must validate the active AUREVIA session after authentication');
