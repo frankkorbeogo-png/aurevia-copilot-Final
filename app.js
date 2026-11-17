@@ -328,10 +328,9 @@ async function confirmTradeValidation(){
   if(mode==='unique'&&Math.floor((volume/count)/checked.spec.lotStep)*checked.spec.lotStep<checked.spec.minLot)throw new Error('Le lot est trop faible pour être réparti entre les TP sélectionnés.');
   const orderType=String(s.order_type||(s.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();const orderDetails=orderType.endsWith('STOP LIMIT')?'\nDéclenchement : '+(s.trigger_price??'—')+'\nPrix limite : '+(s.limit_price??s.entry_confirmation_price??s.entry):orderType.endsWith(' STOP')?'\nDéclenchement : '+(s.trigger_price??s.entry_confirmation_price??s.entry):orderType.endsWith(' LIMIT')?'\nPrix limite : '+(s.limit_price??s.entry_confirmation_price??s.entry):'';const approved=await confirmInApp({title:'Confirmer l’enregistrement du trade',message:s.instrument+' · '+s.direction+'\nType d’ordre : '+orderType+'\nLot total : '+volume+'\nGestion : '+(mode==='unique'?'Position unique':'Trades séparés')+'\nPrix proposé par l’IA M5 : '+(s.entry_confirmation_price??s.entry)+orderDetails+'\nPrix réel saisi : '+(isMarketOrder?(actualEntryPrice??'non renseigné — enregistrement refusé'):'non applicable avant activation')+'\nStop Loss : '+s.stop_loss+'\nObjectifs : '+(s.take_profits||[]).join(' · ')+'\n\nSuivi interne AUREVIA uniquement. AUREVIA n’exécutera aucun ordre.',confirmLabel:'Enregistrer le trade'});
   if(!approved)return;if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
-  const brokerSpec={...checked.spec};delete brokerSpec.actualEntryPrice;await saveBrokerSettings(s.instrument,brokerSpec,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
+  const brokerSnapshot={accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
   button.disabled=true;status.textContent='Vérification de la confirmation et enregistrement sécurisé…';
   const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!token)throw new Error('Session expirée. Reconnectez-vous.');
-  const brokerSnapshot={accountCurrency:checked.spec.accountCurrency,leverage:checked.spec.leverage};
   const response=await fetch('/api/scenario',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'create_position',id:s.id,mode,volume,contract_spec:checked.spec,broker_snapshot:brokerSnapshot,auto_journal:$('validationAutoJournal').checked}),cache:'no-store'});
   const result=await response.json().catch(()=>({}));if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!response.ok)throw new Error(result.error||'Enregistrement impossible.');
   status.textContent='Trade enregistré. Synchronisation du suivi des positions et du journal…';
@@ -817,13 +816,33 @@ async function refreshAccountCurrency(){
  try{const value=await loadAccountCurrency(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;accountCurrency=value;if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.';renderRiskControls();return accountCurrency;}
  catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
 }
+function populateBrokerProfileInstruments(){
+ const select=$('brokerProfileInstrument');if(!select)return;
+ const groups=new Map();
+ Object.entries(MARKET_INSTRUMENTS).forEach(([id,item])=>{
+  const group=item.category||'Autres instruments';
+  if(!groups.has(group))groups.set(group,[]);
+  groups.get(group).push({id,label:item.label});
+ });
+ const selected=select.value;
+ select.replaceChildren();
+ groups.forEach((items,label)=>{
+  const group=document.createElement('optgroup');group.label=label;
+  items.forEach(item=>{const option=document.createElement('option');option.value=item.id;option.textContent=item.label;group.append(option);});
+  select.append(group);
+ });
+ if(selected&&[...select.options].some(option=>option.value===selected))select.value=selected;
+ if(!select.value&&select.options.length)select.selectedIndex=0;
+ return select.value;
+}
 function updateBrokerProfileFields(){
  const type=$('brokerProfileCalculationType')?.value||'contract';
  document.querySelectorAll('[data-broker-profile]').forEach(field=>{field.hidden=field.dataset.brokerProfile!==type;});
 }
 async function refreshBrokerProfile(){
- const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const select=$('brokerProfileInstrument'),status=$('brokerProfileStatus');if(!select)return;
- if(!select.options.length)select.innerHTML=Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>`<option value="${escapeText(item.label)}">${escapeText(item.label)}</option>`).join('');
+ const ownerId=String(window.__aureviaUserId||'').trim();const select=$('brokerProfileInstrument'),status=$('brokerProfileStatus');if(!select)return;
+ populateBrokerProfileInstruments();
+ if(!ownerId){if(status)status.textContent='Connectez-vous pour charger les spécifications enregistrées.';return;}
  try{
   const spec=await loadBrokerSettings(select.value,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
   set('brokerProfileCalculationType',spec?.calculationType||'contract');set('brokerProfileLeverage',spec?.leverage);
@@ -1182,5 +1201,5 @@ async function activateUserLicense(){
 }
 let authenticatedBooted=false;
 function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;authenticatedBooted=true;refreshAccountCurrency();refreshRiskManagement();refreshBrokerProfile();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();syncManualJournalToSupabase(loadJournalTrades(),ownerId).then(cloud=>{if(String(window.__aureviaUserId||'').trim()!==ownerId||cloud.reason==='account_changed')return;mergeJournalTrades(cloud.entries);renderJournal();renderJournalStats();}).catch(error=>{if(String(window.__aureviaUserId||'').trim()===ownerId)console.warn('Synchronisation du journal manuel différée :',error.message);});renderPositions();renderLinkedJournal();flushTradeSyncQueue();setInterval(()=>{if(window.__aureviaAuthenticated)flushTradeSyncQueue();},30000);setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15. Après mitigation de la zone, AUREVIA analyse M5 pour valider l’entrée.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
-function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
+function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);populateBrokerProfileInstruments();if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();

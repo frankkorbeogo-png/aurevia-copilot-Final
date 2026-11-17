@@ -45,7 +45,10 @@ export function assessDxyQuote(data, now = Date.now()) {
    : 'Dernière cotation DXY ancienne : ne pas la traiter comme un cours actuel.';
  return {available:true,price,asOf:new Date(asOfMs).toISOString(),ageMinutes,freshness,usableForDirectionalBias,notice};
 }
+let dxyCache={at:0,value:null};
+const DXY_CACHE_TTL_MS=5*60*1000;
 async function fetchDxy(){
+ if(dxyCache.value&&Date.now()-dxyCache.at<DXY_CACHE_TTL_MS)return {...dxyCache.value,cached:true};
  const key=process.env.TWELVEDATA_API_KEY;
  if(!key)return {configured:false,source:'Twelve Data',notice:'TWELVEDATA_API_KEY absent.'};
  const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('timezone','UTC');
@@ -53,7 +56,7 @@ async function fetchDxy(){
  if(!r.ok||d.status==='error'||d.code){return {configured:false,source:'Twelve Data',symbol:'DXY',providerStatus:d.code||r.status,notice:d.message||'Le fournisseur ne confirme pas le symbole DXY pour cette clé ou ce forfait.'};}
  const assessment=assessDxyQuote(d);
  if(!assessment.available)return {configured:false,source:'Twelve Data',symbol:'DXY',notice:assessment.notice};
- return {configured:true,symbol:'DXY',...assessment,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null};
+ const value={configured:true,symbol:'DXY',...assessment,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null};dxyCache={at:Date.now(),value};return value;
 }
 async function fetchGlobalNews(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
