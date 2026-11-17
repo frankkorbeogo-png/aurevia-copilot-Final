@@ -9,6 +9,12 @@ const RELEASES=[
  {id:53,name:'US Gross Domestic Product (GDP)',hour:8,minute:30,url:'https://www.bea.gov/data/gdp/gross-domestic-product'},
  {id:9,name:'US Advance Retail Sales',hour:8,minute:30,url:'https://www.census.gov/retail/index.html'}
 ];
+const RELEASE_BATCHES=Object.freeze([[10,50],[46,53],[9]]);
+export function getFredReleaseBatch(now=new Date()){
+ const batchIndex=Math.floor(now.getTime()/3600000)%RELEASE_BATCHES.length;
+ const releaseIds=RELEASE_BATCHES[batchIndex];
+ return {batchIndex,releaseIds,releases:releaseIds.map(id=>RELEASES.find(item=>item.id===id)).filter(Boolean)};
+}
 const FED_FOMC_URL='https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm';
 const FOMC_POLICY_DECISION_DATES=[
  '2026-01-28','2026-03-18','2026-04-29','2026-06-17','2026-07-29','2026-09-16','2026-10-28','2026-12-09',
@@ -112,8 +118,7 @@ export function buildOfficialFomcEvents(now=new Date()){
 }
 async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
- const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
- if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000)return {status:'fresh_cache',synced:0};
+ const {batchIndex,releaseIds,releases:activeReleases}=getFredReleaseBatch(new Date());
  const {today,end}=getFredDateRange(new Date());
  const fetchRelease=async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
@@ -121,7 +126,7 @@ async function syncEconomicCalendar(){
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
   let response;
   for(let attempt=0;attempt<2;attempt++){
-   response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(3500)});
+   response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(2500)});
    if(response.status===429&&attempt===0){await response.text().catch(()=>{});await wait(1200);continue;}
    break;
   }
@@ -137,16 +142,15 @@ async function syncEconomicCalendar(){
  // FRED permits two requests per second. Keep concurrency at two and leave a
  // full second between batches so a scheduled run does not trip the API limit.
  const results=[];
- for(let i=0;i<RELEASES.length;i+=2){
-  const batch=await Promise.all(RELEASES.slice(i,i+2).map(fetchRelease));
+ for(let i=0;i<activeReleases.length;i+=2){
+  const batch=await Promise.all(activeReleases.slice(i,i+2).map(fetchRelease));
   results.push(...batch);
-  if(i+2<RELEASES.length)await wait(1100);
  }
  const fredEvents=results.flat(),fomcEvents=buildOfficialFomcEvents(new Date()),events=[...fredEvents,...fomcEvents];
  if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
  const now=new Date(),horizon=new Date(now.getTime()+15*86400000);
- const current=await rest('economic_release_events?select=id,external_id,release_id,source_provider,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+RELEASES.map(x=>x.id).join(',')+')&limit=500');
- const live=new Set(events.map(x=>x.external_id));let deactivated=0;
+ const current=await rest('economic_release_events?select=id,external_id,release_id,source_provider,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+releaseIds.join(',')+')&limit=500');
+ const live=new Set(fredEvents.map(x=>x.external_id));let deactivated=0;
  for(const row of (Array.isArray(current)?current:[])){
   if(!live.has(row.external_id)){await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});deactivated++;}
  }
@@ -156,7 +160,7 @@ async function syncEconomicCalendar(){
   if(!liveFomc.has(row.external_id)){await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});staleFomcDeactivated++;}
  }
  await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED + Federal Reserve official calendar'}});
- return {status:'synced',synced:events.length,fomcSynced:fomcEvents.length,deactivated,staleFomcDeactivated,source:'FRED + Federal Reserve official calendar'};
+ return {status:'synced',batchIndex,releaseIds,synced:events.length,fomcSynced:fomcEvents.length,deactivated,staleFomcDeactivated,source:'FRED + Federal Reserve official calendar'};
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};

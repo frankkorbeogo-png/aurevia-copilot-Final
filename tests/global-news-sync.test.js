@@ -57,8 +57,9 @@ test('global-news-sync backs off after GDELT HTTP 429 and stores the recovered a
 
 test('FRED requests respect the two-requests-per-second limit and retry HTTP 429',async()=>{
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
- assert.match(source,/for\(let i=0;i<RELEASES\.length;i\+=2\)/);
- assert.match(source,/await wait\(1100\)/);
+ assert.match(source,/RELEASE_BATCHES=Object\.freeze\(\[\[10,50\],\[46,53\],\[9\]\]\)/);
+ assert.match(source,/for\(let i=0;i<activeReleases\.length;i\+=2\)/);
+ assert.match(source,/signal:AbortSignal\.timeout\(2500\)/);
  assert.match(source,/response\.status===429&&attempt===0/);
 });
 
@@ -68,7 +69,7 @@ test('FRED release windows use the New York calendar date across UTC midnight',(
  assert.equal(range.end,'2026-11-29');
 });
 
-test('global-news and FRED sync run concurrently and stay within the scheduled function budget',async()=>{
+test('global-news and FRED sync run concurrently with bounded upstream timeouts',async()=>{
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
  assert.match(source,/Promise\.all\(\[economicTask,newsTask\]\)/);
  assert.match(source,/AbortSignal\.timeout\(5000\)/);
@@ -79,4 +80,15 @@ test('les rappels économiques ne sont pas envoyés plus de 60 minutes avant l�
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
  assert.match(source,/new Date\(now\.getTime\(\)\+60\*60\*1000\)/);
  assert.doesNotMatch(source,/new Date\(now\.getTime\(\)\+65\*60\*1000\)/);
+});
+
+test('FRED release batches rotate hourly without dropping other release events',()=>{
+ const a=getFredReleaseBatch(new Date('2026-11-17T00:00:00.000Z'));
+ const b=getFredReleaseBatch(new Date('2026-11-17T01:00:00.000Z'));
+ const c=getFredReleaseBatch(new Date('2026-11-17T02:00:00.000Z'));
+ assert.notDeepEqual(a.releaseIds,b.releaseIds);
+ assert.notDeepEqual(b.releaseIds,c.releaseIds);
+ assert.notDeepEqual(a.releaseIds,c.releaseIds);
+ assert.deepEqual([...new Set([...a.releaseIds,...b.releaseIds,...c.releaseIds])].sort((x,y)=>x-y),[9,10,46,50,53]);
+ assert.ok(a.releaseIds.length<=2&&b.releaseIds.length<=2&&c.releaseIds.length<=2);
 });
