@@ -21,3 +21,44 @@ export function calculatePositionRisk({balance=0,riskAmount,stopDistance,unitVal
     ?lots*accountUnitValuePerLot*entryPrice/leverage:null;
   return {riskMoney,lots,lossPerLot:stopDistance*accountUnitValuePerLot,gain,rr,riskPercentActual,margin,unusedRisk:Math.max(0,riskAmount-riskMoney)};
 }
+
+
+export function calculateRiskControls({
+  equity,
+  marginUsed,
+  peakEquity,
+  dailyLossLimit=0,
+  weeklyLossLimit=0,
+  dailyPnl=0,
+  weeklyPnl=0
+}={}){
+  const values={equity,marginUsed,peakEquity,dailyLossLimit,weeklyLossLimit,dailyPnl,weeklyPnl};
+  for(const [name,value] of Object.entries(values)){
+    if(!Number.isFinite(Number(value)))return {error:'Valeur financière invalide : '+name+'.'};
+  }
+  const currentEquity=Number(equity),used=Number(marginUsed),peak=Math.max(Number(peakEquity),currentEquity);
+  const dailyLimit=Number(dailyLossLimit),weeklyLimit=Number(weeklyLossLimit);
+  if(currentEquity<0||used<0||peak<0||dailyLimit<0||weeklyLimit<0)return {error:'Les soldes, marges et limites doivent être positifs ou nuls.'};
+  const dayPnl=Number(dailyPnl),weekPnl=Number(weeklyPnl);
+  const dailyLossUsed=Math.max(0,-dayPnl),weeklyLossUsed=Math.max(0,-weekPnl);
+  const dailyLossRemaining=dailyLimit>0?Math.max(0,dailyLimit-dailyLossUsed):null;
+  const weeklyLossRemaining=weeklyLimit>0?Math.max(0,weeklyLimit-weeklyLossUsed):null;
+  const drawdownAmount=Math.max(0,peak-currentEquity);
+  const drawdownPercent=peak>0?drawdownAmount/peak*100:null;
+  return {
+    freeMargin:currentEquity-used,
+    dailyPnl:dayPnl,
+    weeklyPnl:weekPnl,
+    dailyLossUsed,
+    weeklyLossUsed,
+    dailyLossRemaining,
+    weeklyLossRemaining,
+    dailyLimitEnabled:dailyLimit>0,
+    weeklyLimitEnabled:weeklyLimit>0,
+    dailyLimitReached:dailyLimit>0&&dailyLossUsed>=dailyLimit,
+    weeklyLimitReached:weeklyLimit>0&&weeklyLossUsed>=weeklyLimit,
+    drawdownAmount,
+    drawdownPercent,
+    peakEquity:peak
+  };
+}

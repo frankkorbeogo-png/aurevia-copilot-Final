@@ -33,8 +33,8 @@ export function evaluatePositionThreshold(position,price){
  return sl?'SL':tp?'TP':null;
 }
 export function calculateInternalClosePnl(position,direction,price){
- const volume=Number(position.volume_remaining),entry=Number(position.activation_price??position.entry_price);
- if(!Number.isFinite(volume)||volume<=0||!Number.isFinite(entry)||entry<=0)throw new Error('Volume ou prix d’entrée invalide : clôture automatique suspendue.');
+ const volume=Number(position.volume_remaining),entry=Number(position.actual_entry_price);
+ if(!Number.isFinite(volume)||volume<=0||!Number.isFinite(entry)||entry<=0)throw new Error('Prix réel d’exécution manuelle absent : calcul P/L et clôture suspendus.');
  const contractSpec=position.contract_spec||{calculationType:'contract',contractSize:Number(position.contract_size),quoteToAccount:Number(position.quote_to_account),feesPerLot:Number(position.fees_per_lot??0),minLot:0.00000001,lotStep:0.00000001};
  let pnl;try{pnl=calculateContractPnl({direction,entry,exit:Number(price),volume,contractSpec});}catch(error){throw new Error(`Métadonnées de calcul P/L incomplètes : ${error.message}`);}
  const {currency,...values}=pnl;return {...values,...(currency?{currency}:{}),volume};
@@ -44,7 +44,32 @@ export function formatTradeAlertMessage(event,position,group){
  return `AUREVIA COPILOT · ${label}\n${group.instrument} · ${group.direction}\n${position.tp_label||'Position'}\nPrix observé : ${event.observed_price}\nVolume interne clôturé : ${Number.isFinite(volume)?volume:'non renseigné'}\nRésultat net : ${Number.isFinite(net)?net.toFixed(2)+' '+currency:'voir le journal'}\nClôture enregistrée dans AUREVIA uniquement. Aucune exécution broker.`;
 }
 async function telegram(userId,text){const rows=await rest(`telegram_connections?select=chat_id,notify_validated_signals&user_id=eq.${encodeURIComponent(userId)}`);const c=rows?.[0];if(!c?.chat_id||!c.notify_validated_signals)return {sent:false,suppressed:true,reason:!c?.chat_id?'chat_not_connected':'notifications_disabled'};const token=process.env.TELEGRAM_BOT_TOKEN;if(!token)throw new Error('Telegram non configuré');const r=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:c.chat_id,text,disable_web_page_preview:true})});const d=await r.json();if(!r.ok||!d.ok)throw new Error('Telegram send failed');return {sent:true};}
-async function deliverEntryNotifications(positions,groups){let sent=0;for(const p of positions.filter(x=>x.status==='OPEN'&&x.activated_at&&!x.activation_notified)){try{const g=groups.get(p.group_id);if(!g)continue;const result=await telegram(p.user_id,`AUREVIA COPILOT · ENTRÉE DÉCLENCHÉE\n${g.instrument} · ${g.direction}\nPrix d’entrée prévu : ${p.entry_price}\nPrix de marché observé : ${p.activation_price}\nHeure : ${p.activated_at}\nSurveillance TP/SL activée dans AUREVIA. Aucun ordre broker n’a été exécuté.`);if(result.sent)sent++;if(result.sent||result.suppressed)await rest(`trading_positions?id=eq.${p.id}&activation_notified=eq.false`,{method:'PATCH',body:{activation_notified:true},prefer:'return=minimal'});}catch{/* Retry at the next scheduled pass. */}}return sent;}
+async function deliverEntryNotifications(positions,groups){
+ let sent=0;const attemptedUniqueGroups=new Set();
+ for(const p of positions.filter(x=>x.status==='OPEN'&&x.activated_at&&!x.activation_notified)){
+  try{
+   const g=groups.get(p.group_id);if(!g)continue;
+   if(g.mode==='unique'&&attemptedUniqueGroups.has(g.id))continue;
+   if(g.mode==='unique')attemptedUniqueGroups.add(g.id);
+   const actual=Number(p.actual_entry_price);
+   const fillKnown=Number.isFinite(actual)&&actual>0;
+   const message=`AUREVIA COPILOT · ENTRÉE DÉCLENCHÉE
+${g.instrument} · ${g.direction}
+Prix d’entrée prévu : ${p.entry_price}
+Prix de marché observé au déclenchement : ${p.activation_price}
+${fillKnown?`Prix réel confirmé : ${actual}`:`Aucun prix réel confirmé : le calcul P/L et les clôtures internes restent suspendus jusqu’à la saisie de ton prix réel dans l’éditeur de position.`}
+Heure : ${p.activated_at}
+Aucun ordre broker n’a été exécuté.`;
+   const result=await telegram(p.user_id,message);if(result.sent)sent++;
+   if(result.sent||result.suppressed){
+    if(g.mode==='unique'){
+     await rest(`trading_positions?group_id=eq.${g.id}&status=eq.OPEN&activation_notified=eq.false`,{method:'PATCH',body:{activation_notified:true},prefer:'return=minimal'});
+    }else await rest(`trading_positions?id=eq.${p.id}&activation_notified=eq.false`,{method:'PATCH',body:{activation_notified:true},prefer:'return=minimal'});
+   }
+  }catch{/* Retry at the next scheduled pass. */}
+ }
+ return sent;
+}
 async function deliverPending(){
  const claimed=await rest('rpc/aurevia_claim_trade_alert_events',{method:'POST',body:{p_limit:50}});let sent=0;
  for(const e of claimed||[]){let delivered=false,suppressed=false;try{const ps=await rest(`trading_positions?select=id,group_id,tp_label,entry_price,volume_initial,volume_remaining,journal_id,contract_spec&id=eq.${e.position_id}`);const p=ps?.[0];if(!p)throw new Error('Position associée introuvable');
@@ -60,7 +85,7 @@ async function deliverPending(){
 export async function handler(event){
  if(!BASE()||!KEY())return json(503,{error:'Surveillance non configurée côté serveur.'});
  try{
-  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,stop_loss,take_profit,trigger_price,expires_at,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
+  const positions=await rest('trading_positions?select=id,user_id,group_id,tp_label,entry_price,actual_entry_price,stop_loss,take_profit,trigger_price,expires_at,trigger_seen,last_observed_price,entry_armed,activated_at,activation_price,activation_notified,volume_remaining,contract_size,quote_to_account,fees_per_lot,contract_spec,journal_id,status&status=in.(PENDING,OPEN)&volume_remaining=gt.0');
   const groups=await rest('trading_position_groups?select=id,user_id,instrument,direction,order_type,mode,status,contract_spec&status=eq.OPEN');const byId=new Map(groups.map(g=>[g.id,g]));
   let checked=0,activated=0,triggerStages=0,triggered=0,expired=0,errors=[];const priceCache=new Map();
   for(const p of positions||[]){const g=byId.get(p.group_id);if(!g)continue;try{
@@ -82,7 +107,9 @@ export async function handler(event){
       const activationPrice=observedPrice;
       const activatedAt=new Date().toISOString();const activation=await rest('rpc/aurevia_activate_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_activation_price:activationPrice,p_activated_at:activatedAt}});if(activation?.ok&&activation.status==='OPEN')activated++;else if(activation?.status==='EXPIRED'){const expiry=await rest('rpc/aurevia_expire_pending_position_worker',{method:'POST',body:{p_position_id:p.id,p_user_id:p.user_id,p_expired_at:activatedAt}});if(expiry?.ok&&expiry.expired)expired++;}continue;
     }
-    // Internal TP/SL is evaluated against the single observed Last Price. This is not a broker execution price.
+    // P/L and internal TP/SL closure stay suspended until the user confirms the real manual fill.
+    // The activation quote is only an observation, never a substitute for the executed entry price.
+    if(!Number.isFinite(Number(p.actual_entry_price))||Number(p.actual_entry_price)<=0)continue;
     const exitPrice=observedPrice;
     const eventType=evaluatePositionThreshold({...p,direction:g.direction},exitPrice);if(!eventType)continue;
     const eventId=`${p.id}:${eventType}`;const inserted=await rest('aurevia_trade_alert_events?on_conflict=event_key',{method:'POST',prefer:'resolution=ignore-duplicates,return=representation',body:{event_key:eventId,position_id:p.id,user_id:p.user_id,event_type:eventType,observed_price:exitPrice,closed_volume:Number(p.volume_remaining),status:'pending'}});

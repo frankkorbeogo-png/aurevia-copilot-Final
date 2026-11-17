@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const migration = readFileSync(new URL('../supabase/migrations/20261115144000_revoke_anon_table_privileges.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../supabase/migrations/20261115145803_revoke_anon_table_privileges.sql', import.meta.url), 'utf8');
 
 test('anonymous role has no direct privileges on private trading and announcement tables', () => {
   for (const table of [

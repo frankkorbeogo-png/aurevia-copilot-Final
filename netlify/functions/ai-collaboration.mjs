@@ -1,4 +1,5 @@
 import { configuredAIProviders } from './_ai-provider.mjs';
+import {validateM5AIConsensus} from '../../m5-entry-validation.js';
 
 const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
 const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
@@ -64,4 +65,28 @@ export async function runAureviaCollaboration({messages}){
  const allThree=Boolean(results.groq?.ok&&results.openrouter?.ok&&results.cloudflare?.ok);
  const fallbackUsed=leadProvider===cloudflare||!results.openrouter?.ok||!results.cloudflare?.ok||!results.groq?.ok;
  return {data:{...lead,decision,collaboration:{mode:'THREE_AI_ROLE_REVIEW',...info,providerOrder:['Groq','OpenRouter','Cloudflare'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers:results,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Les scores sont qualitatifs et non des probabilités. Si une IA est indisponible, la synthèse est signalée comme dégradée.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(results).filter(x=>x&&!x.ok)};
+}
+
+export async function runAureviaM5Confirmation({scenario, candles, indicators, structure}) {
+ const ps=Object.fromEntries(configuredAIProviders().map(p=>[p.id,p]));
+ const groq=ps.groq,openrouter=ps.openrouter,cloudflare=ps.cloudflare;
+ if(!groq||!openrouter||!cloudflare) return {confirmed:false,score:0,reason:'Analyse M5 suspendue : les trois IA (Groq, OpenRouter et Cloudflare) doivent être disponibles.',providerStatus:{groq:Boolean(groq),openrouter:Boolean(openrouter),cloudflare:Boolean(cloudflare)}};
+ if(!Array.isArray(candles)||candles.length<35)return {confirmed:false,score:0,reason:'Historique M5 insuffisant : 35 bougies clôturées sont nécessaires.'};
+ const market={scenario,candles:candles.slice(-40),indicators,structure};
+ const m5Base='Tu es une IA d’AUREVIA COPILOT. Réponds en français et en JSON valide. Pour cette analyse M5, CONFIRM et WAIT sont les seules décisions autorisées. Les scores sur 100 mesurent la qualité de confluence, jamais une probabilité de gain. N’invente aucun cours, indicateur ni niveau absent.';
+ const system=m5Base+' Tu es l’analyste principal M5 d’AUREVIA. Tu analyses uniquement les bougies M5 clôturées fournies et le scénario M15 déjà défini. Ne modifies jamais le sens du scénario. Tu dois déterminer si une entrée raisonnable existe maintenant. Propose un prix d’entrée précis, ou WAIT si aucune entrée raisonnable. Le prix doit être appuyé par la structure, une zone de retest, une liquidité reprise ou une impulsion; ne recopie pas simplement la clôture de la dernière bougie. Ne propose jamais un prix hors de la zone M15 ou au-delà du SL/TP1. JSON: {decision:"CONFIRM|WAIT",entryPrice:null|number,entryZoneLow:null|number,entryZoneHigh:null|number,score:0-100,reasoning,structureEvidence:[],liquidityEvidence:[],riskNotes:[],invalidation}.';
+ let lead,review,audit;
+ try { lead=await ask(groq,[{role:'system',content:system},{role:'user',content:JSON.stringify(market)}],6500); }
+ catch(e){return {confirmed:false,score:0,reason:'Groq indisponible : aucune entrée M5 proposée. '+clean(e.message,160)};}
+ const criticSystem=m5Base+' Tu es l’analyste contradicteur M5. Réévalue indépendamment le prix d’entrée proposé par Groq à partir des mêmes bougies et du scénario M15. Ne valide pas par complaisance. Réponds WAIT si le prix est trop tardif, hors zone, non justifié ou incohérent avec SL/TP1. JSON: {decision:"CONFIRM|WAIT",entryPrice:null|number,score:0-100,verdict:"CONFIRME|CONTESTE",reasoning,criticalBlockers:[]}.';
+ const controlSystem=m5Base+' Tu es le contrôleur indépendant M5. Vérifie indépendamment la sécurité du même prix proposé par Groq, la cohérence BUY/SELL, la zone M15, le SL, TP1, la fraîcheur des bougies et les risques de poursuite tardive. Tu disposes d’un veto. Ne te fie pas à une autre IA. JSON: {decision:"CONFIRM|WAIT",veto:false,vetoReason,score:0-100,reasoning,criticalBlockers:[]}.';
+ const [reviewResult,auditResult]=await Promise.allSettled([
+  ask(openrouter,[{role:'system',content:criticSystem},{role:'user',content:JSON.stringify({market,primaryProposal:lead})}],6500),
+  ask(cloudflare,[{role:'system',content:controlSystem},{role:'user',content:JSON.stringify({market,primaryProposal:lead})}],6500)
+ ]);
+ if(reviewResult.status!=='fulfilled')return {confirmed:false,score:0,reason:'OpenRouter indisponible : contre-analyse M5 incomplète. '+clean(reviewResult.reason?.message||reviewResult.reason,160)};
+ if(auditResult.status!=='fulfilled')return {confirmed:false,score:0,reason:'Cloudflare indisponible : contrôle de risque M5 incomplet. '+clean(auditResult.reason?.message||auditResult.reason,160)};
+ review=reviewResult.value;audit=auditResult.value;
+ const result=validateM5AIConsensus({scenario,lead,review,audit,atr:indicators?.atr14});
+ return {...result,lastCandleAt:new Date(candles.at(-1).time+5*60000).toISOString(),providers:{groq:groq.name,openrouter:openrouter.name,cloudflare:cloudflare.name},proposal:lead,review,audit};
 }

@@ -30,9 +30,7 @@ begin
   end if;
 
   if v_created_at is null then
-    if not p_claim then
-      return false;
-    end if;
+    if not p_claim then return false; end if;
     v_created_at := now();
   end if;
 

@@ -1,6 +1,4 @@
--- Centre d’annonces : historique publié et suivi de lecture individuel.
 drop policy if exists "Users read active announcements" on public.announcements;
-drop policy if exists "Users read published announcements" on public.announcements;
 create policy "Users read published announcements"
 on public.announcements for select to authenticated
 using (is_published = true);

@@ -36,7 +36,7 @@ test('identifiant d’alerte réutilisé comme identifiant de clôture pour rend
 });
 test('les alertes Telegram sont réservées atomiquement avec SKIP LOCKED et bail expirant',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261112110000_atomic_telegram_claims_v233.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261112095023_atomic_telegram_claims_v233.sql',import.meta.url),'utf8');
  const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
  assert.match(sql,/for update skip locked/i);
  assert.match(sql,/interval '5 minutes'/i);
@@ -49,7 +49,7 @@ test('les alertes Telegram sont réservées atomiquement avec SKIP LOCKED et bai
 test('la clôture TP/SL planifiée utilise une transaction SQL service_role pour position, journal et groupe',async()=>{
  const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
- const sql=await readFile(new URL('../supabase/migrations/20261112120000_atomic_worker_position_close_v234.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261112095025_atomic_worker_position_close_v234.sql',import.meta.url),'utf8');
  assert.match(source,/rpc\/aurevia_record_position_close_worker/);
  assert.doesNotMatch(source,/trading_positions\?id=eq\.\$\{p\.id\}[^\n]*PATCH[^\n]*body:\{status:'CLOSED'/s);
  assert.match(sql,/auth\.role\(\).*service_role/s);
@@ -63,11 +63,11 @@ test('la clôture TP/SL planifiée utilise une transaction SQL service_role pour
 
 test('surveillance refuse de clôturer si les métadonnées de calcul P/L sont absentes',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
- assert.throws(()=>calculateInternalClosePnl({volume_remaining:0.1,entry_price:2000,contract_size:null,quote_to_account:1},'BUY',2010),/P\/L incomplètes/);
+ assert.throws(()=>calculateInternalClosePnl({volume_remaining:0.1,entry_price:2000,contract_size:null,quote_to_account:1},'BUY',2010),/prix réel d’exécution manuelle absent/i);
 });
 test('surveillance calcule le P/L BUY et SELL avec volume, contrat, conversion et frais',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
- const p={volume_remaining:0.1,entry_price:2000,contract_size:100,quote_to_account:1,fees_per_lot:2};
+ const p={volume_remaining:0.1,entry_price:2000,actual_entry_price:2000,contract_size:100,quote_to_account:1,fees_per_lot:2};
  assert.deepEqual(calculateInternalClosePnl(p,'BUY',2010),{gross:100,fees:0.2,net:99.8,volume:0.1});
  assert.deepEqual(calculateInternalClosePnl(p,'SELL',1990),{gross:100,fees:0.2,net:99.8,volume:0.1});
 });
@@ -143,14 +143,14 @@ test('un prix absent ne déclenche aucune entrée',()=>{
  assert.equal(evaluateEntryTrigger({entry_price:2000},{direction:'BUY',order_type:'BUY LIMIT'},{bid:2000,ask:2000.2}),null);
 });
 
-test('le calcul P/L utilise le prix d’activation enregistré plutôt que le prix indicatif',async()=>{
+test('le P/L refuse le prix d’activation observé tant que le prix réel manuel manque',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
  const p={volume_remaining:0.1,entry_price:2000,activation_price:2002,contract_size:100,quote_to_account:1,fees_per_lot:0};
- assert.deepEqual(calculateInternalClosePnl(p,'BUY',2010),{gross:80,fees:0,net:80,volume:0.1});
+ assert.throws(()=>calculateInternalClosePnl(p,'BUY',2010),/prix réel d’exécution manuelle absent/i);
 });
 test('la migration autorise PENDING et réserve l’activation au worker service_role',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261112180000_trade_entry_price_activation.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261112181635_trade_entry_price_activation.sql',import.meta.url),'utf8');
  assert.match(sql,/PENDING.*OPEN.*CLOSED.*CANCELLED/s);
  assert.match(sql,/aurevia_activate_pending_position_worker/);
  assert.match(sql,/grant execute .* to service_role/i);
@@ -160,8 +160,8 @@ test('la migration autorise PENDING et réserve l’activation au worker service
 
 test('le worker serveur calcule aussi les instruments à valeur de point ou de tick',async()=>{
  const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
- const point=calculateInternalClosePnl({volume_remaining:2,entry_price:100,contract_spec:{brokerName:'B',accountCurrency:'EUR',calculationType:'point',pointSize:1,pointValue:2.5,minLot:0.1,lotStep:0.1,feesPerLot:0}},'BUY',105);
- const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
+ const point=calculateInternalClosePnl({volume_remaining:2,entry_price:100,actual_entry_price:100,contract_spec:{brokerName:'B',accountCurrency:'EUR',calculationType:'point',pointSize:1,pointValue:2.5,minLot:0.1,lotStep:0.1,feesPerLot:0}},'BUY',105);
+ const tick=calculateInternalClosePnl({volume_remaining:3,entry_price:5000,actual_entry_price:5000,contract_spec:{brokerName:'C',accountCurrency:'USD',calculationType:'tick',tickSize:0.25,tickValue:1.25,minLot:1,lotStep:1,feesPerLot:0}},'SELL',4999.5);
  assert.equal(point.gross,25);assert.equal(point.net,25);assert.equal(tick.gross,7.5);assert.equal(tick.net,7.5);
 });
 
@@ -174,10 +174,30 @@ test('la surveillance vérifie l’expiration avant de demander une cotation',as
 });
 test('la migration d’expiration synchronise expires_at et expose un worker service_role',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261116144833_aurevia_pending_order_expiry.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261116154534_aurevia_pending_order_expiry.sql',import.meta.url),'utf8');
  assert.match(sql,/add column if not exists expires_at/);
  assert.match(sql,/add column if not exists expired_at/);
  assert.match(sql,/aurevia_expire_pending_position_worker/);
  assert.match(sql,/grant execute .* to service_role/i);
  assert.match(sql,/EXPIRED/);
+});
+
+test('le P/L privilégie le prix réellement exécuté au prix d’activation observé',async()=>{
+ const {calculateInternalClosePnl}=await import('../netlify/functions/trade-watch.mjs');
+ const result=calculateInternalClosePnl({volume_remaining:0.1,entry_price:1999,activation_price:2000,actual_entry_price:2005,contract_size:100,quote_to_account:1,fees_per_lot:2},'BUY',2010);
+ assert.deepEqual(result,{gross:50,fees:0.2,net:49.8,volume:0.1});
+});
+test('un ordre conditionnel reste suivi mais son P/L et sa clôture sont suspendus sans prix réel manuel',async()=>{
+ const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/if\(!Number\.isFinite\(Number\(p\.actual_entry_price\)\)\|\|Number\(p\.actual_entry_price\)<=0\)continue/);
+ assert.match(source,/actual_entry_price/);
+ assert.doesNotMatch(source,/actual_entry_price\?\?position\.activation_price/);
+});
+
+test('une position unique ne génère qu’une notification d’activation pour tous ses TP',async()=>{
+ const source=await (await import('node:fs/promises')).readFile(new URL('../netlify/functions/trade-watch.mjs',import.meta.url),'utf8');
+ assert.match(source,/attemptedUniqueGroups=new Set\(\)/);
+ assert.match(source,/g\.mode==='unique'&&attemptedUniqueGroups\.has\(g\.id\)/);
+ assert.match(source,/trading_positions\?group_id=eq\.\$\{g\.id\}&status=eq\.OPEN/);
+ assert.match(source,/Prix réel confirmé/);
 });

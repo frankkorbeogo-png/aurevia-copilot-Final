@@ -4,14 +4,13 @@ import {detectCandlestickPatterns,detectChartPatterns} from './patterns.js';
 import {calculateFixedRangeVolumeProfile} from './volume-profile.js';
 import {calculateFibonacciRetracements} from './fibonacci.js';
 import {getAnalysisAccessToken} from './auth.js';
-import {generateOpportunityScenarios} from './opportunity-engine.js';
 import {getMarketStatus} from './market-hours.js';
 import {MARKET_INSTRUMENTS} from './market-catalog.js';
 import {selectClosedMarketCandles} from './market-candle-validation.js';
 import {buildMacroContextForAI} from './macro-context-forwarding.js';
 const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
-// H4/H1/M30 restent des contextes optionnels. M5 est réservé au surveillant
+// H4/H1 sont des contextes optionnels ; M30 est requis pour la préparation structurelle. M5 est réservé au surveillant
 // de scénario : il valide l'entrée après mitigation, sans être chargé à chaque analyse initiale.
 const FRAMES={H4:'4h',H1:'1h',M30:'30min',M15:'15min'};
 const FRAME_MINUTES={H4:240,H1:60,M30:30,M15:15,M5:5};
@@ -98,14 +97,14 @@ async function runInstrumentAnalysis(symbol){
   // Prioriser l'historique M15 : si le fournisseur est limité, le moteur
   // tente d'abord de récupérer les données réellement nécessaires au moteur IA.
   try{frames.M15=await fetchFrame(pair,FRAMES.M15);}catch(error){unavailable.push({tf:'M15',error:error?.message||'Données indisponibles'});}
-  // Les unités supérieures ne sont que du contexte. Leur panne ne bloque
-  // jamais l'analyse M15 et elles sont demandées seulement après le M15.
+  // H4/H1 restent des contextes optionnels ; M30 est requis pour la préparation.
+  // Les trois unités sont demandées après le M15 pour maîtriser les appels fournisseur.
   if(frames.M15){
    const optional=Object.entries(FRAMES).filter(([tf])=>tf!=='M15');
    const settled=await Promise.allSettled(optional.map(async([tf,interval])=>[tf,await fetchFrame(pair,interval)]));
    settled.forEach((item,index)=>{const tf=optional[index][0];if(item.status==='fulfilled')frames[item.value[0]]=item.value[1];else unavailable.push({tf,error:item.reason?.message||'Données indisponibles'});});
   }
-  const requiredMissing=unavailable.filter(x=>x.tf==='M15');
+  const requiredMissing=unavailable.filter(x=>['M15','M30'].includes(x.tf));
   const stale=Object.entries(frames).filter(([tf,d])=>!isFresh(d.candles,d.timezone,FRAME_MINUTES[tf])).map(([tf])=>tf);
   const analyses={};
   for(const [tf,data] of Object.entries(frames)){
@@ -115,24 +114,22 @@ async function runInstrumentAnalysis(symbol){
    const structure=detectMarketStructure(candles);
    analyses[tf]={indicators:calculateIndicators(candles),structure,patterns:[...detectCandlestickPatterns(candles),...detectChartPatterns(candles)],fibonacci:calculateFibonacciRetracements(structure.swings,structure.bias),volumeProfile:calculateFixedRangeVolumeProfile(candles),last:candles.at(-1)};
   }
-  const requiredStale=stale.filter(tf=>tf==='M15');
-  const allRequiredAvailable=!requiredMissing.length&&!requiredStale.length&&analyses.M15?.last;
+  const requiredStale=stale.filter(tf=>['M15','M30'].includes(tf));
+  const allRequiredAvailable=!requiredMissing.length&&!requiredStale.length&&analyses.M15?.last&&analyses.M30?.last;
   if(!allRequiredAvailable){
    const details=[...requiredMissing.map(x=>`${x.tf}: ${x.error}`),...requiredStale.map(tf=>`${tf}: données périmées ou horodatage non vérifiable`)];
    const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
-   latest={message:'Données opérationnelles incomplètes',tableMessage:'L’analyse directionnelle exige uniquement des données M15 valides.',rows,signalReason:`WAIT — analyse suspendue : ${details.join(' ; ')||'M15 indisponible'}. Réessayez lorsque le flux sera rétabli.`,decision:'WAIT',probability:null,score:null,unavailableFrames:unavailable,staleFrames:stale,frames};
+   latest={message:'Données opérationnelles incomplètes',tableMessage:'L’analyse directionnelle exige des données M15 et M30 valides.',rows,signalReason:`WAIT — analyse suspendue : ${details.join(' ; ')||'M15 indisponible'}. Réessayez lorsque le flux sera rétabli.`,decision:'WAIT',probability:null,score:null,unavailableFrames:unavailable,staleFrames:stale,frames};
    return null;
   }
   const macroContext=await fetchMacroContext(symbol);
   const m15=analyses.M15;
-  const frameBrief=(tf)=>{const a=analyses[tf];if(!a)return {available:false,bias:'indisponible'};const i=a.indicators||{},st=a.structure||{};return {available:true,bias:st.bias||'indéterminé',ema20:i.ema20??null,ema50:i.ema50??null,ema200:i.ema200??null,rsi14:i.rsi14??null,macdHistogram:i.macd?.histogram??null,breaks:(st.breaks||[]).slice(-3).map(x=>({type:x.type,price:x.price??null})),sweeps:(st.sweeps||[]).slice(-2).map(x=>({type:x.type,price:x.price??null})),lastClose:a.last?.close??null,lastCandleTime:a.last?.time??null};};
+  const frameBrief=(tf)=>{const a=analyses[tf];if(!a)return {available:false,bias:'indisponible'};const i=a.indicators||{},st=a.structure||{};return {available:true,bias:st.bias||'indéterminé',ema20:i.ema20??null,ema50:i.ema50??null,ema200:i.ema200??null,rsi14:i.rsi14??null,macdHistogram:i.macd?.histogram??null,breaks:(st.breaks||[]).slice(-3).map(x=>({type:x.type,price:x.price??null})),sweeps:(st.sweeps||[]).slice(-2).map(x=>({type:x.type,price:x.price??null})),lastClose:a.last?.close??null,lastCandleTime:(()=>{const stamp=parseProviderTime(a.last?.time,frames[tf]?.timezone||'UTC');return Number.isFinite(stamp)?new Date(stamp).toISOString():null;})()};};
   const higherTimeframes={h4:analyses.H4?.structure?.bias||'indisponible',h1:analyses.H1?.structure?.bias||'indisponible',m30:analyses.M30?.structure?.bias||'indisponible'};
   const rows=Object.entries(analyses).map(([tf,a])=>({tf,ema200:a.indicators.ema200,rsi14:a.indicators.rsi14,bias:a.structure.bias,breaks:a.structure.breaks.map(x=>x.type).join(', ')||'—'}));
-  const technicalScenarios=generateOpportunityScenarios({analyses,frames,staleFrames:stale});
   let aiResult=null,aiError=null;
   try{aiResult=await requestAureviaAnalysis(symbol,{candles:frames.M15.candles,analysis:m15},{timeframes:{H4:frameBrief('H4'),H1:frameBrief('H1'),M30:frameBrief('M30'),M15:frameBrief('M15')},macro:buildMacroContextForAI(macroContext)});}catch(error){aiError=error.message||'Moteur IA indisponible';}
   const scenarios=aiResult?.scenarios||{buy:null,sell:null};
-  const technicalBest=(!technicalScenarios.sell||technicalScenarios.buy?.score>=technicalScenarios.sell?.score)?technicalScenarios.buy:technicalScenarios.sell;
   const best=aiResult?.decision==='BUY'?scenarios.buy:aiResult?.decision==='SELL'?scenarios.sell:(aiResult?(scenarios.buy||scenarios.sell):null);
   // En cas d'échec IA, ne pas recycler le score technique local dans la jauge
   // réservée au score de confirmation de l'analyse AUREVIA.

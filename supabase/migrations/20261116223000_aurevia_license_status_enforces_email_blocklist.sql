@@ -1,24 +1,11 @@
-create table public.aurevia_trial_claims (
-  email_hash text primary key check (length(email_hash)=64),
-  first_user_id uuid references auth.users(id) on delete set null,
-  trial_started_at timestamptz not null,
-  trial_expires_at timestamptz not null,
-  created_at timestamptz not null default now(),
-  constraint aurevia_trial_claims_window_valid check (trial_expires_at > trial_started_at)
-);
-create index aurevia_trial_claims_user_idx on public.aurevia_trial_claims(first_user_id);
-alter table public.aurevia_trial_claims enable row level security;
-revoke all on table public.aurevia_trial_claims from public, anon, authenticated;
-grant select, insert, update, delete on table public.aurevia_trial_claims to service_role;
-insert into public.aurevia_trial_claims(email_hash,first_user_id,trial_started_at,trial_expires_at)
-select encode(extensions.digest(lower(btrim(u.email)),'sha256'),'hex'),a.user_id,a.trial_started_at,a.trial_expires_at
-from public.aurevia_account_access a join auth.users u on u.id=a.user_id
-where nullif(btrim(u.email),'') is not null and a.trial_started_at is not null and a.trial_expires_at is not null
-on conflict(email_hash) do nothing;
+-- A permanently blocked email must remain unable to access AUREVIA even if
+-- an Auth deletion request fails after the block is written.
 create or replace function public.aurevia_license_status(p_user_id uuid)
-returns jsonb language plpgsql security definer
-set search_path = pg_catalog, public, extensions, pg_temp
-as $$
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'pg_catalog','public','extensions','pg_temp'
+as $function$
 declare
   v_access public.aurevia_account_access%rowtype;
   v_license public.aurevia_licenses%rowtype;
@@ -26,13 +13,19 @@ declare
   v_email text;
   v_email_confirmed_at timestamptz;
   v_email_hash text;
+  v_blocked_fingerprint text;
   v_now timestamptz:=now();
 begin
   select email,email_confirmed_at into v_email,v_email_confirmed_at from auth.users where id=p_user_id;
   if p_user_id is null or not found then return jsonb_build_object('ok',false,'code','USER_NOT_FOUND'); end if;
   if nullif(btrim(v_email),'') is null or v_email_confirmed_at is null then return jsonb_build_object('ok',false,'code','EMAIL_NOT_VERIFIED'); end if;
-  v_email_hash:=encode(extensions.digest(lower(btrim(v_email)),'sha256'),'hex');
 
+  v_blocked_fingerprint:=app_private.aurevia_email_fingerprint(v_email);
+  if exists(select 1 from app_private.aurevia_blocked_emails where email_fingerprint=v_blocked_fingerprint) then
+    return jsonb_build_object('ok',false,'status','blocked','code','EMAIL_BLOCKED');
+  end if;
+
+  v_email_hash:=encode(extensions.digest(lower(btrim(v_email)),'sha256'),'hex');
   insert into public.aurevia_account_access(user_id,access_status) values(p_user_id,'trial') on conflict(user_id) do nothing;
   select * into v_access from public.aurevia_account_access where user_id=p_user_id for update;
 
@@ -80,6 +73,7 @@ begin
   return jsonb_build_object('ok',true,'status','trial','trial_started_at',v_claim.trial_started_at,'trial_expires_at',v_claim.trial_expires_at,
     'days_remaining',greatest(0,ceil(extract(epoch from (v_claim.trial_expires_at-v_now))/86400.0)::integer));
 end;
-$$;
+$function$;
+
 revoke all on function public.aurevia_license_status(uuid) from public,anon,authenticated;
 grant execute on function public.aurevia_license_status(uuid) to service_role;

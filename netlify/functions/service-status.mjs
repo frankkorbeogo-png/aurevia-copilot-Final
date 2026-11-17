@@ -7,5 +7,9 @@ export async function handler(event){
  const has=name=>Boolean(process.env[name]?.trim());
  const supabaseServer=has('SUPABASE_URL')&&has('SUPABASE_SERVICE_ROLE_KEY');
  const aiProviders=configuredAIProviders();
- return json(200,{services:{ai:{configured:aiProviders.length>0,provider:'AUREVIA',providers:aiProviders.map(({name,model})=>({name,model}))},marketData:{configured:has('TWELVEDATA_API_KEY')},supabase:{configured:supabaseServer},telegram:{configured:has('TELEGRAM_BOT_TOKEN')&&has('TELEGRAM_WEBHOOK_SECRET')&&(has('SUPABASE_PUBLISHABLE_KEY')||has('SUPABASE_ANON_KEY'))&&supabaseServer},tradeMonitor:{configured:has('TWELVEDATA_API_KEY')&&supabaseServer&&has('TELEGRAM_BOT_TOKEN')}},checkedAt:new Date().toISOString()});
+ const providerIds=new Set(aiProviders.map(provider=>provider.id));
+ const m5Required=['groq','openrouter','cloudflare'];
+ const m5MissingProviders=m5Required.filter(id=>!providerIds.has(id));
+ const providerNames={groq:'Groq',openrouter:'OpenRouter',cloudflare:'Cloudflare'};
+ return json(200,{services:{ai:{configured:aiProviders.length>0,provider:'AUREVIA',m5ConsensusConfigured:m5MissingProviders.length===0,m5MissingProviders:m5MissingProviders.map(id=>providerNames[id]),providers:aiProviders.map(({id,name,model})=>({id,name,model}))},marketData:{configured:has('TWELVEDATA_API_KEY')},supabase:{configured:supabaseServer},telegram:{configured:has('TELEGRAM_BOT_TOKEN')&&has('TELEGRAM_WEBHOOK_SECRET')&&(has('SUPABASE_PUBLISHABLE_KEY')||has('SUPABASE_ANON_KEY'))&&supabaseServer},tradeMonitor:{configured:has('TWELVEDATA_API_KEY')&&supabaseServer&&has('TELEGRAM_BOT_TOKEN')}},checkedAt:new Date().toISOString()});
 }

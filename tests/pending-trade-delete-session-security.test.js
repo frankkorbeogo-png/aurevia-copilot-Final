@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const migration = readFileSync(new URL('../supabase/migrations/20261115143000_harden_pending_trade_delete_session.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../supabase/migrations/20261115145801_harden_pending_trade_delete_session.sql', import.meta.url), 'utf8');
 
 test('pending trade deletion runs as invoker and requires the active AUREVIA session', () => {
   assert.match(migration, /security invoker/i);

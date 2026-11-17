@@ -80,8 +80,6 @@ $$;
 revoke all on function public.aurevia_activate_pending_position_worker(uuid,uuid,numeric,timestamptz) from public, anon, authenticated;
 grant execute on function public.aurevia_activate_pending_position_worker(uuid,uuid,numeric,timestamptz) to service_role;
 
-
--- Latest executable-side quotes are written only by the persistent market stream worker.
 create table if not exists public.aurevia_market_quotes (
   symbol text primary key,
   bid numeric(20,10) not null check (bid > 0),

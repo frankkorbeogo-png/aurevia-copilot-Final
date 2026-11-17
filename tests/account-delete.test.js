@@ -7,7 +7,7 @@ const endpoint = await read('../netlify/functions/account-delete.mjs');
 const admin = await read('../netlify/functions/admin-api.mjs');
 const cleanup = await read('../netlify/functions/_account-deletion.mjs');
 const auth = await read('../auth.js');
-const sharedRevocationMigration = await read('../supabase/migrations/20261113100000_shared_account_deletion_session_revocation.sql');
+const sharedRevocationMigration = await read('../supabase/migrations/20261113181221_shared_account_deletion_session_revocation.sql');
 
 test('la suppression personnelle vérifie le jeton Supabase et la session AUREVIA active', () => {
   assert.ok(endpoint.includes('verifyBearerUser(event)'));
@@ -57,7 +57,9 @@ test('la suppression locale efface aussi le jeton mémorisé sur cet appareil', 
   assert.ok(auth.includes('Une nouvelle inscription sera nécessaire.'));
   for (const key of ['aurevia-copilot-journal-v1','aurevia-position-groups-v2','aurevia-linked-journal-v2','aurevia_analysis_history','aurevia_my_analysis']) assert.ok(auth.includes(key));
   assert.ok(auth.includes('bindLocalDataOwner(session.user?.id)'));
-  assert.ok(auth.includes('if(previous&&previous!==id)clearLocalAccountData()')); 
+  assert.ok(auth.includes('snapshotLocalAccountData(previous)'));
+  assert.ok(auth.includes('clearLocalAccountData();restoreLocalAccountData(id)'));
+  assert.ok(auth.includes('LOCAL_ACCOUNT_SNAPSHOT_PREFIX')); 
 });
 
 

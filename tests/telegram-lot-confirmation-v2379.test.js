@@ -11,7 +11,7 @@ test('Telegram guide la saisie avec des boutons, valide le code et crée via la 
  assert.match(source,/telegram_trade_setup/);
  assert.match(source,/validateContractSpec/);
  assert.match(source,/rpc\/aurevia_create_position_from_scenario/);
- assert.match(source,/Aucun ordre n’a été envoyé au broker/);
+ assert.match(source,/AUREVIA n’a exécuté aucun ordre/);
 });
 
 test('la confirmation M15 propose les deux modes avec des boutons Telegram',async()=>{
@@ -24,7 +24,7 @@ test('la confirmation M15 propose les deux modes avec des boutons Telegram',asyn
 });
 
 test('la création atomique est réservée au service_role et valide les paramètres instrument',async()=>{
- const sql=await read('../supabase/migrations/20261113140000_telegram_scenario_lot_confirmation_v2379.sql');
+ const sql=await read('../supabase/migrations/20261113140542_telegram_scenario_lot_confirmation_v2379.sql');
  assert.match(sql,/for update/i);
  assert.match(sql,/auth\.role\(\) <> 'service_role'/);
  assert.match(sql,/BROKER_INSTRUMENT_SETTINGS_REQUIRED/);
@@ -40,7 +40,7 @@ test('V2.3.80 stocke le snapshot de calcul et prend en charge contrat, point et 
 
 test('Telegram permet de saisir les limites de volume propres au broker',async()=>{
  const source=await read('../netlify/functions/telegram-webhook.mjs');
- assert.match(source,/minLot:0\.01,lotStep:0\.01,maxLot:null/);
+ assert.match(source,/minLot:savedSpecs\.minLot\?\?0\.01,lotStep:savedSpecs\.lotStep\?\?0\.01,maxLot:savedSpecs\.maxLot\?\?null/);
  assert.match(source,/minLot:'Quel est le lot minimum/);
  assert.match(source,/lotStep:'Quel est le pas de volume/);
  assert.match(source,/maxLot:'Quel est le lot maximum/);
@@ -53,4 +53,15 @@ test('API de création depuis scénario respecte les limites fournies et ne les 
  assert.match(source,/const minLot=Number\(contractSpec\?\.minLot\)/);
  assert.match(source,/volume<minLot/);
  assert.doesNotMatch(source,/\{\.\.\.body\.contract_spec,minLot:0\.01/);
+});
+
+test('le webhook Telegram applique le contrôle de compte, suspension et licence active',async()=>{
+ const source=await read('../netlify/functions/telegram-webhook.mjs');
+ const sql=await read('../supabase/migrations/20261116194000_aurevia_telegram_access_entitlement.sql');
+ assert.match(source,/ensureTelegramAccess/);
+ assert.match(source,/aurevia_telegram_access_status/);
+ assert.match(sql,/banned_until/);
+ assert.match(sql,/email_confirmed_at/);
+ assert.match(sql,/aurevia_license_status/);
+ assert.match(sql,/ACCOUNT_SUSPENDED/);
 });

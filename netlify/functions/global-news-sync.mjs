@@ -7,8 +7,13 @@ const RELEASES=[
  {id:50,name:'US Employment Situation / NFP',hour:8,minute:30,url:'https://www.bls.gov/news.release/empsit.htm'},
  {id:46,name:'US Producer Price Index (PPI)',hour:8,minute:30,url:'https://www.bls.gov/ppi/'},
  {id:53,name:'US Gross Domestic Product (GDP)',hour:8,minute:30,url:'https://www.bea.gov/data/gdp/gross-domestic-product'},
- {id:9,name:'US Advance Retail Sales',hour:8,minute:30,url:'https://www.census.gov/retail/index.html'},
- {id:101,name:'FOMC monetary policy statement',hour:14,minute:0,url:'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm'}
+ {id:9,name:'US Advance Retail Sales',hour:8,minute:30,url:'https://www.census.gov/retail/index.html'}
+];
+const FED_FOMC_URL='https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm';
+const FOMC_POLICY_DECISION_DATES=[
+ '2026-01-28','2026-03-18','2026-04-29','2026-06-17','2026-07-29','2026-09-16','2026-10-28','2026-12-09',
+ '2027-01-27','2027-03-17','2027-04-28','2027-06-09','2027-07-28','2027-09-15','2027-11-17',
+ '2028-01-26'
 ];
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const env=name=>(process.env[name]||'').trim();
@@ -36,15 +41,50 @@ function normalizeArticle(article){
  const tone=Number(article.tone);
  return {external_id:externalId,title,source_url:url,source_domain:parsed.hostname.replace(/^www\./,''),source_country:String(article.sourcecountry||'').slice(0,80),source_language:String(article.language||'').slice(0,40),published_at:publishedAt,seen_at:seenAt,category:'macro_geopolitics',tone:Number.isFinite(tone)?tone:null,source_provider:SOURCE};
 }
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function gdeltRetryDelay(response){
+ const raw=String(response.headers.get('retry-after')||'').trim(),seconds=Number(raw),date=Date.parse(raw);
+ const requested=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?Math.max(0,date-Date.now()):5000;
+ return Math.max(5000,requested);
+}
 async function fetchArticles(){
  const url=new URL('https://api.gdeltproject.org/api/v2/doc/doc');
  url.searchParams.set('query',QUERY);url.searchParams.set('mode','ArtList');url.searchParams.set('format','json');
  url.searchParams.set('maxrecords','75');url.searchParams.set('timespan','90min');url.searchParams.set('sort','DateDesc');
- const response=await fetch(url,{headers:{accept:'application/json','user-agent':'AUREVIA-COPILOT/1.0 (global macro news; https://github.com/frankkorbeogo-png/aurevia-copilot-Final)'},signal:AbortSignal.timeout(15000)});
- if(!response.ok)throw new Error('GDELT HTTP '+response.status);
- const type=response.headers.get('content-type')||'';if(!type.includes('json'))throw new Error('GDELT a retourné un contenu non JSON.');
+ const headers={accept:'application/json','user-agent':'AUREVIA-COPILOT/1.0 (global macro news; https://github.com/frankkorbeogo-png/aurevia-copilot-Final)'};
+ let response;
+ for(let attempt=0;attempt<2;attempt++){
+  try{
+   response=await fetch(url,{headers,signal:AbortSignal.timeout(5000)});
+  }catch(error){
+   if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(500);continue;}
+   throw error;
+  }
+  if(response.status===429&&attempt===0){
+   const delay=gdeltRetryDelay(response);await response.text().catch(()=>{});if(delay>7000)throw new Error('GDELT HTTP 429; Retry-After exceeds the safe function time budget.');console.warn('[AUREVIA GDELT] rate limited; retrying after '+delay+'ms');await wait(delay);continue;
+  }
+  if(response.status>=500&&attempt===0){
+   await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] upstream HTTP '+response.status+'; retrying once');await wait(500);continue;
+  }
+  break;
+ }
+ if(!response?.ok)throw new Error('GDELT HTTP '+(response?.status||'unavailable'));
+ const type=response.headers.get('content-type')||'';if(!type.toLowerCase().includes('json'))throw new Error('GDELT a retourné un contenu non JSON.');
  const data=await response.json();const articles=Array.isArray(data.articles)?data.articles:[];
  return articles.map(normalizeArticle).filter(Boolean);
+}
+function dateInZone(date,zone){
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+ const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+ return `${values.year}-${values.month}-${values.day}`;
+}
+function addDaysToIsoDate(value,days){
+ const [year,month,day]=value.split('-').map(Number);
+ return new Date(Date.UTC(year,month-1,day+days)).toISOString().slice(0,10);
+}
+export function getFredDateRange(now=new Date()){
+ const today=dateInZone(now,'America/New_York');
+ return {today,end:addDaysToIsoDate(today,14)};
 }
 function zonedTimeToUtc(date,hour,minute,zone='America/New_York'){
  const [year,month,day]=date.split('-').map(Number);const target=Date.UTC(year,month-1,day,hour,minute);let guess=target;
@@ -55,17 +95,37 @@ function zonedTimeToUtc(date,hour,minute,zone='America/New_York'){
  }
  return new Date(guess).toISOString();
 }
+export function buildOfficialFomcEvents(now=new Date()){
+ const start=now.getTime()-24*60*60*1000,horizon=now.getTime()+15*86400000,events=[];
+ const add=(id,date,name,url,impact='high',type='STATEMENT')=>{
+  const scheduledAt=zonedTimeToUtc(date,14,0),time=Date.parse(scheduledAt);
+  if(time<start||time>horizon)return;
+  events.push({external_id:`FED-FOMC-${type}-${date}`,release_id:id,event_name:name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact,source_url:url,source_provider:'Federal Reserve official calendar',time_basis:'official_fed_schedule'});
+ };
+ for(const date of FOMC_POLICY_DECISION_DATES){
+  add(101,date,'FOMC monetary policy decision',FED_FOMC_URL,'high','STATEMENT');
+  const minutesDate=addDaysToIsoDate(date,21);
+  const month=new Intl.DateTimeFormat('en-US',{month:'long',timeZone:'UTC'}).format(new Date(minutesDate+'T12:00:00Z'));
+  add(102,minutesDate,'FOMC Minutes',`https://www.federalreserve.gov/newsevents/${minutesDate.slice(0,4)}-${month}.htm`,'medium','MINUTES');
+ }
+ return events;
+}
 async function syncEconomicCalendar(){
  const key=env('FRED_API_KEY');if(!key)return {status:'not_configured',synced:0,notice:'FRED_API_KEY absent : calendrier des publications futures non synchronisé.'};
  const state=await rest('economic_release_sync_state?id=eq.global&select=last_synced_at&limit=1');
  if(state?.[0]?.last_synced_at&&Date.now()-Date.parse(state[0].last_synced_at)<6*60*60*1000)return {status:'fresh_cache',synced:0};
- const today=new Date().toISOString().slice(0,10),end=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
- const results=await Promise.all(RELEASES.map(async release=>{
+ const {today,end}=getFredDateRange(new Date());
+ const fetchRelease=async release=>{
   const url=new URL('https://api.stlouisfed.org/fred/release/dates');
   url.searchParams.set('release_id',String(release.id));url.searchParams.set('api_key',key);url.searchParams.set('file_type','json');
   url.searchParams.set('realtime_start',today);url.searchParams.set('realtime_end',end);url.searchParams.set('include_release_dates_with_no_data','true');url.searchParams.set('sort_order','asc');
-  const response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(9000)});
-  if(!response.ok)throw new Error('FRED release '+release.id+' HTTP '+response.status);
+  let response;
+  for(let attempt=0;attempt<2;attempt++){
+   response=await fetch(url,{headers:{accept:'application/json'},signal:AbortSignal.timeout(3500)});
+   if(response.status===429&&attempt===0){await response.text().catch(()=>{});await wait(1200);continue;}
+   break;
+  }
+  if(!response?.ok)throw new Error('FRED release '+release.id+' HTTP '+(response?.status||'unavailable'));
   const data=await response.json();if(data.error_message)throw new Error(data.error_message);
   return (Array.isArray(data.release_dates)?data.release_dates:[]).map(row=>{
    const date=String(row.date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return null;
@@ -73,19 +133,30 @@ async function syncEconomicCalendar(){
    if(Date.parse(scheduledAt)<Date.now()-60*60*1000||Date.parse(scheduledAt)>Date.now()+15*86400000)return null;
    return {external_id:'FRED-'+release.id+'-'+date,release_id:release.id,event_name:release.name,release_date:date,scheduled_at:scheduledAt,source_timezone:'America/New_York',currency:'USD',impact:'high',source_url:release.url,source_provider:'FRED release calendar',time_basis:'standard_release_time'};
   }).filter(Boolean);
- }));
- const events=results.flat();
+ };
+ // FRED permits two requests per second. Keep concurrency at two and leave a
+ // full second between batches so a scheduled run does not trip the API limit.
+ const results=[];
+ for(let i=0;i<RELEASES.length;i+=2){
+  const batch=await Promise.all(RELEASES.slice(i,i+2).map(fetchRelease));
+  results.push(...batch);
+  if(i+2<RELEASES.length)await wait(1100);
+ }
+ const fredEvents=results.flat(),fomcEvents=buildOfficialFomcEvents(new Date()),events=[...fredEvents,...fomcEvents];
  if(events.length)await rest('economic_release_events?on_conflict=external_id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:events.map(x=>({...x,is_active:true}))});
- const now=new Date(),horizon=new Date(now.getTime()+15*86400000);const current=await rest('economic_release_events?select=id,external_id,release_id,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+RELEASES.map(x=>x.id).join(',')+')&limit=500');
+ const now=new Date(),horizon=new Date(now.getTime()+15*86400000);
+ const current=await rest('economic_release_events?select=id,external_id,release_id,source_provider,scheduled_at,is_active,telegram_broadcast_started_at&scheduled_at=gte.'+encodeURIComponent(now.toISOString())+'&scheduled_at=lte.'+encodeURIComponent(horizon.toISOString())+'&is_active=eq.true&release_id=in.('+RELEASES.map(x=>x.id).join(',')+')&limit=500');
  const live=new Set(events.map(x=>x.external_id));let deactivated=0;
  for(const row of (Array.isArray(current)?current:[])){
-  if(!live.has(row.external_id)){
-   await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});
-   deactivated++;
-  }
+  if(!live.has(row.external_id)){await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});deactivated++;}
  }
- await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED release calendar'}});
- return {status:'synced',synced:events.length,deactivated,source:'FRED release calendar'};
+ const oldFomc=await rest('economic_release_events?select=id,external_id,release_id,source_provider&is_active=eq.true&release_id=in.(101,102,103)&limit=500');
+ const liveFomc=new Set(fomcEvents.map(x=>x.external_id));let staleFomcDeactivated=0;
+ for(const row of (Array.isArray(oldFomc)?oldFomc:[])){
+  if(!liveFomc.has(row.external_id)){await rest('economic_release_events?id=eq.'+encodeURIComponent(row.id),{method:'PATCH',body:{is_active:false}});staleFomcDeactivated++;}
+ }
+ await rest('economic_release_sync_state?on_conflict=id',{method:'POST',prefer:'resolution=merge-duplicates,return=minimal',body:{id:'global',last_synced_at:new Date().toISOString(),source_provider:'FRED + Federal Reserve official calendar'}});
+ return {status:'synced',synced:events.length,fomcSynced:fomcEvents.length,deactivated,staleFomcDeactivated,source:'FRED + Federal Reserve official calendar'};
 }
 async function broadcastToSubscribers(eventType,event,message,eventTable){
  const token=env('TELEGRAM_BOT_TOKEN');if(!token)return {status:'not_configured',sent:0,failed:0};
@@ -123,13 +194,14 @@ function economicReleaseMessage(event){
  const utc=new Date(event.scheduled_at);
  const burkina=new Intl.DateTimeFormat('fr-FR',{timeZone:'Africa/Ouagadougou',dateStyle:'full',timeStyle:'short'}).format(utc);
  const eastern=new Intl.DateTimeFormat('fr-FR',{timeZone:'America/New_York',dateStyle:'short',timeStyle:'short'}).format(utc);
- return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\n\n'+event.event_name+'\nDevise : '+event.currency+' · Impact : élevé\nHeure prévue (New York) : '+eastern+'\nHeure Burkina Faso (UTC+0) : '+burkina+'\n\nRappel envoyé au contrôle horaire précédant la publication, entre 0 et 60 minutes avant selon l’horaire exact et le passage du contrôle horaire. La date vient du calendrier FRED ; l’heure est un horaire habituel de publication, à vérifier sur la source officielle.\nSource : '+event.source_url+'\n\nCette alerte n’est pas un signal BUY/SELL.';
+ const sourceNote=event.source_provider==='Federal Reserve official calendar'?'Date et horaire issus du calendrier officiel de la Réserve fédérale.':'Date issue du calendrier FRED ; heure correspondant à l’horaire habituel de publication, à vérifier sur la source officielle.';
+ return '⏰ AUREVIA · PUBLICATION ÉCONOMIQUE À VENIR\\n\\n'+event.event_name+'\\nDevise : '+event.currency+' · Impact : '+(event.impact||'élevé')+'\\nHeure prévue (New York) : '+eastern+'\\nHeure Burkina Faso (UTC+0) : '+burkina+'\\n\\nRappel envoyé au contrôle horaire précédant la publication, entre 0 et 60 minutes avant selon l’horaire exact et le passage du contrôle horaire. '+sourceNote+'\\nSource : '+event.source_url+'\\n\\nCette alerte n’est pas un signal BUY/SELL.';
 }
 async function broadcastDueReleases(){
  if(!env('TELEGRAM_BOT_TOKEN'))return {processed:0,notice:'TELEGRAM_BOT_TOKEN absent.'};
- const now=new Date(),start=now,end=new Date(now.getTime()+65*60*1000);
+ const now=new Date(),start=now,end=new Date(now.getTime()+60*60*1000);
  const cutoff=new Date(now.getTime()-24*60*60*1000);
- const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(cutoff.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
+ const filter='select=id,event_name,scheduled_at,source_url,source_timezone,currency,impact,source_provider,telegram_broadcast_started_at&is_active=eq.true&telegram_broadcast_completed_at=is.null&scheduled_at=gte.'+encodeURIComponent(cutoff.toISOString())+'&or=(and(telegram_broadcast_started_at.is.null,scheduled_at.gte.'+encodeURIComponent(start.toISOString())+',scheduled_at.lte.'+encodeURIComponent(end.toISOString())+'),telegram_broadcast_started_at.not.is.null)&order=scheduled_at.asc&limit=30';
  const pending=await rest('economic_release_events?'+filter);
  const results=[];for(const event of (Array.isArray(pending)?pending:[]))results.push({id:event.id,...await broadcastToSubscribers('economic',event,economicReleaseMessage(event),'economic_release_events')});
  return {processed:results.length,results};
@@ -150,12 +222,21 @@ async function syncGlobalNews(){
 export async function handler(event){
  if(!env('SUPABASE_URL')||!env('SUPABASE_SERVICE_ROLE_KEY'))return json(503,{ok:false,error:'Supabase service credentials are missing.'});
  const result={ok:true,source:SOURCE};
- try{result.economicCalendar=await syncEconomicCalendar();result.economicReminders=await broadcastDueReleases();}
- catch(error){result.economicCalendarError=String(error.message||error).slice(0,300);}
- try{Object.assign(result,await syncGlobalNews());}
- catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
+ // Economic calendar/reminders and global news are independent. Run them in
+ // parallel so a slow upstream cannot consume the scheduler's whole time budget.
+ const economicTask=(async()=>{
+  try{result.economicCalendar=await syncEconomicCalendar();}
+  catch(error){result.economicCalendarError=String(error.message||error).slice(0,300);}
+  try{result.economicReminders=await broadcastDueReleases();}
+  catch(error){result.economicRemindersError=String(error.message||error).slice(0,300);}
+ })();
+ const newsTask=(async()=>{
+  try{Object.assign(result,await syncGlobalNews());}
+  catch(error){result.globalNewsError=String(error.message||error).slice(0,300);}
+ })();
+ await Promise.all([economicTask,newsTask]);
  result.asOf=new Date().toISOString();
- const failed=Boolean(result.economicCalendarError||result.globalNewsError);
+ const failed=Boolean(result.economicCalendarError||result.economicRemindersError||result.globalNewsError);
  result.ok=!failed;
  return json(failed?502:200,result);
 }

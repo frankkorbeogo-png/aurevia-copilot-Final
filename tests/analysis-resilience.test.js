@@ -14,13 +14,15 @@ test('une réponse 429 déclenche une temporisation locale avant une nouvelle te
   assert.match(source,/if\(r\.status===429\)/);
   assert.match(source,/Temporisation du fournisseur/);
 });
-test('M15 est chargé en priorité et les unités H4/H1/M30 restent optionnelles',()=>{
+test('M15 et M30 sont requis, H4 et H1 restent optionnels',()=>{
   assert.match(source,/frames\.M15=await fetchFrame/);
   assert.match(source,/if\(frames\.M15\)/);
   assert.match(source,/Promise\.allSettled/);
   assert.match(source,/requiredMissing/);
   assert.match(source,/allRequiredAvailable/);
   assert.match(source,/analyses\.M15\?\.last/);
+  assert.match(source,/analyses\.M30\?\.last/);
+  assert.match(source,/\['M15','M30'\]/);
   assert.doesNotMatch(source,/M5:'5min'/);
 });
 test('les erreurs réseau sont affichées comme indisponibilité et non comme simple signal WAIT',()=>{
