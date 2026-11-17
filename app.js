@@ -80,7 +80,7 @@ async function flushTradeSyncQueue(){
   }finally{tradeSyncFlushBusy=false;}
 }
 async function refreshSelectedQuote(){
-  const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
+  const symbolAtRequest=selectedSymbol;const label=$('selectedQuoteSymbol'),price=$('selectedQuotePrice'),status=$('selectedQuoteStatus');
   if(label)label.textContent=symbols[selectedSymbol]?.label||selectedSymbol;
   if(price)price.textContent='—';
   if(status)status.textContent='Chargement du cours vérifié…';
@@ -91,10 +91,15 @@ async function refreshSelectedQuote(){
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||'Cours indisponible');
     const checked=validateMarketQuote(data,{maxFetchedAgeMs:45000});if(!checked.ok)throw new Error(checked.error);
-    const value=checked.price,digits=selectedSymbol.endsWith('JPY')?3:(symbols[selectedSymbol]?.market==='FOREX'?5:2);
-    if(price)price.textContent=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
-    if(status)status.textContent=`Twelve Data · bougie 1 min · ${new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} · ${Number.isFinite(Number(data.ageSeconds))?`${data.ageSeconds}s`:''}`;
-  }catch(error){if(status)status.textContent=error.message||'Cours non disponible';}
+    if(symbolAtRequest!==selectedSymbol)return;
+    const value=checked.price,digits=symbolAtRequest.endsWith('JPY')?3:(symbols[symbolAtRequest]?.market==='FOREX'?5:2);
+    const formatted=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
+    if(price)price.textContent=formatted;
+    const quoteTime=new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    if(status)status.textContent=`Twelve Data · dernière cotation ${quoteTime} · actualisation automatique chaque minute`;
+    document.querySelectorAll(`.ticker[data-symbol="${symbolAtRequest}"] .ticker-select-hint`).forEach(node=>{node.textContent=formatted;node.classList.add('ticker-live-price');});
+    document.querySelectorAll(`.home-asset[data-symbol="${symbolAtRequest}"] strong`).forEach(node=>{node.textContent=formatted;node.classList.add('ticker-live-price');});
+  }catch(error){if(symbolAtRequest===selectedSymbol&&status)status.textContent=error.message||'Cours non disponible';}
 }
 function initAppInstallation(){
  const button=$('installAppBtn'),status=$('installAppStatus');if(!button||!status)return;
@@ -185,10 +190,17 @@ function mountTickerTape(){
   script.text=JSON.stringify({symbols:[
     {proName:'OANDA:XAUUSD',title:'Or / USD'},{proName:'OANDA:XAGUSD',title:'Argent / USD'},
     {proName:'OANDA:EURUSD',title:'EUR/USD'},{proName:'OANDA:GBPUSD',title:'GBP/USD'},
-    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'OANDA:EURGBP',title:'EUR/GBP'},
-    {proName:'OANDA:GBPJPY',title:'GBP/JPY'},{proName:'TVC:DXY',title:'Dollar Index'},
-    {proName:'BITSTAMP:BTCUSD',title:'Bitcoin'},{proName:'BITSTAMP:ETHUSD',title:'Ethereum'},
-    {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:AAPL',title:'Apple'}
+    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'OANDA:AUDUSD',title:'AUD/USD'},
+    {proName:'OANDA:USDCAD',title:'USD/CAD'},{proName:'OANDA:USDCHF',title:'USD/CHF'},
+    {proName:'OANDA:NZDUSD',title:'NZD/USD'},{proName:'OANDA:EURGBP',title:'EUR/GBP'},
+    {proName:'OANDA:EURJPY',title:'EUR/JPY'},{proName:'OANDA:GBPJPY',title:'GBP/JPY'},
+    {proName:'OANDA:EURAUD',title:'EUR/AUD'},{proName:'OANDA:EURCHF',title:'EUR/CHF'},
+    {proName:'OANDA:GBPAUD',title:'GBP/AUD'},{proName:'OANDA:AUDJPY',title:'AUD/JPY'},
+    {proName:'BITSTAMP:BTCUSD',title:'BTC/USD'},{proName:'BITSTAMP:ETHUSD',title:'ETH/USD'},
+    {proName:'COINBASE:SOLUSD',title:'SOL/USD'},{proName:'BITSTAMP:XRPUSD',title:'XRP/USD'},
+    {proName:'NASDAQ:AAPL',title:'Apple'},{proName:'NASDAQ:MSFT',title:'Microsoft'},
+    {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:TSLA',title:'Tesla'},
+    {proName:'NASDAQ:AMZN',title:'Amazon'},{proName:'TVC:DXY',title:'Dollar Index'}
   ],showSymbolLogo:true,isTransparent:true,displayMode:'adaptive',colorTheme:'dark',locale:'fr'});
   const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';
   const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';wrapper.append(widget,script);
@@ -823,27 +835,14 @@ async function refreshBrokerProfile(){
  populateBrokerProfileInstruments();
  if(!ownerId){if(status)status.textContent='Connectez-vous pour charger les spécifications enregistrées.';return;}
  try{
-  const [spec,brokerAccount]=await Promise.all([loadBrokerSettings(select.value,ownerId),loadRiskManagementSettings(ownerId)]);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};if($('riskBrokerName'))$('riskBrokerName').value=brokerAccount?.brokerName||'';if($('riskAccountType'))$('riskAccountType').value=brokerAccount?.accountType||'standard';
+  const spec=await loadBrokerSettings(select.value,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
   set('brokerProfileCalculationType',spec?.calculationType||'contract');set('brokerProfileLeverage',spec?.leverage);
   set('brokerProfileMinLot',spec?.minLot??0.01);set('brokerProfileLotStep',spec?.lotStep??0.01);set('brokerProfileMaxLot',spec?.maxLot);
   set('brokerProfileContractSize',spec?.contractSize);set('brokerProfilePointSize',spec?.pointSize);set('brokerProfilePointValue',spec?.pointValue);
   set('brokerProfileTickSize',spec?.tickSize);set('brokerProfileTickValue',spec?.tickValue);set('brokerProfileFees',spec?.feesPerLot??0);
-  if(status)status.textContent=spec?'Spécifications enregistrées chargées pour '+select.value+'.':'Aucune fiche enregistrée pour '+select.value+'.';if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=Boolean(spec&&brokerAccount?.brokerName);
+  if(status)status.textContent=spec?'Spécifications enregistrées chargées pour '+select.value+'.':'Aucune fiche enregistrée pour '+select.value+'.';if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=Boolean(spec);
   updateBrokerProfileFields();
  }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Chargement impossible : '+error.message;}
-}
-async function persistBrokerAccountProfile(){
- const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;
- const button=$('saveBrokerAccountProfile');
- try{
-  if(button)button.disabled=true;
-  const current=await loadRiskManagementSettings(ownerId)||{};
-  if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
-  await saveRiskManagementSettings({...current,brokerName:$('riskBrokerName').value,accountType:$('riskAccountType').value},ownerId);
-  if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
-  showInAppNotice('Profil broker enregistré dans Paramètres.',{type:'success'});await refreshBrokerProfile();
- }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){if($('brokerProfileStatus'))$('brokerProfileStatus').textContent=error.message;showInAppNotice(error.message,{type:'error'});}}
- finally{if(button)button.disabled=false;}
 }
 async function persistBrokerProfile(){
  const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$('saveBrokerProfile'),status=$('brokerProfileStatus');
@@ -905,7 +904,7 @@ function bindEvents(){
   $('refreshDxyOverview')?.addEventListener('click',refreshDxyOverview);
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
   $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);
-  $('saveBrokerAccountProfile')?.addEventListener('click',persistBrokerAccountProfile);
+
   $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);
   $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
   window.addEventListener('aurevia:localownerchange',()=>{accountCurrency=null;if($('profileAccountCurrency'))$('profileAccountCurrency').value='';if($('accountCurrency'))$('accountCurrency').value='À configurer dans Paramètres';if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=false;if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=false;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent='Chargement de la devise du compte…';if($('brokerProfileStatus'))$('brokerProfileStatus').textContent='Chargement des paramètres techniques…';['brokerProfileLeverage','brokerProfileMaxLot','brokerProfileContractSize','brokerProfilePointSize','brokerProfilePointValue','brokerProfileTickSize','brokerProfileTickValue'].forEach(id=>{if($(id))$(id).value='';});if($('brokerProfileCalculationType'))$('brokerProfileCalculationType').value='contract';if($('brokerProfileMinLot'))$('brokerProfileMinLot').value='0.01';if($('brokerProfileLotStep'))$('brokerProfileLotStep').value='0.01';if($('brokerProfileFees'))$('brokerProfileFees').value='0';updateBrokerProfileFields();if($('telegramConnectionStatus'))$('telegramConnectionStatus').textContent='Chargement des préférences Telegram…';if($('telegramChatId'))$('telegramChatId').value='';if($('telegramPairCode'))$('telegramPairCode').textContent='Aucun code généré.';if($('telegramPairStatus'))$('telegramPairStatus').textContent='Aucune liaison Telegram chargée.';['saveTelegramPrefs','sendTelegramTest','unlinkTelegramAccount'].forEach(id=>{if($(id))$(id).disabled=true;});if($('notifyAll'))$('notifyAll').checked=false;if($('notifySignals'))$('notifySignals').checked=true;if($('notifyEconomic'))$('notifyEconomic').checked=false;if($('notifyProductAnnouncements'))$('notifyProductAnnouncements').checked=false;announcementCache=[];announcementFilter='all';renderAnnouncements();if($('announcementStatus'))$('announcementStatus').textContent='Chargement des annonces…';if($('scenarioWatchList'))$('scenarioWatchList').innerHTML='<div class="empty-cell">Chargement des scénarios du compte…</div>';pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;if($('validationScenarioTitle'))$('validationScenarioTitle').textContent='Aucun scénario sélectionné';if($('validationScenarioStatus'))$('validationScenarioStatus').textContent='En attente';if($('validationScenarioLevels'))$('validationScenarioLevels').innerHTML='<span>Instrument <b>—</b></span><span>Direction <b>—</b></span><span>Type d’ordre <b>—</b></span><span>Prix proposé par l’IA M5 <b>—</b></span><span>Stop Loss <b>—</b></span><span>Take Profits <b>—</b></span>';if($('validationTradeStatus'))$('validationTradeStatus').textContent='En attente de votre validation manuelle.';initJournal();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();restoreMyAnalysis();restoreScenarioDraft();});
