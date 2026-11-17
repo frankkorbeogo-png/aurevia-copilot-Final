@@ -670,3 +670,7 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 }
 
 @media(max-width:600px){.mobile-nav{display:none!important}.main-content{padding-bottom:24px!important}}
+
+/* AUREVIA brand visibility: keep the orbital mark visible over the animated galaxy. */
+.brand-logo{display:block!important;flex:0 0 auto;visibility:visible!important;opacity:1!important;mix-blend-mode:normal!important;object-fit:contain;width:54px;height:54px;filter:drop-shadow(0 0 12px #8b72ff88)}
+@media(max-width:600px){.brand-logo{width:42px;height:42px}}
