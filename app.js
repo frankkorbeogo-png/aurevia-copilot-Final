@@ -803,7 +803,6 @@ async function refreshRiskManagement(){
  try{
   const saved=await loadRiskManagementSettings(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!saved)return null;
   const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
-  set('riskBrokerName',saved.brokerName);set('riskAccountType',saved.accountType||'standard');
   set('accountBalance',saved.balance>0?saved.balance:'');set('riskEquity',saved.equity>0?saved.equity:'');
   set('riskMarginUsed',saved.marginUsed);set('riskPeakEquity',saved.peakEquity>0?saved.peakEquity:'');
   set('riskDailyLossLimit',saved.dailyLossLimit);set('riskWeeklyLossLimit',saved.weeklyLossLimit);
@@ -971,7 +970,6 @@ function bindEvents(){
     try{
       const equity=Number($('riskEquity').value||0),peak=Math.max(Number($('riskPeakEquity').value||0),equity);
       const saved=await saveRiskManagementSettings({
-        brokerName:$('riskBrokerName').value,accountType:$('riskAccountType').value,
         balance:Number($('accountBalance').value||0),equity,marginUsed:Number($('riskMarginUsed').value||0),
         peakEquity:peak,dailyLossLimit:Number($('riskDailyLossLimit').value||0),
         weeklyLossLimit:Number($('riskWeeklyLossLimit').value||0),defaultLeverage:Number($('riskLeverage').value||2000)
