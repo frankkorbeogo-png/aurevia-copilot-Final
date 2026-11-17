@@ -9,18 +9,30 @@ function parseJson(s){
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
 }
+function providerIssue(status, payload, rawText){
+ const message=String(payload?.error?.message||payload?.message||rawText||'').replace(/Bearer\\s+\\S+/gi,'Bearer [redacted]').replace(/(api[_-]?key|token|authorization|secret)["'\\s:=]+[^\\s,"'}]+/gi,'$1=[redacted]').replace(/https?:\\/\\/[^\\s"'<>]+/gi,'[provider-url]').replace(/[\\r\\n\\t]+/g,' ').slice(0,160);
+ const code=status===401||status===403?'AUTH_OR_PERMISSION':status===402?'BILLING_REQUIRED':status===404?'MODEL_OR_ENDPOINT_NOT_FOUND':status===413?'PAYLOAD_TOO_LARGE':status===429?'RATE_LIMIT_OR_QUOTA':status>=500?'PROVIDER_SERVER_ERROR':'HTTP_ERROR';
+ return {code,message:message||('HTTP '+status)};
+}
 async function ask(p,messages,timeout=11000){
+ const started=Date.now();
  const body={model:p.model,messages,temperature:0.2,stream:false};
  if(p.id==='groq'){body.max_completion_tokens=1500;if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}}
  else body.max_tokens=1500;
  const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
- const r=await fetch(p.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});
- const j=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(p.name+' HTTP '+r.status);
- const c=j?.choices?.[0]?.message?.content;
- if(typeof c!=='string'||!c.trim())throw new Error(p.name+' réponse vide');
- return parseJson(c);
+ try {
+  const r=await fetch(p.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});
+  const raw=await r.text();let j={};try{j=JSON.parse(raw)}catch{}
+  if(!r.ok){const issue=providerIssue(r.status,j,raw);throw Object.assign(new Error(p.name+' '+issue.code+' (HTTP '+r.status+')'+(issue.message?': '+issue.message:'')),{providerCode:issue.code,httpStatus:r.status,elapsedMs:Date.now()-started,timeoutMs:timeout});}
+  const c=j?.choices?.[0]?.message?.content;
+  if(typeof c!=='string'||!c.trim())throw Object.assign(new Error(p.name+' réponse vide (HTTP 200)'),{providerCode:'EMPTY_RESPONSE',httpStatus:200,elapsedMs:Date.now()-started,timeoutMs:timeout});
+  try{return parseJson(c)}catch(e){throw Object.assign(new Error(p.name+' JSON invalide'),{providerCode:'INVALID_JSON',httpStatus:200,elapsedMs:Date.now()-started,timeoutMs:timeout});}
+ } catch(e) {
+  if(e.providerCode)throw e;
+  const timedOut=e?.name==='TimeoutError'||e?.name==='AbortError';
+  throw Object.assign(new Error(timedOut?p.name+' délai dépassé après '+timeout+' ms':p.name+' erreur réseau: '+clean(e?.message||'indisponible',120)),{providerCode:timedOut?'TIMEOUT':'NETWORK_ERROR',elapsedMs:Date.now()-started,timeoutMs:timeout});
+ }
 }
 const base='Tu es une IA d’AUREVIA COPILOT. Réponds en français et en JSON valide. N’invente aucun cours, indicateur, niveau ni donnée absente. BUY, SELL ou WAIT sont les seules décisions. Les scores sur 100 mesurent la qualité de lecture/confluence, jamais une probabilité de gain.';
 const dir=x=>['BUY','SELL','WAIT'].includes(String(x?.decision||'').toUpperCase())?String(x.decision).toUpperCase():'WAIT';
@@ -35,25 +47,25 @@ export async function runAureviaCollaboration({messages}){
  let lead=null,leadProvider=null,leadRole='ANALYSTE_PRINCIPAL';
  if(groq){
   const t=Date.now();try{lead=await ask(groq,messages,11000);leadProvider=groq;results.groq={ok:true,provider:groq.name,model:groq.model,role:'ANALYSTE_PRINCIPAL',latencyMs:Date.now()-t,...lead,inputCandleCountM15:info.candleCountM15,decision:dir(lead)};}
-  catch(e){results.groq={ok:false,provider:groq.name,role:'ANALYSTE_PRINCIPAL',error:clean(e.message,180)};}
+  catch(e){results.groq={ok:false,provider:groq.name,model:groq.model,role:'ANALYSTE_PRINCIPAL',error:clean(e.message,220),errorCode:e.providerCode||'UNKNOWN',httpStatus:e.httpStatus??null,latencyMs:e.elapsedMs??Date.now()-t,timeoutMs:e.timeoutMs??11000,inputCandleCountM15:info.candleCountM15};console.warn('[AUREVIA M15 provider]',JSON.stringify(results.groq));}
  }else results.groq={ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré'};
  if(!lead){
   const t=Date.now();try{
    lead=await ask(cloudflare,[{role:'system',content:base+' Groq est indisponible. Tu prends exceptionnellement le rôle d’analyste de secours et dois produire une analyse complète multi-timeframes, les signaux BUY/SELL/WAIT, les scores de lecture du marché, les scénarios chiffrés seulement si justifiés, les risques et les données manquantes. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,risks,missingData,noScenarioReason,watchDirectives}.'},...messages.filter(m=>m.role!=='system')],12000);
    leadProvider=cloudflare;leadRole='ANALYSTE_SECOURS';results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:leadRole,latencyMs:Date.now()-t,...lead,inputCandleCountM15:info.candleCountM15,decision:dir(lead),fallbackFor:'Groq'};
-  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_SECOURS',error:clean(e.message,180)};throw Object.assign(new Error('Groq et Cloudflare indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:Object.values(results).filter(Boolean)});}
+  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,model:cloudflare.model,role:'ANALYSTE_SECOURS',error:clean(e.message,220),errorCode:e.providerCode||'UNKNOWN',httpStatus:e.httpStatus??null,latencyMs:e.elapsedMs??Date.now()-t,timeoutMs:e.timeoutMs??12000,inputCandleCountM15:info.candleCountM15};console.warn('[AUREVIA M15 provider]',JSON.stringify(results.cloudflare));throw Object.assign(new Error('Groq et Cloudflare indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:Object.values(results).filter(Boolean)});}
  }
  if(openrouter){
   const t=Date.now();try{
    const review=await ask(openrouter,[{role:'system',content:base+' Tu es l’ANALYSTE CONTRADICTEUR. Vérifie rigoureusement le raisonnement principal, recherche faiblesses, confirmations, invalidations et contradictions. Propose un scénario alternatif uniquement si les données le justifient. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,primaryProvider:leadProvider.name})}],12000);
    results.openrouter={ok:true,provider:openrouter.name,model:openrouter.model,role:'ANALYSTE_CONTREDICTEUR',latencyMs:Date.now()-t,...review,inputCandleCountM15:info.candleCountM15,decision:dir(review),agreements:arr(review.agreements),disagreements:arr(review.disagreements),criticalBlockers:arr(review.criticalBlockers)};
-  }catch(e){results.openrouter={ok:false,provider:openrouter.name,role:'ANALYSTE_CONTREDICTEUR',error:clean(e.message,180)};}
+  }catch(e){results.openrouter={ok:false,provider:openrouter.name,model:openrouter.model,role:'ANALYSTE_CONTREDICTEUR',error:clean(e.message,220),errorCode:e.providerCode||'UNKNOWN',httpStatus:e.httpStatus??null,latencyMs:e.elapsedMs??Date.now()-t,timeoutMs:e.timeoutMs??12000,inputCandleCountM15:info.candleCountM15};console.warn('[AUREVIA M15 provider]',JSON.stringify(results.openrouter));}
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré'};
  if(leadProvider!==cloudflare){
   const t=Date.now();try{
    const audit=await ask(cloudflare,[{role:'system',content:base+' Tu es l’ANALYSTE DE CONTRÔLE indépendant et solution de secours. Fais ta propre lecture des données, vérifie les contradictions et risques oubliés, et vérifie la conclusion principale et la critique OpenRouter. Si Groq ou OpenRouter est indisponible, assure la continuité de l’analyse en signalant cette indisponibilité. JSON: {decision,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,openrouterReview:results.openrouter})}],11000);
    results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:'ANALYSTE_CONTROLE',latencyMs:Date.now()-t,...audit,inputCandleCountM15:info.candleCountM15,decision:dir(audit),criticalBlockers:arr(audit.criticalBlockers),risks:arr(audit.risks),missingData:arr(audit.missingData)};
-  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_CONTROLE',error:clean(e.message,180)};}
+  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,model:cloudflare.model,role:'ANALYSTE_CONTROLE',error:clean(e.message,220),errorCode:e.providerCode||'UNKNOWN',httpStatus:e.httpStatus??null,latencyMs:e.elapsedMs??Date.now()-t,timeoutMs:e.timeoutMs??11000,inputCandleCountM15:info.candleCountM15};console.warn('[AUREVIA M15 provider]',JSON.stringify(results.cloudflare));}
  }
  const valid=Object.values(results).filter(x=>x?.ok);
  const blockers=valid.flatMap(x=>x.criticalBlockers||[]).map(x=>clean(x,240)).filter(Boolean);
@@ -64,7 +76,7 @@ export async function runAureviaCollaboration({messages}){
  else if(critic?.verdict==='CONTESTE'&&['BUY','SELL'].includes(dir(lead))&&dir(critic)!==dir(lead)){decision=dir(critic)==='WAIT'?'WAIT':dir(critic);reason='Scénario principal contesté par OpenRouter ; décision revue après contre-analyse.';}
  const allThree=Boolean(results.groq?.ok&&results.openrouter?.ok&&results.cloudflare?.ok);
  const fallbackUsed=leadProvider===cloudflare||!results.openrouter?.ok||!results.cloudflare?.ok||!results.groq?.ok;
- return {data:{...lead,decision,collaboration:{mode:'THREE_AI_ROLE_REVIEW',...info,providerOrder:['Groq','OpenRouter','Cloudflare'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers:results,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Les scores sont qualitatifs et non des probabilités. Si une IA est indisponible, la synthèse est signalée comme dégradée.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(results).filter(x=>x&&!x.ok)};
+ return {data:{...lead,decision,collaboration:{mode:'THREE_AI_ROLE_REVIEW',...info,providerOrder:['Groq','OpenRouter','Cloudflare'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers:results,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Les scores sont qualitatifs et non des probabilités. Si une IA est indisponible, la synthèse est signalée comme dégradée.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(results).filter(x=>x&&!x.ok),providerDiagnostics:{...info,providers:Object.fromEntries(Object.entries(results).map(([id,x])=>[id,x?{ok:x.ok,model:x.model||null,errorCode:x.errorCode||null,httpStatus:x.httpStatus??null,latencyMs:x.latencyMs??null,timeoutMs:x.timeoutMs??null,inputCandleCountM15:x.inputCandleCountM15??info.candleCountM15}:null]))}};
 }
 
 export async function runAureviaM5Confirmation({scenario, candles, indicators, structure}) {
