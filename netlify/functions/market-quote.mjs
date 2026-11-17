@@ -22,16 +22,16 @@ export async function handler(event){
 
  const task=(async()=>{
   try{
-   const url=new URL('https://api.twelvedata.com/time_series');url.searchParams.set('symbol',symbol);url.searchParams.set('interval','1min');url.searchParams.set('outputsize','1');url.searchParams.set('timezone','UTC');url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
+   const url=new URL('https://api.twelvedata.com/quote');url.searchParams.set('symbol',symbol);url.searchParams.set('interval','1min');url.searchParams.set('timezone','UTC');url.searchParams.set('apikey',key);url.searchParams.set('format','JSON');
    const response=await fetch(url,{signal:AbortSignal.timeout(10000)});const data=await response.json().catch(()=>({}));
-   const candle=data.values?.[0],price=Number(candle?.close),quoteAt=candle?.datetime?Date.parse(candle.datetime.replace(' ','T')+'Z'):NaN,age=Date.now()-quoteAt;
+   const price=Number(data.close??data.price),rawQuoteAt=data.last_quote_at??data.timestamp??data.datetime;const numericTimestamp=Number(rawQuoteAt);const quoteAt=Number.isFinite(numericTimestamp)&&numericTimestamp>0?(numericTimestamp>1e12?numericTimestamp:numericTimestamp*1000):(typeof rawQuoteAt==='string'?Date.parse(/(Z|[+-][0-9]{2}:?[0-9]{2})$/i.test(rawQuoteAt)?rawQuoteAt:rawQuoteAt.replace(' ','T')+'Z'):NaN),age=Date.now()-quoteAt;
    if(!response.ok||data.status==='error'||data.code||!Number.isFinite(price)||price<=0){
     const quota=/quota|credits|api credits|rate limit|requests per minute/i.test(String(data.message||''))||Number(data.code)===429||response.status===429;
     if(quota)quotaBlockedUntil.set(key,Date.now()+60000);
     return json(quota?429:502,{error:quota?'Quota Twelve Data atteint. AUREVIA suspend les nouveaux appels pendant 60 secondes.':data.message||'Cours Twelve Data indisponible.',code:quota?'TWELVEDATA_QUOTA':'TWELVEDATA_QUOTE_ERROR',retryAfterSeconds:quota?60:undefined});
    }
    if(!Number.isFinite(age)||age< -5000||age>MAX_QUOTE_AGE_MS)return json(502,{error:'La dernière cotation est trop ancienne ou son horodatage est invalide.',code:'QUOTE_STALE',quoteAt:Number.isFinite(quoteAt)?new Date(quoteAt).toISOString():null});
-   const value={symbol,price,quoteAt:new Date(quoteAt).toISOString(),ageSeconds:Math.floor(age/1000),fetchedAt:new Date().toISOString(),source:'Twelve Data',interval:'1min'};
+   const value={symbol,price,quoteAt:new Date(quoteAt).toISOString(),ageSeconds:Math.floor(age/1000),fetchedAt:new Date().toISOString(),source:'Twelve Data Quote',interval:'1min'};
    cache.set(symbol,{at:Date.now(),value});return json(200,value);
   }catch(error){return json(502,{error:error.name==='TimeoutError'?'Délai Twelve Data dépassé.':'Impossible de récupérer le cours Twelve Data.'});}
  })();

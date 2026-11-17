@@ -47,16 +47,36 @@ export function assessDxyQuote(data, now = Date.now()) {
 }
 let dxyCache={at:0,value:null};
 const DXY_CACHE_TTL_MS=5*60*1000;
+export async function fetchYahooIceDollarIndex(){
+ const u=new URL('https://query1.finance.yahoo.com/v8/finance/chart/DX-Y.NYB');u.searchParams.set('range','5d');u.searchParams.set('interval','5m');u.searchParams.set('includePrePost','true');
+ const r=await fetch(u,{headers:{accept:'application/json','user-agent':'Mozilla/5.0 AUREVIA-COPILOT'},signal:AbortSignal.timeout(9000)});
+ const payload=await r.json().catch(()=>({}));const chart=payload?.chart?.result?.[0];
+ if(!r.ok||payload?.chart?.error||!chart?.meta)throw new Error('Flux ICE Dollar Index futures indisponible.');
+ const timestamps=Array.isArray(chart.timestamp)?chart.timestamp:[],closes=chart.indicators?.quote?.[0]?.close||[];
+ let index=-1;for(let i=Math.min(timestamps.length,closes.length)-1;i>=0;i--){if(Number.isFinite(Number(timestamps[i]))&&Number.isFinite(Number(closes[i]))&&Number(closes[i])>0){index=i;break;}}
+ const timestamp=Number(chart.meta.regularMarketTime||timestamps[index]);const price=Number(chart.meta.regularMarketPrice??closes[index]);
+ if(!Number.isFinite(timestamp)||!Number.isFinite(price)||price<=0)throw new Error('Le flux ICE Dollar Index ne fournit pas de cours horodaté.');
+ const assessment=assessDxyQuote({close:price,timestamp});
+ return {configured:true,symbol:'DX-Y.NYB',instrument:'ICE U.S. Dollar Index futures',...assessment,source:'Yahoo Finance · ICE futures',realtime:false,proxy:true,exchange:'ICE Futures U.S.',currency:'USD',notice:assessment.usableForDirectionalBias?'Futures ICE Dollar Index horodatés (flux Yahoo Finance retardé). Utilisables comme contexte secondaire, pas comme cotation spot DXY.':'Futures ICE Dollar Index trop anciens ou non horodatés : aucun biais directionnel DXY ne sera appliqué.'};
+}
 async function fetchDxy(){
  if(dxyCache.value&&Date.now()-dxyCache.at<DXY_CACHE_TTL_MS)return {...dxyCache.value,cached:true};
- const key=process.env.TWELVEDATA_API_KEY;
- if(!key)return {configured:false,source:'Twelve Data',notice:'TWELVEDATA_API_KEY absent.'};
- const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('timezone','UTC');
- const r=await fetch(u,{signal:AbortSignal.timeout(9000)});let d={};try{d=await r.json();}catch{}
- if(!r.ok||d.status==='error'||d.code){return {configured:false,source:'Twelve Data',symbol:'DXY',providerStatus:d.code||r.status,notice:d.message||'Le fournisseur ne confirme pas le symbole DXY pour cette clé ou ce forfait.'};}
- const assessment=assessDxyQuote(d);
- if(!assessment.available)return {configured:false,source:'Twelve Data',symbol:'DXY',notice:assessment.notice};
- const value={configured:true,symbol:'DXY',...assessment,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null};dxyCache={at:Date.now(),value};return value;
+ const key=process.env.TWELVEDATA_API_KEY;let rejectedTwelveData=null;
+ if(key){
+  try{
+   const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('timezone','UTC');
+   const r=await fetch(u,{signal:AbortSignal.timeout(9000)});const d=await r.json().catch(()=>({}));
+   if(r.ok&&d.status!=='error'&&!d.code){
+    const assessment=assessDxyQuote(d);if(assessment.available)rejectedTwelveData={...assessment,symbol:'DXY',source:'Twelve Data',proxy:false,realtime:false};
+    if(assessment.available&&assessment.usableForDirectionalBias){
+     const value={configured:true,symbol:'DXY',...assessment,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,proxy:false};
+     dxyCache={at:Date.now(),value};return value;
+    }
+   }
+  }catch{}
+ }
+ try{const value=await fetchYahooIceDollarIndex();dxyCache={at:Date.now(),value};return value;}
+ catch(error){return {...(rejectedTwelveData||{}),configured:Boolean(rejectedTwelveData),available:Boolean(rejectedTwelveData?.available),symbol:'DXY',source:rejectedTwelveData?'Twelve Data (cotation rejetée)':'ICE Dollar Index',notice:'DXY indisponible via Twelve Data et flux ICE futures de secours : '+String(error.message||error).slice(0,180),usableForDirectionalBias:false};}
 }
 async function fetchGlobalNews(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
