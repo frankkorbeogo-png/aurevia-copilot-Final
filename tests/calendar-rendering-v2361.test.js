@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const read=async f=>readFile(new URL('../'+f,import.meta.url),'utf8');
 test('le calendrier affiche TradingView directement sans attendre un endpoint tiers',async()=>{
- const s=await read('news.js');
+ const s=await read('news.js'),app=await read('app.js');
  assert.match(s,/embed-widget-events\.js/);
+ assert.match(app,/page==='actualites'[\s\S]*?initEconomicCalendar\(\$\('calendarStandalone'\),getAnalysisAccessToken\)/);
  assert.match(s,/renderTradingView|tradingview-widget-container/);
  assert.match(s,/locale:'fr'/);
  assert.match(s,/colorTheme:'dark'/);
