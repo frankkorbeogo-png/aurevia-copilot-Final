@@ -122,7 +122,7 @@ test('la devise du compte est définie une fois dans les paramètres et réutili
 
 test('le build publie le moteur universel de calcul contractuel',async()=>{const build=await readFile(new URL('../scripts/build.mjs',import.meta.url),'utf8');const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');assert.match(build,/contract-engine\.js/);assert.match(sw,/contract-engine\.js/);});
 
-test('le profil broker est centralisé dans Paramètres et jamais ressaisi dans Capital ou Positions',()=>{
+test('le profil broker est centralisé dans Paramètres et jamais ressaisi dans Capital ou Positions',async()=>{
   const settingsStart=html.indexOf('<section class="panel" id="brokerProfileSettings">');
   const settingsEnd=html.indexOf('</section>',settingsStart);
   const capitalStart=html.indexOf('data-page-view="risque"');
@@ -136,7 +136,11 @@ test('le profil broker est centralisé dans Paramètres et jamais ressaisi dans 
   assert.ok(settings.includes('id="brokerProfileInstrument"'));
   assert.ok(!capital.includes('id="riskBrokerName"'));
   assert.ok(!capital.includes('id="riskAccountType"'));
-  for(const id of ['unitValue','riskMinLot','riskLotStep','riskMaxLot','riskLeverage'])assert.match(capital,new RegExp('<label hidden><input id="'+id+'"'));
+  for(const id of ['unitValue','riskMinLot','riskLotStep','riskMaxLot','riskLeverage']){
+    const fieldIndex=capital.indexOf('id="'+id+'"');
+    const labelStart=capital.lastIndexOf('<label',fieldIndex);
+    assert.ok(fieldIndex>=0&&capital.slice(labelStart,fieldIndex).startsWith('<label hidden>'),id+' doit être masqué dans le calculateur capital');
+  }
   assert.ok(capital.includes('id="riskBrokerProfileStatus"'));
   const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
   assert.ok(app.includes('async function applyRiskBrokerProfile(instrument,ownerId)'));
