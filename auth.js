@@ -1,4 +1,5 @@
 import { resolveLinkedJournalStatus, buildTradeGroupCloudRows } from './trade-management.js';
+import { MARKET_INSTRUMENTS } from './market-catalog.js';
 const SUPABASE_URL='https://imkwbizyblzuevkodzqc.supabase.co';
 // Publishable key: designed for browser use. Row access is still controlled by Supabase RLS.
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_DSlEiHcRGUKc5XjGeHz7jQ_n8EUMw6v';
@@ -335,16 +336,24 @@ export async function saveRiskManagementSettings(settings,expectedUserId=null){
  return clean;
 }
 
+function canonicalBrokerInstrumentKey(instrument){
+ const raw=String(instrument||'').trim();
+ if(!raw)return '';
+ const upper=raw.toUpperCase();
+ return Object.entries(MARKET_INSTRUMENTS).find(([id,item])=>id===upper||item.label.toUpperCase()===upper||item.provider.toUpperCase()===upper)?.[0]||raw;
+}
 export async function loadBrokerSettings(instrument,expectedUserId=null){
  await ensureUser();if(!currentUser)return null;const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)return null;
  const {data,error}=await supabase.from('user_preferences').select('preferences').eq('user_id',userId).maybeSingle();
  if(error)throw new Error(error.message);if(expectedUserId&&currentUser?.id!==expectedUserId)return null;
  const profiles=data?.preferences?.broker_specs||{};
- return profiles[instrument]||profiles.default||null;
+ const key=canonicalBrokerInstrumentKey(instrument);
+ const legacyLabel=MARKET_INSTRUMENTS[key]?.label;
+ return profiles[key]||profiles[String(instrument||'').trim()]||(legacyLabel?profiles[legacyLabel]:null)||profiles.default||null;
 }
 export async function saveBrokerSettings(instrument,spec,expectedUserId=null){
  await ensureUser();if(!currentUser)throw new Error('Connectez-vous avant d’enregistrer les paramètres techniques.');const userId=currentUser.id;if(expectedUserId&&userId!==expectedUserId)throw new Error('Le compte actif a changé. Recommencez cette action.');
- const key=String(instrument||'').trim();if(!key)throw new Error('Choisissez un instrument.');
+ const key=canonicalBrokerInstrumentKey(instrument);if(!key)throw new Error('Choisissez un instrument.');
  const calculationType=String(spec?.calculationType||'').toLowerCase();
  if(!['contract','point','tick'].includes(calculationType))throw new Error('Choisissez une méthode de calcul.');
  const number=(value,name,{optional=false,zero=false}={})=>{if(optional&&(value===null||value===undefined||value===''))return null;const n=Number(value);if(!Number.isFinite(n)||(zero?n<0:n<=0))throw new Error('Valeur invalide : '+name);return n;};
