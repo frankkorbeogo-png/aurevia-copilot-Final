@@ -1,6 +1,6 @@
 # AUREVIA 2.4.19 — plan de migrations Supabase
 
-## État vérifié en lecture seule le 16 novembre 2026
+## État vérifié en lecture seule le 17 novembre 2026
 
 - Production : projet Supabase imkwbizyblzuevkodzqc, 64 migrations appliquées; dernière version 20261117074953.
 - Staging : projet Supabase cfoipulmnkisaaiirmps, 57 migrations appliquées au dernier contrôle. Ce projet a été créé comme snapshot isolé le 16 novembre; ses migrations bootstrap et ses versions générées ne correspondent pas à l'historique de production.
@@ -11,7 +11,7 @@
 
 ## Réconciliation effectuée dans le dépôt
 
-Les fichiers de migration historiques ont été reconstruits à partir de supabase_migrations.schema_migrations en production, en conservant les versions exactes, les noms canoniques et le SQL appliqué. Cela évite de rejouer les 63 migrations existantes lors d'une future livraison.
+Les fichiers de migration historiques ont été reconstruits à partir de supabase_migrations.schema_migrations en production, en conservant les versions exactes, les noms canoniques et le SQL appliqué. Cela évite de rejouer les 64 migrations existantes lors d'une future livraison.
 
 Les 20 migrations ci-dessous sont les seules migrations de cette livraison absentes de l'historique de production. Elles sont conservées dans l'ordre chronologique :
 
@@ -34,13 +34,14 @@ Les 20 migrations ci-dessous sont les seules migrations de cette livraison absen
 17. 20261116230300_aurevia_enforce_manual_fill_source.sql
 18. 20261116230400_aurevia_gdelt_publication_date_cleanup.sql
 19. 20261116230500_aurevia_trade_validation_profile_currency_guard.sql
+20. 20261117112653_aurevia_restore_advanced_trade_rpc_after_currency_guard_regression.sql
 
 ## Procédure de publication
 
 1. Ne pas utiliser supabase db push sur staging : son historique est un bootstrap séparé et n'est pas encore réparé.
-2. Avant toute action en production, vérifier que les 63 versions locales historiques correspondent aux 63 versions distantes et que les 17 nouvelles sont les seules en attente.
+2. Avant toute action en production, vérifier que les 64 versions locales historiques correspondent aux 64 versions distantes et que les 20 nouvelles sont les seules en attente.
 3. Faire une sauvegarde de production.
-4. Après autorisation explicite, appliquer les 19 migrations en ordre sur production, en vérifiant le résultat de chaque migration.
+4. Après autorisation explicite, appliquer les 20 migrations en ordre sur production, en vérifiant le résultat de chaque migration.
 5. Déployer Netlify seulement après confirmation des migrations et autorisation explicite.
 6. Vérifier ensuite les fonctions planifiées, le statut des services, les prix M5, les notifications Telegram, le calendrier FOMC/CME et les actualités.
 
