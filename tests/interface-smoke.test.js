@@ -180,3 +180,9 @@ test('le calculateur de position reste disponible sans le panneau equity et limi
  assert.ok(capital.includes('id="calculateRisk"'));
  for(const id of ['riskAccountControls','riskEquity','riskMarginUsed','riskPeakEquity','riskDailyLossLimit','riskWeeklyLossLimit','saveRiskControls'])assert.ok(!capital.includes('id="'+id+'"'),id+' ne doit plus être affiché');
 });
+
+test('le guide ne référence plus la gestion equity/limites retirée et renvoie vers le profil broker',()=>{
+ const guide=html.slice(html.indexOf('MÉTHODE AUREVIA'));
+ assert.doesNotMatch(guide,/limites de pertes quotidiennes|limites de pertes hebdomadaires|Suivi de l’equity/);
+ assert.match(guide,/Profil broker &amp; devise/);
+});
