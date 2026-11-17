@@ -9,5 +9,5 @@ test('calendar uses TradingView with an authenticated fallback and visible retry
  assert.match(source,/renderCalendarTable/);assert.match(source,/Ouvrir le calendrier TradingView/);assert.match(app,/initEconomicCalendar\(\$\('calendarStandalone'\),getAnalysisAccessToken\)/);
 });
 test('calendar fallback creates a safe table using textContent',()=>{
- assert.match(source,/createElement\('table'\)/);assert.match(source,/textContent=String\(text\)/);assert.match(html,/id="calendarStandalone"/);
+ assert.match(source,/el\('table'/);assert.match(source,/textContent=String\(text\)/);assert.match(html,/id="calendarStandalone"/);
 });
