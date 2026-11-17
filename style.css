@@ -678,3 +678,17 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .privacy-consent-gate input{margin-top:4px;flex:0 0 auto}
 .privacy-consent-gate a{color:#e4b866;text-decoration:underline;text-underline-offset:3px}
 .privacy-consent-gate .footnote{margin:8px 0 0}
+
+/* Privacy document */
+.privacy-page{min-height:100vh;background:#0c0911;color:#eee8f4;padding:clamp(16px,4vw,42px)}
+.privacy-document{max-width:900px;margin:0 auto;padding:clamp(22px,5vw,54px);background:rgba(22,17,28,.94);border:1px solid rgba(201,157,83,.24);border-radius:22px;box-shadow:0 22px 80px #0008;line-height:1.7}
+.privacy-document h1{font-size:clamp(2rem,5vw,3.3rem);margin:.35em 0;color:#f2d59b}
+.privacy-document h2{margin:1.8em 0 .45em;color:#e7c17e;font-size:1.25rem}
+.privacy-document p,.privacy-document li{color:#d9d1df}
+.privacy-document a{color:#f0c77c}
+.privacy-document ul{padding-left:1.4rem}
+.privacy-logo{display:block;width:min(260px,80%);height:auto;border-radius:10px;margin:18px auto}
+.privacy-meta,.privacy-contact{padding:12px 14px;border:1px solid #6b532e;border-radius:10px;background:#17121b}
+.privacy-back{display:inline-block;margin-bottom:12px}
+.komi-topbar-logo{width:72px;height:56px;object-fit:contain;border-radius:6px;margin-left:10px}
+@media(max-width:700px){.komi-topbar-logo{display:none}.privacy-document{padding:20px 16px}}
