@@ -5,7 +5,7 @@ const market=await readFile(new URL('../netlify/functions/market-data.mjs',impor
 const ai=await readFile(new URL('../netlify/functions/ai-analysis.mjs',import.meta.url),'utf8');
 const router=await readFile(new URL('../netlify/functions/_ai-provider.mjs',import.meta.url),'utf8');
 test('Twelve Data distingue quota, authentification et indisponibilité fournisseur',()=>{
- assert.match(market,/TWELVEDATA_QUOTA/);assert.match(market,/TWELVEDATA_AUTH_ERROR/);assert.match(market,/TWELVEDATA_UPSTREAM/);assert.match(market,/effectiveStatus/);
+ assert.match(market,/TWELVEDATA_QUOTA/);assert.match(market,/TWELVEDATA_AUTH_ERROR/);assert.match(market,/TWELVEDATA_UPSTREAM/);assert.match(market,/const status=Number\\(data\\.code\\)>=400/);
 });
 test('Twelve Data ne sert pas de cache périmé après un quota ou un refus de clé',()=>{
  assert.match(market,/lastError\?\.failure\?\.retryable&&lastError\?\.status!==429/);
