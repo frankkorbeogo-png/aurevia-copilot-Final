@@ -13,7 +13,7 @@ test('global-news-sync keeps the scheduler healthy and preserves existing news w
 test('global news distinguishes source observation time from publisher publication time',async()=>{
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
  const schemaSql=await readFile(new URL('../supabase/migrations/20261116154433_global_news_seen_at.sql',import.meta.url),'utf8');
- const cleanupSql=await readFile(new URL('../supabase/migrations/20261116230400_aurevia_gdelt_publication_date_cleanup.sql',import.meta.url),'utf8');
+ const cleanupSql=await readFile(new URL('../supabase/migrations/20261117141541_aurevia_gdelt_publication_date_cleanup.sql',import.meta.url),'utf8');
  assert.match(source,/seen_at/);assert.match(source,/published_at/);
  assert.match(schemaSql,/add column if not exists seen_at timestamptz/);
  assert.match(schemaSql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);

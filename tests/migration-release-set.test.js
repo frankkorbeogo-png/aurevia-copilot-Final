@@ -5,20 +5,15 @@ import {readdir,readFile} from 'node:fs/promises';
 const migrationDir=new URL('../supabase/migrations/',import.meta.url);
 const names=(await readdir(migrationDir)).filter(x=>x.endsWith('.sql')).sort();
 const versions=names.map(x=>x.slice(0,14));
-const pending=[
- '20261116184406','20261116185127','20261116185500','20261116190000',
- '20261116190500','20261116191000','20261116192500','20261116193000',
- '20261116194000','20261116195000','20261116220000','20261116221000',
- '20261116223000','20261116230000','20261116230100','20261116230200','20261116230300','20261116230400','20261116230500','20261117112653'
-];
+const applied=['20261117141437','20261117141448','20261117141451','20261117141454','20261117141457','20261117141503','20261117141507','20261117141509','20261117141512','20261117141515','20261117141520','20261117141523','20261117141525','20261117141527','20261117141530','20261117141536','20261117141538','20261117141541','20261117141544','20261117141549'];
 
-test('le dossier de production contient 64 migrations historiques canoniques et 20 migrations de livraison',()=>{
+test('le dossier de production contient les 84 migrations effectivement enregistrées',()=>{
  assert.equal(names.length,84);
  assert.equal(new Set(versions).size,84);
  assert.ok(names.some(x=>x.startsWith('20261110073307_create_aurevia_core_tables')));
  assert.ok(names.some(x=>x.startsWith('20261116160908_aurevia_manual_journal_cloud_sync')));
  assert.ok(names.some(x=>x.startsWith('20261117074953_aurevia_privacy_policy_acceptances')));
- for(const version of pending)assert.ok(names.some(x=>x.startsWith(version+'_')),'migration de livraison absente: '+version);
+ for(const version of applied)assert.ok(names.some(x=>x.startsWith(version+'_')),'migration appliquée absente: '+version);
 });
 
 test('aucun snapshot de staging ni ancienne politique DELETE Telegram directe ne peut être poussé en production',()=>{
@@ -32,12 +27,12 @@ test('les snapshots de staging et les migrations retirées sont archivés hors d
  assert.ok(staging.some(x=>x.includes('staging_schema_snapshot_tables')));
  assert.ok(retired.includes('20261112190000_allow_users_to_unlink_own_telegram.sql'));
  const plan=await readFile(new URL('../supabase/RELEASE-MIGRATION-PLAN-2.4.19.md',import.meta.url),'utf8');
- assert.match(plan,/64 migrations appliquées/);
- assert.match(plan,/20 migrations/);
+ assert.match(plan,/84 migrations appliquées/);
+ assert.match(plan,/aucune migration n'est en attente/);
 });
 
 test('la RPC avancée de création protège le prix réel, les ordres conditionnels et la devise',async()=>{
- const sql=await readFile(new URL('../supabase/migrations/20261117112653_aurevia_restore_advanced_trade_rpc_after_currency_guard_regression.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141549_aurevia_restore_advanced_trade_rpc_after_currency_guard_regression.sql',import.meta.url),'utf8');
  assert.match(sql,/ACTUAL_FILL_PRICE_REQUIRED/);
  assert.match(sql,/PENDING_ORDER_ACTUAL_FILL_NOT_ALLOWED/);
  assert.match(sql,/STOP_LIMIT_REQUIRES_TRIGGER_AND_LIMIT/);
