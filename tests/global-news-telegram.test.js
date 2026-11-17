@@ -107,7 +107,8 @@ test('une reprise Telegram renvoie uniquement au destinataire dont le premier en
 });
 
 
-test('une seule tâche macro en échec renvoie HTTP 502 au scheduler',async()=>{
+test('une seule tâche macro en échec renvoie HTTP 502 au scheduler',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-17T00:00:00.000Z')});
  const oldFetch=globalThis.fetch,oldEnv={...process.env};
  Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',FRED_API_KEY:'fred'});
  delete process.env.TELEGRAM_BOT_TOKEN;
