@@ -713,7 +713,15 @@ async function refreshDxyOverview(){
  }catch(error){host.textContent='Cotation DXY non disponible : '+error.message;}
 }
 window.addEventListener('aurevia:dxyrefresh',refreshDxyOverview);
-function mountStandaloneDxy(){const host=$('dxyStandalone');if(!host||host.dataset.loaded)return;host.dataset.loaded='1';const frame=document.createElement('iframe');frame.title='Graphique Dollar Index DXY sur TradingView';frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';frame.style.width='100%';frame.style.height='min(720px,78vh)';frame.style.minHeight='520px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://www.tradingview.com/widgetembed/?frameElementId=dxy_standalone&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';host.replaceChildren(frame);}
+function mountStandaloneDxy(){
+ const host=$('dxyStandalone');if(!host||host.dataset.loaded==='1')return;
+ host.dataset.loaded='1';
+ const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';wrapper.style.height='min(720px,78vh)';wrapper.style.minHeight='520px';
+ const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';widget.style.width='100%';widget.style.height='100%';
+ const script=document.createElement('script');script.type='text/javascript';script.async=true;script.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+ script.text=JSON.stringify({autosize:true,symbol:'TVC:DXY',interval:'60',timezone:'Etc/UTC',theme:'dark',style:'1',locale:'fr',allow_symbol_change:false,hide_top_toolbar:false,hide_legend:false,save_image:false,calendar:false,backgroundColor:'#0b0910',gridColor:'#24192c',support_host:'https://www.tradingview.com'});
+ wrapper.append(widget,script);host.replaceChildren(wrapper);
+}
 async function createPositionFromForm(){
   const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;
   const tps=[1,2,3].map(i=>({label:`TP${i}`,price:Number($(`posTP${i}`).value)})).filter(x=>Number.isFinite(x.price)&&x.price>0);
