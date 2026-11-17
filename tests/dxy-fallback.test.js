@@ -15,7 +15,7 @@ test('DXY without a usable timestamp cannot create directional bias',()=>{
 });
 test('DXY view exposes quote status, refresh and full interactive chart',()=>{
  assert.match(app,/refreshDxyOverview/);assert.match(app,/Exploitation IA/);assert.match(app,/Dernière cotation/);
- assert.match(html,/id="dxyQuoteOverview"/);assert.match(html,/symbols\/TVC-DXY/);assert.match(app,/www\.tradingview\.com\/widgetembed\/\?frameElementId=dxy_standalone&symbol=TVC%3ADXY/);assert.match(app,/hidesidetoolbar=0&symboledit=0/);assert.doesNotMatch(app,/frameElementId=dxy_standalone&symbol=NASDAQ%3AAAPL/);assert.match(css,/dxy-overview/);
+ assert.match(html,/id="dxyQuoteOverview"/);assert.match(app,/embed-widget-advanced-chart\.js/);assert.match(app,/symbol:'TVC:DXY'/);assert.match(app,/allow_symbol_change:false/);assert.doesNotMatch(app,/symbol:'NASDAQ:AAPL'/);assert.match(css,/dxy-overview/);
 });
 
 test('ICE Dollar Index futures fallback returns a timestamped, explicitly labeled proxy',async()=>{
