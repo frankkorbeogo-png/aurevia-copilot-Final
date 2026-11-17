@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {handler,getFredDateRange} from '../netlify/functions/global-news-sync.mjs';
+import {handler,getFredDateRange,getFredReleaseBatch} from '../netlify/functions/global-news-sync.mjs';
 
 test('global-news-sync reports a failed GDELT subsystem instead of claiming success',async()=>{
  const old={...process.env};process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service';delete process.env.FRED_API_KEY;delete process.env.TELEGRAM_BOT_TOKEN;
