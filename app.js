@@ -97,7 +97,7 @@ async function refreshSelectedQuote(){
     const formatted=value.toLocaleString('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits});
     if(price)price.textContent=formatted;
     const quoteTime=new Date(checked.asOf).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    if(status)status.textContent=`Twelve Data · dernière cotation ${quoteTime} · actualisation automatique chaque minute`;
+    if(status)status.textContent=`${checked.displayLabel} · Twelve Data · horodatage ${quoteTime}${checked.marketOpen?' · marché ouvert':' · marché fermé / hors séance'} · actualisation automatique chaque minute`;
     document.querySelectorAll(`.ticker[data-symbol="${symbolAtRequest}"] .ticker-select-hint`).forEach(node=>{node.textContent=formatted;node.classList.add('ticker-live-price');});
     document.querySelectorAll(`.home-asset[data-symbol="${symbolAtRequest}"] strong`).forEach(node=>{node.textContent=formatted;node.classList.add('ticker-live-price');});
   }catch(error){if(symbolAtRequest===selectedSymbol&&status)status.textContent=error.message||'Cours non disponible';}
@@ -1154,6 +1154,8 @@ async function refreshLicenseAccess(expectedUserId=null){
 }
 function updateLicenseGate(state){
  const gate=$('licenseRequiredGate');if(!gate)return;
+ const isAdmin=state?.plan==='admin';
+ const settingsLicensePanel=$('settingsLicensePanel');if(settingsLicensePanel)settingsLicensePanel.hidden=isAdmin;
  const active=window.__aureviaAuthenticated&&['trial','licensed'].includes(state?.status);
  gate.hidden=!window.__aureviaAuthenticated||active;
  const status=$('licenseGateStatus');
