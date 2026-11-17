@@ -670,3 +670,11 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 }
 
 @media(max-width:600px){.mobile-nav{display:none!important}.main-content{padding-bottom:24px!important}}
+
+/* KOMI Group identity and privacy consent */
+.komi-brand-logo{display:block;width:min(230px,75%);height:auto;max-height:130px;object-fit:contain;margin:0 auto 10px;border-radius:10px}
+.privacy-consent-gate{margin:16px 0 10px;padding:13px 14px;border:1px solid rgba(214,170,91,.34);border-radius:14px;background:rgba(20,16,25,.76);text-align:left}
+.privacy-consent-gate .check-line{display:flex;align-items:flex-start;gap:10px;line-height:1.5}
+.privacy-consent-gate input{margin-top:4px;flex:0 0 auto}
+.privacy-consent-gate a{color:#e4b866;text-decoration:underline;text-underline-offset:3px}
+.privacy-consent-gate .footnote{margin:8px 0 0}
