@@ -73,7 +73,7 @@ test('global-news and FRED sync run concurrently with bounded upstream timeouts'
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
  assert.match(source,/Promise\.all\(\[economicTask,newsTask\]\)/);
  assert.match(source,/AbortSignal\.timeout\(5000\)/);
- assert.match(source,/AbortSignal\.timeout\(3500\)/);
+ assert.match(source,/AbortSignal\.timeout\(2500\)/);
 });
 
 test('les rappels économiques ne sont pas envoyés plus de 60 minutes avant l’événement',async()=>{
