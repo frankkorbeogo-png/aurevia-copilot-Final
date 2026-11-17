@@ -8,7 +8,7 @@ const collaboration = await readFile(new URL('../netlify/functions/ai-collaborat
 
 test('le navigateur transmet les 250 bougies M15 les plus récentes sans nouvel appel fournisseur', () => {
   assert.match(clientSource, /m15\.candles\.slice\(-250\)/);
-  assert.match(clientSource, /outputsize=250/);
+  assert.match(clientSource, /interval==='15min'\?251:250/);
   assert.match(clientSource, /m15CandleDiagnostics/);
 });
 
