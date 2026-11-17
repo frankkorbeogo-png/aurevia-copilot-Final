@@ -57,30 +57,20 @@ async function requestAureviaAnalysis(symbol,m15,context){
 async function fetchFrame(symbol,interval){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise pour les données de marché.');
  const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=250`;
- // Le M15 est indispensable à la décision : on le retente séparément sur les erreurs transitoires,
- // sans transformer une panne en signal ni réutiliser des bougies périmées.
- const attempts=interval==='15min'?3:2;let lastError=null;
- for(let attempt=0;attempt<attempts;attempt++){
-  try{
-   const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(16000)});
-   const data=await r.json().catch(()=>({}));
-   if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);const limited=new Error(data.error||'Limite de requêtes atteinte. Réessayez dans une minute.');limited.code='MARKET_RATE_LIMIT';throw limited;}
-   if(r.ok){
-    if(data.stale===true)throw new Error('Le fournisseur est indisponible : cache OHLC périmé refusé pour l’analyse.');
-    const fetchedAt=Date.parse(data.fetchedAt||''),fetchAge=Date.now()-fetchedAt;
-    if(!Number.isFinite(fetchedAt)||fetchAge<0||fetchAge>120000)throw new Error('Horodatage de récupération OHLC absent ou trop ancien.');
-    if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');
-    const minutes=({ '15min':15,'30min':30,'1h':60,'4h':240 })[interval];
-    const closed=selectClosedMarketCandles(data.candles,data.timezone||'UTC',minutes,Date.now());
-    if(!closed.ok)throw new Error(closed.reason);
-    return {...data,candles:closed.candles,excludedUnclosedCandles:closed.excludedUnclosed};
-   }
-   lastError=new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
-   if(![408,425,500,502,503,504].includes(r.status))throw lastError;
-  }catch(error){lastError=error;if(error.code==='MARKET_RATE_LIMIT')throw error;}
-  if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
- }
- throw lastError||new Error('Flux de marché indisponible après plusieurs tentatives.');
+ // Une seule tentative par unité : les retries côté client consomment des crédits
+ // supplémentaires et aggravent un quota déjà atteint. Le serveur mutualise les appels.
+ const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(12000)});
+ const data=await r.json().catch(()=>({}));
+ if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);const limited=new Error(data.error||'Limite de requêtes atteinte. Réessayez dans une minute.');limited.code='MARKET_RATE_LIMIT';limited.retryAfterSeconds=Number(data.retryAfterSeconds)||60;throw limited;}
+ if(!r.ok)throw new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
+ if(data.stale===true)throw new Error(`Cache OHLC périmé (${data.staleAgeSeconds??'?'} s) : données conservées pour diagnostic uniquement, interdites pour l’analyse.`);
+ const fetchedAt=Date.parse(data.fetchedAt||''),fetchAge=Date.now()-fetchedAt;
+ if(!Number.isFinite(fetchedAt)||fetchAge<0||fetchAge>120000)throw new Error('Horodatage de récupération OHLC absent ou trop ancien.');
+ if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');
+ const minutes=({'15min':15,'30min':30,'1h':60,'4h':240})[interval];
+ const closed=selectClosedMarketCandles(data.candles,data.timezone||'UTC',minutes,Date.now());
+ if(!closed.ok)throw new Error(closed.reason);
+ return {...data,candles:closed.candles,excludedUnclosedCandles:closed.excludedUnclosed};
 }
 export async function loadInstrumentAnalysis(symbol){
  const marketStatus=getMarketStatus(symbol);
