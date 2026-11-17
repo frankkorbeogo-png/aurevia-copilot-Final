@@ -212,7 +212,7 @@ function mountDxyChart(){
   const frame=document.createElement('iframe');
   frame.title='Graphique Dollar Index DXY sur TradingView';
   frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';
-  frame.style.width='100%';frame.style.height='100%';frame.style.minHeight='320px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://s.tradingview.com/widgetembed/?frameElementId=dxy_chart&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
+  frame.style.width='100%';frame.style.height='100%';frame.style.minHeight='320px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://www.tradingview.com/widgetembed/?frameElementId=dxy_chart&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
   box.replaceChildren(frame);box.dataset.loaded='1';
 }
 function setSelectedSymbol(symbol){
@@ -713,7 +713,7 @@ async function refreshDxyOverview(){
  }catch(error){host.textContent='Cotation DXY non disponible : '+error.message;}
 }
 window.addEventListener('aurevia:dxyrefresh',refreshDxyOverview);
-function mountStandaloneDxy(){const host=$('dxyStandalone');if(!host||host.dataset.loaded)return;host.dataset.loaded='1';const frame=document.createElement('iframe');frame.title='Graphique Dollar Index DXY sur TradingView';frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';frame.style.width='100%';frame.style.height='min(720px,78vh)';frame.style.minHeight='520px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://s.tradingview.com/widgetembed/?frameElementId=dxy_standalone&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';host.replaceChildren(frame);}
+function mountStandaloneDxy(){const host=$('dxyStandalone');if(!host||host.dataset.loaded)return;host.dataset.loaded='1';const frame=document.createElement('iframe');frame.title='Graphique Dollar Index DXY sur TradingView';frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';frame.style.width='100%';frame.style.height='min(720px,78vh)';frame.style.minHeight='520px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://www.tradingview.com/widgetembed/?frameElementId=dxy_standalone&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';host.replaceChildren(frame);}
 async function createPositionFromForm(){
   const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;
   const tps=[1,2,3].map(i=>({label:`TP${i}`,price:Number($(`posTP${i}`).value)})).filter(x=>Number.isFinite(x.price)&&x.price>0);
