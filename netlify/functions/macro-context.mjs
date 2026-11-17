@@ -47,7 +47,7 @@ export function assessDxyQuote(data, now = Date.now()) {
 }
 let dxyCache={at:0,value:null};
 const DXY_CACHE_TTL_MS=5*60*1000;
-async function fetchYahooIceDollarIndex(){
+export async function fetchYahooIceDollarIndex(){
  const u=new URL('https://query1.finance.yahoo.com/v8/finance/chart/DX-Y.NYB');u.searchParams.set('range','5d');u.searchParams.set('interval','5m');u.searchParams.set('includePrePost','true');
  const r=await fetch(u,{headers:{accept:'application/json','user-agent':'Mozilla/5.0 AUREVIA-COPILOT'},signal:AbortSignal.timeout(9000)});
  const payload=await r.json().catch(()=>({}));const chart=payload?.chart?.result?.[0];
