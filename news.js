@@ -1,7 +1,7 @@
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=String(text);return node;}
 function formatCalendarDate(value){const date=new Date(value);return Number.isFinite(date.getTime())?new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'UTC'}).format(date)+' UTC':String(value||'Horaire à confirmer');}
 function renderCalendarTable(host,events){
- const table=el('table','economic-calendar-table'),head=el('thead'),row=el('tr');
+ const table=el('table','economic-events-grid'),head=el('thead'),row=el('tr');
  for(const label of ['Date / heure','Devise','Événement','Impact','Précédent','Prévision','Réel'])row.append(el('th','',label));
  head.append(row);table.append(head);const body=el('tbody');
  for(const event of events){const tr=el('tr');[formatCalendarDate(event.date),event.currency,event.event,event.importance||'—',event.previous||'—',event.forecast||'—',event.actual||'—'].forEach((value,index)=>tr.append(el('td',index===2?'calendar-event-name':'',value)));body.append(tr);}
@@ -29,7 +29,7 @@ export function initEconomicCalendar(container,getAccessToken=async()=>null){
  };
  const loadTradingView=()=>{
   if(disposed)return;retry.hidden=true;mount.replaceChildren();
-  const widget=el('div','tradingview-widget-container');widget.style.width='100%';widget.style.height='min(760px, 78vh)';widget.style.minHeight='520px';
+  const widget=el('div','tradingview-widget-container');widget.style.width='100%';widget.style.height='min(760px, 78vh)';widget.style.minHeight='520px';widget.style.backgroundColor='#000000';
   const inner=el('div','tradingview-widget-container__widget');inner.style.width='100%';inner.style.height='100%';widget.append(inner);
   const script=document.createElement('script');script.type='text/javascript';script.src='https://s3.tradingview.com/external-embedding/embed-widget-events.js';script.async=true;
   script.text=JSON.stringify({colorTheme:'dark',isTransparent:false,locale:'fr',importanceFilter:'-1,0,1',width:'100%',height:'100%'});
