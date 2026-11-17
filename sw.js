@@ -1,11 +1,11 @@
-const CACHE = 'aurevia-shell-v2.4.19';
+const CACHE = 'aurevia-shell-v2.4.20';
 const SHELL = [
   '/', '/index.html', '/style.css', '/app.js', '/analysis.js', '/indicators.js',
   '/structure.js', '/market-hours.js', '/patterns.js', '/risk.js', '/journal.js', '/trade-management.js', '/confluence.js', '/fibonacci.js', '/volume-profile.js', '/opportunity-engine.js',
   '/auth.js', '/market-quote-validation.js', '/market-candle-validation.js', '/macro-context-forwarding.js', '/contract-engine.js', '/fx-conversion.js', '/market-catalog.js', '/news.js', '/galaxy.js', '/manifest.webmanifest',
   '/assets/aurevia-logo-mark.png', '/assets/aurevia-app-icon.png',
   '/assets/aurevia-app-icon-192.png', '/assets/aurevia-app-icon-maskable.png',
-  '/assets/aurevia-apple-touch-icon.png', '/assets/aurevia-mark.svg', '/assets/aurevia-nebula-reference.jpg'
+  '/assets/aurevia-apple-touch-icon.png', '/assets/aurevia-mark.svg', '/assets/komi-group-logo.svg', '/assets/aurevia-nebula-reference.jpg'
 ];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
