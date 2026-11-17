@@ -20,10 +20,14 @@
 <section id="authRequiredGate" class="auth-required-gate" role="dialog" aria-modal="true" aria-labelledby="authGateTitle">
   <div class="auth-gate-card">
     <img src="assets/aurevia-logo-mark.png" alt="AUREVIA" class="auth-gate-logo"/>
-    <div class="eyebrow">ACCÈS SÉCURISÉ · GOOGLE</div>
+    <div class="eyebrow">KOMI GROUP · ACCÈS SÉCURISÉ</div><img class="komi-brand-logo" src="assets/komi-group-logo.svg" alt="KOMI Group"/>
     <h1 id="authGateTitle">Bienvenue sur <span>AUREVIA COPILOT</span></h1>
     <p>La connexion se fait exclusivement avec votre compte Google. Aucun mot de passe AUREVIA n’est à créer ni à mémoriser. Aucun espace de travail, outil ou historique n’est accessible sans authentification.</p>
     <div id="rememberedAccountsHost" class="remembered-accounts-host" aria-live="polite"></div>
+    <div class="privacy-consent-gate">
+      <label class="check-line"><input id="privacyConsentGate" type="checkbox" required> J’ai lu et j’accepte la <a href="privacy.html" target="_blank" rel="noopener">politique de confidentialité</a> (version 2026-11-17-v1).</label>
+      <p class="footnote">Cette acceptation est obligatoire pour créer un nouveau compte. Elle sera enregistrée avec sa date et sa version.</p>
+    </div>
     <div class="auth-choice-actions"><button id="googleLoginGateBtn" class="primary-btn" type="button">Se connecter avec Google</button><button id="googleSignupGateBtn" class="secondary-btn" type="button">Créer un compte</button></div>
     <p id="authGateStatus" class="footnote" role="status">Connectez-vous pour déverrouiller votre espace sur cet appareil. La limite de deux comptes concerne uniquement la mémoire de cet appareil.</p>
     <button id="retrySessionBtn" class="secondary-btn" type="button" hidden>Réessayer la vérification</button>
@@ -42,7 +46,7 @@
 <div class="nav-group"><span class="nav-group-title">MARCHÉS</span><a class="nav-link" data-page="marches" href="#marches"><span>◎</span>Marchés &amp; analyse</a><a class="nav-link" data-page="dxy" href="#dxy"><span>◉</span>DXY &amp; macro</a><a class="nav-link" data-page="actualites" href="#actualites"><span>▦</span>Calendrier économique</a></div>
 <div class="nav-group"><span class="nav-group-title">TRADING</span><a class="nav-link" data-page="positions" href="#positions"><span>◫</span>Suivi des positions</a><a class="nav-link" data-page="validation-trade" href="#validation-trade" id="validationTradeNav" hidden><span>✓</span>Validation du trade</a><a class="nav-link" data-page="risque" href="#risque"><span>▤</span>Gestion du capital</a><a class="nav-link" data-page="journal" href="#journal"><span>▣</span>Journal de trading</a></div>
 <div class="nav-group"><span class="nav-group-title">COMMUNICATION</span><a class="nav-link" data-page="telegram" href="#telegram"><span>♧</span>Telegram &amp; notifications</a><a class="nav-link" data-page="annonces" href="#annonces"><span>◉</span>Annonces <span id="announcementUnreadBadge" class="nav-count" hidden>0</span></a></div>
-<div class="nav-group"><span class="nav-group-title">COMPTE &amp; AIDE</span><a class="nav-link" data-page="parametres" href="#parametres"><span>⚙</span>Paramètres &amp; profil</a><a class="nav-link" data-page="guide" href="#guide"><span>ⓘ</span>Guide &amp; assistance</a><a class="nav-link" data-page="admin" href="#admin" hidden><span>♜</span>Administration</a></div>
+<div class="nav-group"><span class="nav-group-title">COMPTE &amp; AIDE</span><a class="nav-link" data-page="parametres" href="#parametres"><span>⚙</span>Paramètres &amp; profil</a><a class="nav-link" data-page="guide" href="#guide"><span>ⓘ</span>Guide &amp; assistance</a><a class="nav-link" href="privacy.html" target="_blank" rel="noopener"><span>§</span>Confidentialité</a><a class="nav-link" data-page="admin" href="#admin" hidden><span>♜</span>Administration</a></div>
 </nav>
 
 </aside>
