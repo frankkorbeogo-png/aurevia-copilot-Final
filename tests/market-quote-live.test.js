@@ -21,3 +21,7 @@ test('verified selected quote is reflected in its instrument tile and home watch
  assert.match(app,/ticker-live-price/);
  assert.match(app,/\.home-asset\[data-symbol=/);
 });
+
+test('ticker tape covers the supported metals, forex, crypto and US equities',()=>{
+ for(const symbol of ['OANDA:XAUUSD','OANDA:EURUSD','OANDA:EURAUD','BITSTAMP:BTCUSD','COINBASE:SOLUSD','NASDAQ:AAPL','NASDAQ:AMZN'])assert.ok(app.includes(symbol),symbol+' missing from ticker tape');
+});
