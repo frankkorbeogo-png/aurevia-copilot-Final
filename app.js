@@ -1,10 +1,10 @@
 import { loadInstrumentAnalysis, getAnalysisState } from './analysis.js';
 import { MARKET_INSTRUMENTS } from './market-catalog.js';
 import { getMarketStatus } from './market-hours.js';
-import { calculatePositionRisk, calculateRiskControls } from './risk.js';
+import { calculatePositionRisk } from './risk.js';
 import { initJournal, addJournalTrade, renderJournal, loadJournalTrades, deleteJournalTrade, mergeJournalTrades } from './journal.js';
 import { initEconomicCalendar } from './news.js';
-import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, loadBrokerSettings, saveBrokerSettings, loadRiskManagementSettings, saveRiskManagementSettings, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase, deleteOpenTradeGroupFromSupabase, deletePendingTradeFromSupabase, deleteTradePositionFromSupabase, deleteLinkedJournalEntryFromSupabase, deleteManualJournalFromSupabase, syncManualJournalToSupabase, syncActualFillPriceToSupabase } from './auth.js';
+import { initAuth, confirmInApp, showInAppNotice, createTelegramPairingCode, loadTelegramPreferences, saveTelegramPreferences, unlinkTelegramAccount, sendTelegramTest, loadPublishedAnnouncements, markAnnouncementAsRead, markAllAnnouncementsAsRead, syncTradeGroupToSupabase, syncTradeCloseToSupabase, sendTelegramNotification, getAnalysisAccessToken, loadAccountCurrency, saveAccountCurrency, loadBrokerSettings, saveBrokerSettings, restoreTradeGroupsFromSupabase, deleteClosedTradeGroupFromSupabase, deleteOpenTradeGroupFromSupabase, deletePendingTradeFromSupabase, deleteTradePositionFromSupabase, deleteLinkedJournalEntryFromSupabase, deleteManualJournalFromSupabase, syncManualJournalToSupabase, syncActualFillPriceToSupabase } from './auth.js';
 import { createTradeGroup, validatePendingOrderAgainstQuote, saveTradeGroup, loadTradeGroups, loadLinkedJournal, persistTradeGroup, recordPartialClose, calculateClosePnl, groupSummary, mergeRestoredTradeGroups, deleteClosedTradeGroup, deleteOpenTradeGroup, deleteLinkedJournalEntry, deletePendingTradeGroup, deletePendingSeparateTradeChild, deleteSeparateTradeChild, editOpenTradeGroup, editSeparateTradeChild, attachCloudJournalIds, markTradeGroupCloudSyncPending, markTradeCloseCloudSyncPending } from './trade-management.js';
 import { validateContractSpec, calculateEstimatedMargin } from './contract-engine.js';
 import { inferQuoteCurrency, validateFxSnapshot } from './fx-conversion.js';
@@ -650,7 +650,6 @@ function renderJournalStats(){
   const totalCount=manual.length+linked.length;
   const net=manual.reduce((sum,x)=>sum+Number(x.result||0),0)+linked.reduce((sum,x)=>sum+Number(x.realizedPnl||0),0);
   $('journalCount').textContent=totalCount;$('journalWins').textContent=wins;$('journalLosses').textContent=losses;$('journalWinRate').textContent=closedCount?`${(wins/closedCount*100).toFixed(1)} %`:'—';$('journalNet').textContent=net.toFixed(2);
-  renderRiskControls();
 }
 
 function formatTradeDateTime(value){if(!value)return '—';const date=new Date(value);if(Number.isNaN(date.getTime()))return '—';return new Intl.DateTimeFormat('fr-FR',{timeZone:'Africa/Ouagadougou',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(date);}
@@ -771,75 +770,9 @@ let announcementCache=[],announcementFilter='all';
 function updateAnnouncementBadge(){const badge=$('announcementUnreadBadge');if(!badge)return;const count=announcementCache.filter(a=>!a.is_read).length;badge.textContent=count>99?'99+':String(count);badge.hidden=count===0;}
 function renderAnnouncements(){const ownerId=String(window.__aureviaUserId||'').trim();const host=$('announcementList');if(!host)return;const items=announcementCache.filter(a=>announcementFilter==='all'||!a.is_read);updateAnnouncementBadge();document.querySelectorAll('[data-announcement-filter]').forEach(b=>b.classList.toggle('active',b.dataset.announcementFilter===announcementFilter));if(!items.length){host.innerHTML=`<div class="empty-cell">${announcementFilter==='unread'?'Aucune annonce non lue.':'Aucune annonce publiée pour le moment.'}</div>`;return;}const now=Date.now();host.innerHTML=items.map(a=>{const expired=a.ends_at&&Date.parse(a.ends_at)<now;const date=a.created_at?new Date(a.created_at).toLocaleString('fr-FR'):'Date inconnue';const url=typeof a.source_url==='string'&&/^https:\/\//i.test(a.source_url)?a.source_url:null;return `<article class="announcement-card ${a.is_read?'is-read':'is-unread'}"><div class="announcement-card-top"><span class="announcement-category">${escapeText(a.category||'Information')}</span><span class="announcement-state">${a.is_read?'Lue':'Non lue'}${expired?' · Archivée':''}</span></div><h3>${escapeText(a.title)}</h3><p>${escapeText(a.body).replace(/\n/g,'<br>')}</p><div class="announcement-meta"><span>${escapeText(date)}</span>${expired?'<span>Annonce expirée · conservée dans l’historique</span>':''}</div><div class="announcement-actions">${url?`<a href="${escapeText(url)}" target="_blank" rel="noopener noreferrer">Consulter la source</a>`:''}${!a.is_read?`<button class="small-btn" type="button" data-announcement-read="${escapeText(a.id)}">Marquer comme lue</button>`:''}</div></article>`;}).join('');host.querySelectorAll('[data-announcement-read]').forEach(btn=>btn.addEventListener('click',async()=>{btn.disabled=true;try{await markAnnouncementAsRead(btn.dataset.announcementRead,ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;const item=announcementCache.find(a=>a.id===btn.dataset.announcementRead);if(item){item.is_read=true;item.read_at=new Date().toISOString();}renderAnnouncements();showInAppNotice('Annonce marquée comme lue.',{type:'success'});}catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId){$('announcementStatus').textContent='Lecture non synchronisée : '+error.message;showInAppNotice('Impossible de synchroniser la lecture : '+error.message,{type:'error'});btn.disabled=false;}}}));}
 async function loadAnnouncements(){const ownerId=String(window.__aureviaUserId||'').trim();if(!window.__aureviaAuthenticated||!ownerId)return;const status=$('announcementStatus');if(status)status.textContent='Actualisation des annonces…';try{const announcements=await loadPublishedAnnouncements(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return;announcementCache=announcements;renderAnnouncements();if(status)status.textContent=`${announcementCache.length} annonce(s) publiée(s) · ${announcementCache.filter(a=>!a.is_read).length} non lue(s).`;}catch(error){if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(status)status.textContent='Impossible de charger les annonces : '+error.message;const host=$('announcementList');if(host)host.innerHTML='<div class="empty-cell">Les annonces ne sont pas disponibles. Réessayez après vérification de votre connexion.</div>';}}
-function riskDateKey(value){
- const date=value instanceof Date?value:new Date(value);
- if(Number.isNaN(date.getTime()))return null;
- return new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Ouagadougou',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
-}
-function getRiskPeriodPnl(){
- const todayKey=riskDateKey(new Date());if(!todayKey)return {daily:0,weekly:0};
- const todayStart=new Date(todayKey+'T00:00:00.000Z');
- const weekStart=new Date(todayStart.getTime()-((todayStart.getUTCDay()+6)%7)*86400000);
- const weekKey=weekStart.toISOString().slice(0,10);let daily=0,weekly=0;
- const add=(value,date)=>{
-  const amount=Number(value),key=riskDateKey(date);
-  if(!Number.isFinite(amount)||!key)return;
-  if(key===todayKey)daily+=amount;
-  if(key>=weekKey&&key<=todayKey)weekly+=amount;
- };
- for(const group of loadTradeGroups()){
-  for(const child of group.children||[]){
-   if(Array.isArray(child.closes)&&child.closes.length){
-    for(const close of child.closes)add(close.net??close.pnl?.net,close.closedAt||close.closed_at);
-   }else if(Number(child.realizedPnl)!==0)add(child.realizedPnl,child.closedAt||child.closed_at);
-  }
- }
- for(const row of loadJournalTrades()){
-  if(row.groupId||row.positionId||row.tradeGroupId||row.childId)continue;
-  add(row.result,row.date||row.createdAt);
- }
- return {daily,weekly};
-}
-function renderRiskControls(){
- const currency=accountCurrency||'';
- const period=getRiskPeriodPnl();
- const result=calculateRiskControls({
-  equity:Number($('riskEquity')?.value||0),marginUsed:Number($('riskMarginUsed')?.value||0),
-  peakEquity:Number($('riskPeakEquity')?.value||0),dailyLossLimit:Number($('riskDailyLossLimit')?.value||0),
-  weeklyLossLimit:Number($('riskWeeklyLossLimit')?.value||0),dailyPnl:period.daily,weeklyPnl:period.weekly
- });
- if(result.error){if($('riskControlStatus'))$('riskControlStatus').textContent=result.error;return result;}
- const money=value=>Number(value).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+(currency?' '+currency:'');
- const equity=Number($('riskEquity')?.value||0);
- if($('riskFreeMarginOut'))$('riskFreeMarginOut').textContent=equity>0?money(result.freeMargin):'—';
- if($('riskDailyPnlOut'))$('riskDailyPnlOut').textContent=money(result.dailyPnl);
- if($('riskDailyRemainingOut'))$('riskDailyRemainingOut').textContent=result.dailyLimitEnabled?money(result.dailyLossRemaining):'Désactivée';
- if($('riskWeeklyPnlOut'))$('riskWeeklyPnlOut').textContent=money(result.weeklyPnl);
- if($('riskWeeklyRemainingOut'))$('riskWeeklyRemainingOut').textContent=result.weeklyLimitEnabled?money(result.weeklyLossRemaining):'Désactivée';
- if($('riskDrawdownOut'))$('riskDrawdownOut').textContent=result.drawdownPercent===null?'—':result.drawdownPercent.toFixed(2)+' % · '+money(result.drawdownAmount);
- const warnings=[];
- if(result.freeMargin<0)warnings.push('La marge utilisée dépasse l’equity.');
- if(result.dailyLimitReached)warnings.push('Limite de perte quotidienne atteinte.');
- if(result.weeklyLimitReached)warnings.push('Limite de perte hebdomadaire atteinte.');
- if($('riskControlStatus'))$('riskControlStatus').textContent=equity<=0?'Renseignez votre equity actuelle pour activer le suivi de la marge libre et du drawdown.':warnings.length?'ATTENTION · '+warnings.join(' '):'Contrôles actifs · P/L réalisé calculé sur les clôtures enregistrées. Les limites à 0 sont désactivées.';
- return result;
-}
-async function refreshRiskManagement(){
- const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return null;
- try{
-  const saved=await loadRiskManagementSettings(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!saved)return null;
-  const set=(id,value)=>{const el=$(id);if(el)el.value=value??'';};
-  set('riskBrokerName',saved.brokerName);set('riskAccountType',saved.accountType||'standard');
-  set('accountBalance',saved.balance>0?saved.balance:'');set('riskEquity',saved.equity>0?saved.equity:'');
-  set('riskMarginUsed',saved.marginUsed);set('riskPeakEquity',saved.peakEquity>0?saved.peakEquity:'');
-  set('riskDailyLossLimit',saved.dailyLossLimit);set('riskWeeklyLossLimit',saved.weeklyLossLimit);
-  set('riskLeverage',saved.defaultLeverage||2000);
-  renderRiskControls();return saved;
- }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&$('riskControlStatus'))$('riskControlStatus').textContent='Chargement des paramètres du compte impossible : '+error.message;return null;}
-}
 async function refreshAccountCurrency(){
  const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return null;const notice=$('accountCurrencyNotice'),status=$('accountCurrencyStatus'),select=$('profileAccountCurrency'),risk=$('accountCurrency');
- try{const value=await loadAccountCurrency(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;accountCurrency=value;if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.';renderRiskControls();return accountCurrency;}
+ try{const value=await loadAccountCurrency(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;accountCurrency=value;if(select)select.value=accountCurrency||'';if(risk)risk.value=accountCurrency||'À configurer dans Paramètres';if(notice)notice.hidden=Boolean(accountCurrency);if(status)status.textContent=accountCurrency?`Devise enregistrée : ${accountCurrency}. Elle sera utilisée automatiquement.`:'Aucune devise enregistrée. Choisissez-la puis enregistrez.'}
  catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&status)status.textContent='Impossible de charger la devise : '+error.message;return null;}
 }
 function populateBrokerProfileInstruments(){
@@ -955,7 +888,7 @@ function bindEvents(){
   $('brokerProfileInstrument')?.addEventListener('change',refreshBrokerProfile);
   $('brokerProfileCalculationType')?.addEventListener('change',updateBrokerProfileFields);
   window.addEventListener('aurevia:localownerchange',()=>{accountCurrency=null;if($('profileAccountCurrency'))$('profileAccountCurrency').value='';if($('accountCurrency'))$('accountCurrency').value='À configurer dans Paramètres';if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=false;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent='Chargement de la devise du compte…';if($('brokerProfileStatus'))$('brokerProfileStatus').textContent='Chargement des paramètres techniques…';['brokerProfileLeverage','brokerProfileMaxLot','brokerProfileContractSize','brokerProfilePointSize','brokerProfilePointValue','brokerProfileTickSize','brokerProfileTickValue'].forEach(id=>{if($(id))$(id).value='';});if($('brokerProfileCalculationType'))$('brokerProfileCalculationType').value='contract';if($('brokerProfileMinLot'))$('brokerProfileMinLot').value='0.01';if($('brokerProfileLotStep'))$('brokerProfileLotStep').value='0.01';if($('brokerProfileFees'))$('brokerProfileFees').value='0';updateBrokerProfileFields();if($('telegramConnectionStatus'))$('telegramConnectionStatus').textContent='Chargement des préférences Telegram…';if($('telegramChatId'))$('telegramChatId').value='';if($('telegramPairCode'))$('telegramPairCode').textContent='Aucun code généré.';if($('telegramPairStatus'))$('telegramPairStatus').textContent='Aucune liaison Telegram chargée.';['saveTelegramPrefs','sendTelegramTest','unlinkTelegramAccount'].forEach(id=>{if($(id))$(id).disabled=true;});if($('notifyAll'))$('notifyAll').checked=false;if($('notifySignals'))$('notifySignals').checked=true;if($('notifyEconomic'))$('notifyEconomic').checked=false;if($('notifyProductAnnouncements'))$('notifyProductAnnouncements').checked=false;announcementCache=[];announcementFilter='all';renderAnnouncements();if($('announcementStatus'))$('announcementStatus').textContent='Chargement des annonces…';if($('scenarioWatchList'))$('scenarioWatchList').innerHTML='<div class="empty-cell">Chargement des scénarios du compte…</div>';pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;if($('validationScenarioTitle'))$('validationScenarioTitle').textContent='Aucun scénario sélectionné';if($('validationScenarioStatus'))$('validationScenarioStatus').textContent='En attente';if($('validationScenarioLevels'))$('validationScenarioLevels').innerHTML='<span>Instrument <b>—</b></span><span>Direction <b>—</b></span><span>Type d’ordre <b>—</b></span><span>Prix proposé par l’IA M5 <b>—</b></span><span>Stop Loss <b>—</b></span><span>Take Profits <b>—</b></span>';if($('validationTradeStatus'))$('validationTradeStatus').textContent='En attente de votre validation manuelle.';initJournal();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();restoreMyAnalysis();restoreScenarioDraft();});
-  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const wasBooted=authenticatedBooted;if(event.detail?.event==='SIGNED_IN'&&wasBooted)window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{userId:ownerId}}));const access=await refreshLicenseAccess(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshRiskManagement();refreshBrokerProfile();refreshTelegramHomeNotice();loadTelegramUi();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'&&wasBooted){pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;initJournal();restoreMyAnalysis();restoreScenarioDraft();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();try{const synced=await syncManualJournalToSupabase(loadJournalTrades(),ownerId);if(String(window.__aureviaUserId||'').trim()===ownerId&&synced.reason!=='account_changed'){mergeJournalTrades(synced.entries);renderJournal();renderJournalStats();}}catch(error){console.warn('Synchronisation du journal après changement de compte différée :',error.message);}if(String(window.__aureviaUserId||'').trim()===ownerId)await refreshScenarioWatchList();}if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();renderJournalStats();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
+  window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const wasBooted=authenticatedBooted;if(event.detail?.event==='SIGNED_IN'&&wasBooted)window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{userId:ownerId}}));const access=await refreshLicenseAccess(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshBrokerProfile();refreshTelegramHomeNotice();loadTelegramUi();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'&&wasBooted){pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;initJournal();restoreMyAnalysis();restoreScenarioDraft();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();try{const synced=await syncManualJournalToSupabase(loadJournalTrades(),ownerId);if(String(window.__aureviaUserId||'').trim()===ownerId&&synced.reason!=='account_changed'){mergeJournalTrades(synced.entries);renderJournal();renderJournalStats();}}catch(error){console.warn('Synchronisation du journal après changement de compte différée :',error.message);}if(String(window.__aureviaUserId||'').trim()===ownerId)await refreshScenarioWatchList();}if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();renderJournalStats();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
   $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
   $('adminIssueLicenses')?.addEventListener('click',issueAdminLicenses);
@@ -1004,24 +937,6 @@ function bindEvents(){
 
   document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>document.querySelector(`[data-page="${b.dataset.goto}"]`)?.click()));
   document.querySelectorAll('.home-asset').forEach(b=>b.addEventListener('click',()=>{document.querySelector('[data-page="marches"]')?.click();setSelectedSymbol(b.dataset.symbol);}));
-  ['riskEquity','riskMarginUsed','riskPeakEquity','riskDailyLossLimit','riskWeeklyLossLimit'].forEach(id=>$(id)?.addEventListener('input',renderRiskControls));
-  $('saveRiskControls')?.addEventListener('click',async()=>{
-    const button=$('saveRiskControls'),ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;
-    if(button)button.disabled=true;
-    try{
-      const equity=Number($('riskEquity').value||0),peak=Math.max(Number($('riskPeakEquity').value||0),equity);
-      const saved=await saveRiskManagementSettings({
-        balance:Number($('accountBalance').value||0),equity,marginUsed:Number($('riskMarginUsed').value||0),
-        peakEquity:peak,dailyLossLimit:Number($('riskDailyLossLimit').value||0),
-        weeklyLossLimit:Number($('riskWeeklyLossLimit').value||0),defaultLeverage:Number($('riskLeverage').value||2000)
-      },ownerId);
-      if(String(window.__aureviaUserId||'').trim()!==ownerId)return;
-      $('riskPeakEquity').value=saved.peakEquity;renderRiskControls();
-      if($('riskControlStatus'))$('riskControlStatus').textContent='Paramètres du compte enregistrés. '+$('riskControlStatus').textContent;
-      showInAppNotice('Gestion du compte et limites de pertes enregistrées.',{type:'success'});
-    }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&$('riskControlStatus'))$('riskControlStatus').textContent='Enregistrement impossible : '+error.message;}
-    finally{if(button)button.disabled=false;}
-  });
   $('riskInstrument')?.addEventListener('change',async()=>{const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;try{await applyRiskBrokerProfile($('riskInstrument').value,ownerId);}catch(error){activeRiskBrokerSpec=null;if($('riskBrokerProfileStatus'))$('riskBrokerProfileStatus').textContent=error.message;}});
   $('calculateRisk').addEventListener('click',async()=>{
     const button=$('calculateRisk');if(button)button.disabled=true;
@@ -1240,6 +1155,6 @@ async function activateUserLicense(){
  finally{if(button){button.disabled=false;button.textContent='Activer ma licence';}}
 }
 let authenticatedBooted=false;
-function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;authenticatedBooted=true;refreshAccountCurrency();refreshRiskManagement();refreshBrokerProfile();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();syncManualJournalToSupabase(loadJournalTrades(),ownerId).then(cloud=>{if(String(window.__aureviaUserId||'').trim()!==ownerId||cloud.reason==='account_changed')return;mergeJournalTrades(cloud.entries);renderJournal();renderJournalStats();}).catch(error=>{if(String(window.__aureviaUserId||'').trim()===ownerId)console.warn('Synchronisation du journal manuel différée :',error.message);});renderPositions();renderLinkedJournal();flushTradeSyncQueue();setInterval(()=>{if(window.__aureviaAuthenticated)flushTradeSyncQueue();},30000);setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15. Après mitigation de la zone, AUREVIA analyse M5 pour valider l’entrée.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
+function bootAuthenticatedApp(){if(authenticatedBooted||!window.__aureviaAuthenticated)return;const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;authenticatedBooted=true;refreshAccountCurrency();refreshBrokerProfile();refreshTelegramHomeNotice();restoreMyAnalysis();refreshScenarioWatchList();setInterval(()=>{if(window.__aureviaAuthenticated)refreshScenarioWatchList();},60000);initJournal();renderJournal();syncManualJournalToSupabase(loadJournalTrades(),ownerId).then(cloud=>{if(String(window.__aureviaUserId||'').trim()!==ownerId||cloud.reason==='account_changed')return;mergeJournalTrades(cloud.entries);renderJournal();renderJournalStats();}).catch(error=>{if(String(window.__aureviaUserId||'').trim()===ownerId)console.warn('Synchronisation du journal manuel différée :',error.message);});renderPositions();renderLinkedJournal();flushTradeSyncQueue();setInterval(()=>{if(window.__aureviaAuthenticated)flushTradeSyncQueue();},30000);setInterval(async()=>{if(!window.__aureviaAuthenticated)return;try{const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();}}catch(error){console.warn('Actualisation du suivi cloud indisponible :',error.message);}},60000);initEconomicCalendar($('calendarStandalone'));syncMarketAvailability();mountTradingView();mountDxyChart();refreshSelectedQuote();$('chartStatus').textContent='Données en attente · lancez une analyse pour interroger Twelve Data';$('chartSource').textContent='TradingView · données OHLC chargées à la demande';$('signalState').textContent='WAIT';$('signalExplain').textContent='Aucune requête de marché au démarrage. Appuyez sur Analyser pour charger H4 / H1 / M30 / M15. Après mitigation de la zone, AUREVIA analyse M5 pour valider l’entrée.';$('mtfRows').innerHTML='<tr><td colspan="4" class="empty-cell">En attente du lancement manuel de l’analyse.</td></tr>';syncMarketAvailability();}
 function init(){bindEvents();bindPositionContractFields();updateClock();setInterval(updateClock,1000);populateBrokerProfileInstruments();if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('/sw.js').catch(()=>{});initAuth().then(()=>{if(window.__aureviaAuthenticated&&['trial','licensed'].includes(window.__aureviaLicense?.status))bootAuthenticatedApp();}).catch(error=>console.warn('Initialisation AUREVIA différée :',error?.message||error));}
 init();

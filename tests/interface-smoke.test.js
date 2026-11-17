@@ -172,3 +172,11 @@ test('tous les logos affichés par l’interface sont présents dans les assets'
  assert.ok(komi.includes('<svg')&&komi.includes('KOMI Group'));
  assert.ok(aurevia.byteLength>1000);
 });
+
+test('le calculateur de position reste disponible sans le panneau equity et limites',()=>{
+ const start=html.indexOf('data-page-view="risque"'),end=html.indexOf('data-page-view="journal"',start),capital=html.slice(start,end);
+ assert.ok(capital.includes('id="riskInstrument"'));
+ assert.ok(capital.includes('id="riskAmount"'));
+ assert.ok(capital.includes('id="calculateRisk"'));
+ for(const id of ['riskAccountControls','riskEquity','riskMarginUsed','riskPeakEquity','riskDailyLossLimit','riskWeeklyLossLimit','saveRiskControls'])assert.ok(!capital.includes('id="'+id+'"'),id+' ne doit plus être affiché');
+});

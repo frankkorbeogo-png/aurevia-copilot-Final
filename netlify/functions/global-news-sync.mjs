@@ -26,7 +26,7 @@ const env=name=>(process.env[name]||'').trim();
 async function rest(path,{method='GET',body,prefer}={}){
  const r=await fetch(env('SUPABASE_URL').replace(/\/$/, '')+'/rest/v1/'+path,{
   method,headers:{apikey:env('SUPABASE_SERVICE_ROLE_KEY'),authorization:'Bearer '+env('SUPABASE_SERVICE_ROLE_KEY'),'content-type':'application/json',...(prefer?{prefer}:{})},
-  ...(body?{body:JSON.stringify(body)}:{})
+  ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(2200)
  });
  const raw=await r.text();if(!r.ok)throw new Error('Supabase '+r.status+': '+raw.slice(0,240));return raw?JSON.parse(raw):null;
 }
@@ -50,8 +50,8 @@ function normalizeArticle(article){
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function gdeltRetryDelay(response){
  const raw=String(response.headers.get('retry-after')||'').trim(),seconds=Number(raw),date=Date.parse(raw);
- const requested=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?Math.max(0,date-Date.now()):5000;
- return Math.max(5000,requested);
+ const requested=Number.isFinite(seconds)?seconds*1000:Number.isFinite(date)?Math.max(0,date-Date.now()):1000;
+ return Math.max(250,requested);
 }
 async function fetchArticles(){
  const url=new URL('https://api.gdeltproject.org/api/v2/doc/doc');
@@ -61,16 +61,16 @@ async function fetchArticles(){
  let response;
  for(let attempt=0;attempt<2;attempt++){
   try{
-   response=await fetch(url,{headers,signal:AbortSignal.timeout(5000)});
+   response=await fetch(url,{headers,signal:AbortSignal.timeout(2200)});
   }catch(error){
-   if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(500);continue;}
+   if(attempt===0){console.warn('[AUREVIA GDELT] transient network error; retrying once',String(error.message||error).slice(0,180));await wait(300);continue;}
    throw error;
   }
   if(response.status===429&&attempt===0){
-   const delay=gdeltRetryDelay(response);await response.text().catch(()=>{});if(delay>7000)throw new Error('GDELT HTTP 429; Retry-After exceeds the safe function time budget.');console.warn('[AUREVIA GDELT] rate limited; retrying after '+delay+'ms');await wait(delay);continue;
+   const delay=gdeltRetryDelay(response);await response.text().catch(()=>{});if(delay>1000)throw new Error('GDELT HTTP 429; Retry-After exceeds the safe function time budget.');console.warn('[AUREVIA GDELT] rate limited; retrying after '+delay+'ms');await wait(delay);continue;
   }
   if(response.status>=500&&attempt===0){
-   await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] upstream HTTP '+response.status+'; retrying once');await wait(500);continue;
+   await response.text().catch(()=>{});console.warn('[AUREVIA GDELT] upstream HTTP '+response.status+'; retrying once');await wait(300);continue;
   }
   break;
  }
@@ -216,12 +216,13 @@ function globalNewsMessage(event){
  return '🌍 AUREVIA · ALERTE MACRO / ACTUALITÉ INTERNATIONALE\n\n'+safeTitle+'\n\nSource : '+safeDomain+'\n'+dateLine+'\n\nLecture et vérification : '+event.source_url+'\n\nCette alerte signale une actualité à examiner. Elle ne constitue pas, à elle seule, un signal BUY/SELL.';
 }
 async function syncGlobalNews(){
- const articles=await fetchArticles();
+ let articles=[],sourceError=null;
+ try{articles=await fetchArticles();}catch(error){sourceError=String(error.message||error).slice(0,300);console.warn('[AUREVIA GDELT] source temporarily unavailable; existing news retained',sourceError);}
  if(articles.length)await rest('global_news_events?on_conflict=external_id',{method:'POST',prefer:'resolution=ignore-duplicates,return=minimal',body:articles});
  const cutoff=new Date(Date.now()-100*60*1000).toISOString();
  const pending=await rest('global_news_events?select=id,title,source_url,source_domain,published_at,seen_at,telegram_broadcast_started_at&telegram_broadcast_completed_at=is.null&or=(seen_at.gte.'+encodeURIComponent(cutoff)+',telegram_broadcast_started_at.not.is.null)&order=seen_at.desc&limit=75');
  const results=[];for(const item of (Array.isArray(pending)?pending:[]))results.push({id:item.id,...await broadcastToSubscribers('global_news',item,globalNewsMessage(item),'global_news_events')});
- return {fetched:articles.length,telegramProcessed:results.length,telegram:results};
+ return {globalNewsStatus:sourceError?'source_unavailable':'synced',globalNewsSourceError:sourceError,fetched:articles.length,telegramProcessed:results.length,telegram:results};
 }
 export async function handler(event){
  if(!env('SUPABASE_URL')||!env('SUPABASE_SERVICE_ROLE_KEY'))return json(503,{ok:false,error:'Supabase service credentials are missing.'});

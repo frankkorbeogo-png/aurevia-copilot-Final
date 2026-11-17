@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {handler,getFredDateRange,getFredReleaseBatch} from '../netlify/functions/global-news-sync.mjs';
 
-test('global-news-sync reports a failed GDELT subsystem instead of claiming success',async()=>{
+test('global-news-sync keeps the scheduler healthy and preserves existing news when GDELT is unavailable',async()=>{
  const old={...process.env};process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service';delete process.env.FRED_API_KEY;delete process.env.TELEGRAM_BOT_TOKEN;
- const original=globalThis.fetch;globalThis.fetch=async input=>{if(String(input).includes('api.gdeltproject.org'))return new Response('GDELT unavailable',{status:503});throw new Error('URL inattendue '+String(input));};
- try{const r=await handler({httpMethod:'POST'});const data=JSON.parse(r.body);assert.equal(r.statusCode,502);assert.equal(data.ok,false);assert.match(data.globalNewsError,/GDELT HTTP 503/);}
+ const original=globalThis.fetch;globalThis.fetch=async input=>{const url=String(input);if(url.includes('api.gdeltproject.org'))return new Response('GDELT unavailable',{status:503});if(url.includes('/rest/v1/global_news_events?select=id,title,source_url'))return new Response('[]',{status:200});throw new Error('URL inattendue '+url);};
+ try{const r=await handler({httpMethod:'POST'});const data=JSON.parse(r.body);assert.equal(r.statusCode,200);assert.equal(data.ok,true);assert.equal(data.globalNewsStatus,'source_unavailable');assert.match(data.globalNewsSourceError,/GDELT HTTP 503/);assert.equal(data.fetched,0);}
  finally{globalThis.fetch=original;for(const k of Object.keys(process.env))if(!(k in old))delete process.env[k];Object.assign(process.env,old);}
 });
 
@@ -72,7 +72,7 @@ test('FRED release windows use the New York calendar date across UTC midnight',(
 test('global-news and FRED sync run concurrently with bounded upstream timeouts',async()=>{
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
  assert.match(source,/Promise\.all\(\[economicTask,newsTask\]\)/);
- assert.match(source,/AbortSignal\.timeout\(5000\)/);
+ assert.match(source,/AbortSignal\.timeout\(2200\)/);
  assert.match(source,/AbortSignal\.timeout\(2500\)/);
 });
 
