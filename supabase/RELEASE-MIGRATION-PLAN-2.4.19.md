@@ -1,4 +1,4 @@
-# AUREVIA 2.4.19 — plan de migrations Supabase
+# AUREVIA 2.4.20 — plan de migrations Supabase
 
 ## État vérifié après livraison le 17 novembre 2026
 
