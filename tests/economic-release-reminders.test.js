@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handler} from '../netlify/functions/global-news-sync.mjs';
 const response=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json'}});
-test('FRED synchronise les dates, désactive les dates retirées et rappelle au contrôle horaire précédent',async()=>{
+test('FRED synchronise les dates, désactive les dates retirées et rappelle au contrôle horaire précédent',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-17T00:00:00.000Z')});
  const oldFetch=globalThis.fetch,oldEnv={...process.env};
  Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',TELEGRAM_BOT_TOKEN:'bot',FRED_API_KEY:'fred-key'});
  const inserted=[],messages=[],patches=[];const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);
