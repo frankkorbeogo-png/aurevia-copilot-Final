@@ -61,13 +61,13 @@ async function fetchYahooIceDollarIndex(){
 }
 async function fetchDxy(){
  if(dxyCache.value&&Date.now()-dxyCache.at<DXY_CACHE_TTL_MS)return {...dxyCache.value,cached:true};
- const key=process.env.TWELVEDATA_API_KEY;
+ const key=process.env.TWELVEDATA_API_KEY;let rejectedTwelveData=null;
  if(key){
   try{
    const u=new URL('https://api.twelvedata.com/quote');u.searchParams.set('symbol','DXY');u.searchParams.set('apikey',key);u.searchParams.set('timezone','UTC');
    const r=await fetch(u,{signal:AbortSignal.timeout(9000)});const d=await r.json().catch(()=>({}));
    if(r.ok&&d.status!=='error'&&!d.code){
-    const assessment=assessDxyQuote(d);
+    const assessment=assessDxyQuote(d);if(assessment.available)rejectedTwelveData={...assessment,symbol:'DXY',source:'Twelve Data',proxy:false,realtime:false};
     if(assessment.available&&assessment.usableForDirectionalBias){
      const value={configured:true,symbol:'DXY',...assessment,source:'Twelve Data',realtime:false,exchange:d.exchange||null,currency:d.currency||null,change:Number.isFinite(Number(d.change))?Number(d.change):null,percentChange:Number.isFinite(Number(d.percent_change))?Number(d.percent_change):null,proxy:false};
      dxyCache={at:Date.now(),value};return value;
@@ -76,7 +76,7 @@ async function fetchDxy(){
   }catch{}
  }
  try{const value=await fetchYahooIceDollarIndex();dxyCache={at:Date.now(),value};return value;}
- catch(error){return {configured:false,available:false,symbol:'DXY',source:'ICE Dollar Index',notice:'DXY indisponible via Twelve Data et flux ICE futures de secours : '+String(error.message||error).slice(0,180),usableForDirectionalBias:false};}
+ catch(error){return {...(rejectedTwelveData||{}),configured:false,available:Boolean(rejectedTwelveData?.available),symbol:'DXY',source:rejectedTwelveData?'Twelve Data (cotation rejetée)':'ICE Dollar Index',notice:'DXY indisponible via Twelve Data et flux ICE futures de secours : '+String(error.message||error).slice(0,180),usableForDirectionalBias:false};}
 }
 async function fetchGlobalNews(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
