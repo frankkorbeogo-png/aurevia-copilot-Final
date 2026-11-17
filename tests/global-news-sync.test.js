@@ -12,13 +12,14 @@ test('global-news-sync reports a failed GDELT subsystem instead of claiming succ
 
 test('global news distinguishes source observation time from publisher publication time',async()=>{
  const source=await readFile(new URL('../netlify/functions/global-news-sync.mjs',import.meta.url),'utf8');
- const sql=await readFile(new URL('../supabase/migrations/20261116230400_aurevia_gdelt_publication_date_cleanup.sql',import.meta.url),'utf8');
+ const schemaSql=await readFile(new URL('../supabase/migrations/20261116154433_global_news_seen_at.sql',import.meta.url),'utf8');
+ const cleanupSql=await readFile(new URL('../supabase/migrations/20261116230400_aurevia_gdelt_publication_date_cleanup.sql',import.meta.url),'utf8');
  assert.match(source,/seen_at/);assert.match(source,/published_at/);
- assert.match(sql,/add column if not exists seen_at timestamptz/);
- assert.match(sql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);
- assert.match(sql,/alter column published_at drop not null/);
- assert.match(sql,/global_news_events_seen_idx/);
- assert.ok(sql.includes('set published_at = null')&&sql.includes("source_provider = 'GDELT DOC 2.0'"));
+ assert.match(schemaSql,/add column if not exists seen_at timestamptz/);
+ assert.match(schemaSql,/set seen_at = coalesce\\(seen_at, published_at, created_at\\)/);
+ assert.match(schemaSql,/alter column published_at drop not null/);
+ assert.match(schemaSql,/global_news_events_seen_idx/);
+ assert.ok(cleanupSql.includes('set published_at = null')&&cleanupSql.includes("source_provider = 'GDELT DOC 2.0'"));
 });
 
 
