@@ -828,7 +828,7 @@ function populateBrokerProfileInstruments(){
  select.replaceChildren();
  groups.forEach((items,label)=>{
   const group=document.createElement('optgroup');group.label=label;
-  items.forEach(item=>{const option=document.createElement('option');option.value=item.label;option.textContent=item.label;group.append(option);});
+  items.forEach(item=>{const option=document.createElement('option');option.value=item.id;option.textContent=item.label;group.append(option);});
   select.append(group);
  });
  if(selected&&[...select.options].some(option=>option.value===selected))select.value=selected;
