@@ -674,3 +674,9 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 /* AUREVIA brand visibility: keep the orbital mark visible over the animated galaxy. */
 .brand-logo{display:block!important;flex:0 0 auto;visibility:visible!important;opacity:1!important;mix-blend-mode:normal!important;object-fit:contain;width:54px;height:54px;filter:drop-shadow(0 0 12px #8b72ff88)}
 @media(max-width:600px){.brand-logo{width:42px;height:42px}}
+
+/* KOMI Group identity, paired with the AUREVIA orbital mark. */
+.komi-brand-logo{display:block;width:148px;height:auto;max-height:54px;object-fit:contain;margin:8px auto 14px;border-radius:4px}
+.komi-topbar-logo{display:block;flex:0 0 auto;width:108px;height:40px;object-fit:contain;border-radius:3px}
+@media(max-width:900px){.komi-topbar-logo{width:86px;height:32px}}
+@media(max-width:600px){.komi-topbar-logo{width:64px;height:24px}.komi-brand-logo{width:132px}}
