@@ -23,6 +23,7 @@ export function initEconomicCalendar(container,getAccessToken=async()=>null){
    if(!response.ok||!Array.isArray(data.events))throw new Error(data.error||'Le flux de secours ne répond pas.');if(disposed)return;
    if(data.events.length){renderCalendarTable(mount,data.events);status.textContent=(data.source||'Calendrier AUREVIA')+' · '+data.events.length+' événement(s) · '+(data.asOf?'mis à jour '+formatCalendarDate(data.asOf):'horodatage non fourni')+'.';}
    else{mount.replaceChildren(el('p','muted','Aucun événement disponible sur la période demandée.'));status.textContent='Calendrier de secours joignable, mais aucun événement reçu.';}
+   if(typeof data.attribution?.url==='string'&&/^https:\/\//i.test(data.attribution.url)){const attribution=el('a','calendar-tv-source-link','Source du flux de secours : '+(data.source||'calendrier AUREVIA'));attribution.href=data.attribution.url;attribution.target='_blank';attribution.rel='noopener noreferrer';actions.append(attribution);}
    retry.hidden=true;
   }catch(error){if(disposed)return;mount.replaceChildren(el('p','muted','Le calendrier intégré et le flux de secours sont indisponibles. Ouvrez la source TradingView avec le lien ci-dessus.'));status.textContent='Calendrier indisponible : '+String(error.message||error);retry.hidden=false;}
   finally{loadingFallback=false;}
