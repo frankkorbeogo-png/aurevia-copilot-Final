@@ -9,7 +9,7 @@ async function probeTradeSchema(){
  const url=BASE_URL()+'/rest/v1/trading_positions?select=actual_entry_price&limit=0';
  try{const response=await fetch(url,{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY}});if(response.ok)return {ready:true,missingColumns:[]};const detail=(await response.text()).slice(0,220);return {ready:false,missingColumns:/actual_entry_price/i.test(detail)?['actual_entry_price']:[],error:detail||'Schéma de suivi indisponible'};}catch(error){return {ready:false,missingColumns:['actual_entry_price'],error:String(error.message||error).slice(0,220)};}
 }
-const BASE_URL=()=>String(process.env.SUPABASE_URL||'').replace(/\\/+$/,'');
+const BASE_URL=()=>String(process.env.SUPABASE_URL||'').replace(/\/+$/,'');
  const supabaseServer=has('SUPABASE_URL')&&has('SUPABASE_SERVICE_ROLE_KEY');
  const aiProviders=configuredAIProviders();
  const providerIds=new Set(aiProviders.map(provider=>provider.id));
