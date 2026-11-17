@@ -43,7 +43,7 @@ test('le blocage définitif et la révocation de session sont atomiques côté S
 
 
 test('permanent email blocks are checked by every license-status call before trial or license access',async()=>{
- const sql=await readFile(new URL('../supabase/migrations/20261116223000_aurevia_license_status_enforces_email_blocklist.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141525_aurevia_license_status_enforces_email_blocklist.sql',import.meta.url),'utf8');
  const blockCheck=sql.indexOf('from app_private.aurevia_blocked_emails');
  const accessInsert=sql.indexOf('insert into public.aurevia_account_access');
  const trialInsert=sql.indexOf('insert into public.aurevia_trial_claims');
@@ -56,7 +56,7 @@ test('permanent email blocks are checked by every license-status call before tri
 
 
 test('a permanently blocked email cannot consume or activate a license key',async()=>{
- const sql=await readFile(new URL('../supabase/migrations/20261116230000_aurevia_license_activation_respects_email_blocklist.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141527_aurevia_license_activation_respects_email_blocklist.sql',import.meta.url),'utf8');
  const blockCheck=sql.indexOf('from app_private.aurevia_blocked_emails');
  const licenseLookup=sql.indexOf('from public.aurevia_licenses');
  assert.ok(blockCheck>=0);

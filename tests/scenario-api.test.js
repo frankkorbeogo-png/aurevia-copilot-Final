@@ -98,7 +98,7 @@ test('scenario-api refuse un prix réel pour un ordre conditionnel non exécuté
  }finally{mock.restore();}
 });
 test('le RPC et l’API exigent le prix réel manuel pour une entrée MARKET',async()=>{
- const sql=await readFile(new URL('../supabase/migrations/20261116230200_aurevia_require_manual_actual_fill_for_market_pnl.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141536_aurevia_require_manual_actual_fill_for_market_pnl.sql',import.meta.url),'utf8');
  const api=await readFile(new URL('../netlify/functions/scenario-api.mjs',import.meta.url),'utf8');
  assert.match(sql,/ACTUAL_FILL_PRICE_REQUIRED/);
  assert.match(sql,/before insert or update of order_type, actual_entry_price/i);

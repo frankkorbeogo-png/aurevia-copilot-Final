@@ -57,7 +57,7 @@ test('API de création depuis scénario respecte les limites fournies et ne les 
 
 test('le webhook Telegram applique le contrôle de compte, suspension et licence active',async()=>{
  const source=await read('../netlify/functions/telegram-webhook.mjs');
- const sql=await read('../supabase/migrations/20261116194000_aurevia_telegram_access_entitlement.sql');
+ const sql=await read('../supabase/migrations/20261117141512_aurevia_telegram_access_entitlement.sql');
  assert.match(source,/ensureTelegramAccess/);
  assert.match(source,/aurevia_telegram_access_status/);
  assert.match(sql,/banned_until/);
