@@ -698,3 +698,5 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 .dxy-metric span{font-weight:700;overflow-wrap:anywhere}
 .dxy-overview .footnote{grid-column:1/-1;margin:2px 0 0}
 @media(max-width:640px){.economic-events-grid{font-size:.78rem}.economic-events-grid th,.economic-events-grid td{padding:8px}.dxy-overview{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.calendar-tv-source-link{display:inline-flex;margin-top:10px;color:var(--accent,#c5a2ff);font-size:.82rem;text-decoration:underline;text-underline-offset:3px}
