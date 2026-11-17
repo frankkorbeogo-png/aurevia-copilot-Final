@@ -11,13 +11,14 @@ function setupEnv(missing=[]){
  for(const key of envKeys)process.env[key]=missing.includes(key)?'':(`test-${key}`);
  return ()=>{for(const key of envKeys){if(prior[key]===undefined)delete process.env[key];else process.env[key]=prior[key];}};
 }
-function installAuthMock(){
+function installAuthMock(schemaStatus=200){
  const old=globalThis.fetch;
  globalThis.fetch=async input=>{
   const url=String(input);
   if(url.includes('/auth/v1/user'))return new Response(JSON.stringify({id:userId}),{status:200});
   if(url.includes('/rpc/aurevia_session_is_active_for_user'))return new Response('true',{status:200});
   if(url.includes('/rpc/aurevia_is_admin'))return new Response('true',{status:200});
+  if(url.includes('/rest/v1/trading_positions?select=actual_entry_price'))return new Response(schemaStatus===200?'[]':JSON.stringify({message:'column actual_entry_price does not exist'}),{status:schemaStatus});
   return new Response('[]',{status:200});
  };
  return ()=>{globalThis.fetch=old;};
@@ -44,5 +45,16 @@ test('service-status reports the missing provider that blocks M5 consensus',asyn
   assert.equal(body.services.ai.configured,true);
   assert.equal(body.services.ai.m5ConsensusConfigured,false);
   assert.deepEqual(body.services.ai.m5MissingProviders,['Cloudflare']);
+ }finally{restoreFetch();restoreEnv();}
+});
+
+test('service-status signale le schéma manquant au lieu de déclarer le suivi configuré',async()=>{
+ const restoreEnv=setupEnv(),restoreFetch=installAuthMock(400);
+ try{
+  const response=await handler(event),body=JSON.parse(response.body);
+  assert.equal(response.statusCode,200);
+  assert.equal(body.services.tradeMonitor.schemaReady,false);
+  assert.equal(body.services.tradeMonitor.configured,false);
+  assert.deepEqual(body.services.tradeMonitor.missingColumns,['actual_entry_price']);
  }finally{restoreFetch();restoreEnv();}
 });
