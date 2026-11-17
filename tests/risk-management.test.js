@@ -29,7 +29,9 @@ test('les paramètres broker restent dans Paramètres et ne sont pas redemandés
  const capitalStart=html.indexOf('data-page-view="risque"'),capitalEnd=html.indexOf('data-page-view="journal"',capitalStart);
  const positionsStart=html.indexOf('data-page-view="positions"'),positionsEnd=html.indexOf('data-page-view="validation-trade"',positionsStart);
  const settings=html.slice(settingsStart,settingsEnd),capital=html.slice(capitalStart,capitalEnd),positions=html.slice(positionsStart,positionsEnd);
- assert.ok(settings.includes('id="riskBrokerName"'));
+ assert.ok(!settings.includes('id="riskBrokerName"'));
+ assert.ok(!settings.includes('id="riskAccountType"'));
+ assert.ok(!settings.includes('id="saveBrokerAccountProfile"'));
  assert.ok(settings.includes('id="brokerProfileInstrument"'));
  assert.ok(!capital.includes('id="riskBrokerName"'));
  assert.ok(!capital.includes('id="riskAccountType"'));
