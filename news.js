@@ -8,7 +8,7 @@ function renderCalendarTable(host,events){
  table.append(body);host.replaceChildren(table);
 }
 export function initEconomicCalendar(container,getAccessToken=async()=>null){
- if(!container)return ()=>{};let disposed=false,fallbackTimer=null,loadingFallback=false;
+ if(!container)return ()=>{};let disposed=false,fallbackTimer=null,loadingFallback=false,widgetObserver=null;
  const section=el('section','aurevia-calendar-tv'),heading=el('div','calendar-tv-heading','Calendrier économique');
  const description=el('p','calendar-tv-description','Événements économiques et horaires en UTC. Source TradingView, avec repli sur le flux calendrier AUREVIA.');
  const status=el('p','calendar-tv-status','Chargement du calendrier TradingView…'),mount=el('div','aurevia-calendar-tv-mount'),actions=el('div','calendar-tv-actions');
@@ -35,8 +35,9 @@ export function initEconomicCalendar(container,getAccessToken=async()=>null){
   const script=document.createElement('script');script.type='text/javascript';script.src='https://s3.tradingview.com/external-embedding/embed-widget-events.js';script.async=true;
   script.text=JSON.stringify({colorTheme:'dark',isTransparent:false,locale:'fr',importanceFilter:'-1,0,1',width:'100%',height:'100%'});
   script.onerror=()=>showFallback('Le widget TradingView n’a pas pu être chargé.');widget.append(script);mount.replaceChildren(widget);status.textContent='Connexion à TradingView…';
-  fallbackTimer=setTimeout(()=>{if(disposed)return;if(!inner.querySelector('iframe'))showFallback('TradingView ne renvoie pas le calendrier.');},15000);
+  widgetObserver=new MutationObserver(()=>{if(inner.querySelector('iframe')){if(fallbackTimer){clearTimeout(fallbackTimer);fallbackTimer=null;}status.textContent='Calendrier TradingView chargé.';}});widgetObserver.observe(mount,{childList:true,subtree:true});
+  fallbackTimer=setTimeout(()=>{if(disposed)return;if(!inner.querySelector('iframe'))showFallback('TradingView ne renvoie pas le calendrier.');},12000);
  };
  retry.addEventListener('click',loadTradingView);loadTradingView();
- return ()=>{disposed=true;if(fallbackTimer)clearTimeout(fallbackTimer);container.replaceChildren();};
+ return ()=>{disposed=true;if(fallbackTimer)clearTimeout(fallbackTimer);if(widgetObserver)widgetObserver.disconnect();container.replaceChildren();};
 }
