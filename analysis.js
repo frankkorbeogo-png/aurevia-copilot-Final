@@ -37,7 +37,7 @@ async function fetchMacroContext(instrument){try{const token=await getAnalysisAc
 async function requestAureviaAnalysis(symbol,m15,context){
  const token=await getAnalysisAccessToken();
  if(!token)throw new Error('Connexion requise pour solliciter le moteur IA.');
- const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-120),timezone:m15.timezone||'UTC',indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
+ const r=await fetch('/api/ai-analysis',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({instrument:symbol,m15:{candles:m15.candles.slice(-250),timezone:m15.timezone||'UTC',indicators:m15.analysis.indicators,structure:m15.analysis.structure,patterns:m15.analysis.patterns,volumeProfile:m15.analysis.volumeProfile,fibonacci:m15.analysis.fibonacci},context}),cache:'no-store',signal:AbortSignal.timeout(40000)});
  const d=await r.json().catch(()=>({}));
  if(!r.ok){
   const attempts=d.providerDiagnostics?.attempts||[];
@@ -55,9 +55,9 @@ async function requestAureviaAnalysis(symbol,m15,context){
  }
  return d;
 }
-async function fetchFrame(symbol,interval){
+async function fetchFrame(symbol,interval,outputsize=250){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise pour les données de marché.');
- const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=250`;
+ const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}`;
  // Une seule tentative par unité : les retries côté client consomment des crédits
  // supplémentaires et aggravent un quota déjà atteint. Le serveur mutualise les appels.
  const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(12000)});
@@ -87,7 +87,7 @@ async function runInstrumentAnalysis(symbol){
   const frames={},unavailable=[];
   // Prioriser l'historique M15 : si le fournisseur est limité, le moteur
   // tente d'abord de récupérer les données réellement nécessaires au moteur IA.
-  try{frames.M15=await fetchFrame(pair,FRAMES.M15);}catch(error){unavailable.push({tf:'M15',error:error?.message||'Données indisponibles'});}
+  try{frames.M15=await fetchFrame(pair,FRAMES.M15,251);}catch(error){unavailable.push({tf:'M15',error:error?.message||'Données indisponibles'});}
   // H4/H1 restent des contextes optionnels ; M30 est requis pour la préparation.
   // Les trois unités sont demandées après le M15 pour maîtriser les appels fournisseur.
   if(frames.M15){
