@@ -112,3 +112,8 @@ schedule = "* * * * *"
 
 [functions."global-news-sync"]
   schedule = "0 * * * *"
+
+[[redirects]]
+  from = "/api/privacy-consent"
+  to = "/.netlify/functions/privacy-consent"
+  status = 200
