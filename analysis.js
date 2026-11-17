@@ -8,6 +8,7 @@ import {getMarketStatus} from './market-hours.js';
 import {MARKET_INSTRUMENTS} from './market-catalog.js';
 import {selectClosedMarketCandles} from './market-candle-validation.js';
 import {buildMacroContextForAI} from './macro-context-forwarding.js';
+import {isMarketFetchFresh} from './market-fetch-freshness.js';
 const SYMBOLS=Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,item])=>[id,item.provider]));
 // M15 est chargé en premier : c'est l'unique unité décisionnelle.
 // H4/H1 sont des contextes optionnels ; M30 est requis pour la préparation structurelle. M5 est réservé au surveillant
@@ -65,8 +66,7 @@ async function fetchFrame(symbol,interval){
  if(!r.ok)throw new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
  if(data.providerCode==='TWELVEDATA_QUOTA'||data.code==='TWELVEDATA_QUOTA')retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);
  if(data.stale===true)throw new Error(`Cache OHLC périmé (${data.staleAgeSeconds??'?'} s) : données conservées pour diagnostic uniquement, interdites pour l’analyse.`);
- const fetchedAt=Date.parse(data.fetchedAt||''),fetchAge=Date.now()-fetchedAt;
- if(!Number.isFinite(fetchedAt)||fetchAge<0||fetchAge>120000)throw new Error('Horodatage de récupération OHLC absent ou trop ancien.');
+ if(!isMarketFetchFresh(data.fetchedAt,interval,Date.now()))throw new Error('Horodatage de récupération OHLC absent, futur ou trop ancien pour la durée de cache autorisée.');
  if(!Array.isArray(data.candles)||data.candles.length<30)throw new Error('Historique OHLC insuffisant ou invalide.');
  const minutes=({'15min':15,'30min':30,'1h':60,'4h':240})[interval];
  const closed=selectClosedMarketCandles(data.candles,data.timezone||'UTC',minutes,Date.now());
