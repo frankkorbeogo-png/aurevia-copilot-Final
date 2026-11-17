@@ -9,8 +9,8 @@ function parseJson(s){
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
 }
-function providerIssue(status, payload, rawText){
- const message=String(payload?.error?.message||payload?.message||rawText||'').replace(/Bearer\\s+\\S+/gi,'Bearer [redacted]').replace(/(api[_-]?key|token|authorization|secret)["'\\s:=]+[^\\s,"'}]+/gi,'$1=[redacted]').replace(/https?:\\/\\/[^\\s"'<>]+/gi,'[provider-url]').replace(/[\\r\\n\\t]+/g,' ').slice(0,160);
+function providerIssue(status, payload){
+ const message=String(payload?.error?.message||payload?.message||'').split(String.fromCharCode(10)).join(' ').split(String.fromCharCode(13)).join(' ').slice(0,160);
  const code=status===401||status===403?'AUTH_OR_PERMISSION':status===402?'BILLING_REQUIRED':status===404?'MODEL_OR_ENDPOINT_NOT_FOUND':status===413?'PAYLOAD_TOO_LARGE':status===429?'RATE_LIMIT_OR_QUOTA':status>=500?'PROVIDER_SERVER_ERROR':'HTTP_ERROR';
  return {code,message:message||('HTTP '+status)};
 }
@@ -24,7 +24,7 @@ async function ask(p,messages,timeout=11000){
  try {
   const r=await fetch(p.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});
   const raw=await r.text();let j={};try{j=JSON.parse(raw)}catch{}
-  if(!r.ok){const issue=providerIssue(r.status,j,raw);throw Object.assign(new Error(p.name+' '+issue.code+' (HTTP '+r.status+')'+(issue.message?': '+issue.message:'')),{providerCode:issue.code,httpStatus:r.status,elapsedMs:Date.now()-started,timeoutMs:timeout});}
+  if(!r.ok){const issue=providerIssue(r.status,j);throw Object.assign(new Error(p.name+' '+issue.code+' (HTTP '+r.status+')'+(issue.message?': '+issue.message:'')),{providerCode:issue.code,httpStatus:r.status,elapsedMs:Date.now()-started,timeoutMs:timeout});}
   const c=j?.choices?.[0]?.message?.content;
   if(typeof c!=='string'||!c.trim())throw Object.assign(new Error(p.name+' réponse vide (HTTP 200)'),{providerCode:'EMPTY_RESPONSE',httpStatus:200,elapsedMs:Date.now()-started,timeoutMs:timeout});
   try{return parseJson(c)}catch(e){throw Object.assign(new Error(p.name+' JSON invalide'),{providerCode:'INVALID_JSON',httpStatus:200,elapsedMs:Date.now()-started,timeoutMs:timeout});}
