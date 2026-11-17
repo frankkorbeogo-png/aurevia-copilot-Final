@@ -145,6 +145,7 @@ test('le profil broker est centralisé dans Paramètres et jamais ressaisi dans 
   const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
   assert.ok(app.includes('async function applyRiskBrokerProfile(instrument,ownerId)'));
   assert.ok(app.includes("brokerSpec.calculationType==='contract'&&quoteCurrency!==accountCurrency"));
+  assert.ok(app.includes("if(calculationType==='contract'&&quoteCurrency&&quoteCurrency!==accountCurrency)"));
   assert.ok(!positions.includes('id="posBrokerName"'));
   assert.ok(!positions.includes('id="posAccountType"'));
   assert.ok(positions.includes('id="legacyPositionBrokerFields" hidden disabled'));

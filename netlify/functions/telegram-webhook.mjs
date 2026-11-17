@@ -1,9 +1,11 @@
 import { validateContractSpec } from '../../contract-engine.js';
-import {getMarketInstrument} from '../../market-catalog.js';
+import {MARKET_INSTRUMENTS,getMarketInstrument} from '../../market-catalog.js';
 import {getMarketStatus} from '../../market-hours.js';
 import { inferQuoteCurrency, getFxSnapshot } from './_fx-rate.mjs';
 const json=(statusCode,body)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store'},body:JSON.stringify(body)});
 const now=()=>new Date().toISOString();
+function canonicalBrokerInstrumentKey(instrument){const raw=String(instrument||'').trim(),upper=raw.toUpperCase();if(!upper)return '';return Object.entries(MARKET_INSTRUMENTS).find(([id,item])=>id===upper||item.label.toUpperCase()===upper||item.provider.toUpperCase()===upper)?.[0]||raw;}
+
 async function rest(path,{method='GET',body,prefer}={}){
  const base=process.env.SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!base||!key)throw new Error('Supabase service credentials unavailable.');
@@ -38,7 +40,8 @@ async function beginSetup(token,chatId,userId,code,mode){
  if(existing&&existing.code!==code){await telegramSend(token,chatId,'Une autre configuration de trade est déjà en cours. Termine-la ou envoie /annuler avant d’en commencer une nouvelle.');return;}
  const scenario=await getScenario(userId,code);
  if(!scenario){await telegramSend(token,chatId,'Ce scénario n’est plus disponible ou son code a expiré. Relance la surveillance depuis AUREVIA.');return;}
- const savedSpecs=preferences.broker_specs?.[scenario.instrument]||preferences.broker_specs?.default||{};
+ const brokerKey=canonicalBrokerInstrumentKey(scenario.instrument),legacyLabel=MARKET_INSTRUMENTS[brokerKey]?.label;
+ const savedSpecs=preferences.broker_specs?.[brokerKey]||preferences.broker_specs?.[scenario.instrument]||(legacyLabel?preferences.broker_specs?.[legacyLabel]:null)||preferences.broker_specs?.default||{};
  const setup={code,mode,orderType:scenario.order_type||(scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET'),step:'lot',volume:null,actualEntryPrice:null,spec:{...savedSpecs,accountCurrency,leverage:savedSpecs.leverage??null,minLot:savedSpecs.minLot??0.01,lotStep:savedSpecs.lotStep??0.01,maxLot:savedSpecs.maxLot??null,feesPerLot:savedSpecs.feesPerLot??0},autoJournal:true,startedAt:now()};
  await saveSetup(userId,setup);
  await ask(token,chatId,`Très bien. Configurons ta position ${scenario.instrument} ${scenario.direction}.\n\nQuel volume souhaites-tu utiliser ?\nExemple : 0.05\n\nMode : ${mode==='unique'?'Position unique (lot total réparti entre les TP)':'Trades séparés (lot appliqué à chaque TP)'}`);
@@ -94,7 +97,7 @@ async function finishSetup(token,chatId,userId,setup){
  const quoteCurrency=inferQuoteCurrency(scenario.instrument);
  if(setup.spec.calculationType==='contract'&&!quoteCurrency){await telegramSend(token,chatId,`La devise de cotation de ${scenario.instrument} n’est pas reconnue. La position n’a pas été enregistrée pour éviter un calcul financier incorrect.`);return false;}
  let fxSnapshot=null,quoteToAccount=1;
- if(quoteCurrency&&quoteCurrency!==setup.spec.accountCurrency){
+ if(setup.spec.calculationType==='contract'&&quoteCurrency&&quoteCurrency!==setup.spec.accountCurrency){
   try{fxSnapshot=await getFxSnapshot(quoteCurrency,setup.spec.accountCurrency);quoteToAccount=fxSnapshot.rate;}
   catch(error){await telegramSend(token,chatId,`Conversion ${quoteCurrency} → ${setup.spec.accountCurrency} indisponible : ${error.message}. La position n’a pas été enregistrée.`);return false;}
  }
@@ -112,7 +115,7 @@ async function finishSetup(token,chatId,userId,setup){
  const orderType=String(scenario.order_type||(scenario.direction==='BUY'?'BUY MARKET':'SELL MARKET')).toUpperCase();
  const entryLabel=orderType.endsWith('STOP LIMIT')?`Déclenchement : ${scenario.trigger_price??'—'} · Limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' STOP')?`Déclenchement : ${scenario.trigger_price??scenario.entry_confirmation_price??scenario.entry}`:orderType.endsWith(' LIMIT')?`Limite : ${scenario.limit_price??scenario.entry_confirmation_price??scenario.entry}`:`Référence IA M5 : ${scenario.entry_confirmation_price??scenario.entry??'—'} · Prix réel saisi : ${setup.actualEntryPrice??'non renseigné — référence M5 utilisée'}`;
  const brokerSnapshot={accountCurrency:spec.accountCurrency,leverage:spec.leverage};
- const preferences=await getPreferences(userId);const brokerSpec={...spec};delete brokerSpec.actualEntryPrice;const brokerSpecs={...(preferences.broker_specs||{}),[scenario.instrument]:{...brokerSpec}};await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
+ const preferences=await getPreferences(userId);const brokerSpec={...spec};delete brokerSpec.actualEntryPrice;const brokerKey=canonicalBrokerInstrumentKey(scenario.instrument),legacyLabel=MARKET_INSTRUMENTS[brokerKey]?.label;const brokerSpecs={...(preferences.broker_specs||{}),[brokerKey]:{...brokerSpec}};if(scenario.instrument!==brokerKey)delete brokerSpecs[scenario.instrument];if(legacyLabel&&legacyLabel!==brokerKey)delete brokerSpecs[legacyLabel];await rest(`user_preferences?user_id=eq.${encodeURIComponent(userId)}`,{method:'PATCH',prefer:'return=minimal',body:{preferences:{...preferences,broker_specs:brokerSpecs},updated_at:now()}});
  const result=await rest('rpc/aurevia_create_position_from_scenario',{method:'POST',body:{p_scenario_id:scenario.id,p_user_id:userId,p_mode:setup.mode,p_volume:volume,p_contract_spec:spec,p_broker_snapshot:brokerSnapshot,p_auto_journal:setup.autoJournal!==false}});
  const groupId=typeof result==='string'?result:result?.[0]?.aurevia_create_position_from_scenario||result?.aurevia_create_position_from_scenario;
  if(!groupId)throw new Error('La base n’a pas confirmé la création de la position.');

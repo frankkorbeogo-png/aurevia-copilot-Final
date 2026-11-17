@@ -288,9 +288,10 @@ function updateValidationContractFields(){
 async function validationContractSpec(ownerId=String(window.__aureviaUserId||'').trim()){
  if(!ownerId||String(window.__aureviaUserId||'').trim()!==ownerId)return null;
  const quoteCurrency=inferQuoteCurrency(pendingValidationScenario?.instrument);
+ const calculationType=$('validationCalcType').value;
  if(!accountCurrency)throw new Error('La devise du compte est absente du profil. Configurez-la dans Paramètres.');
  let quoteToAccount=1,fxSnapshot=null;
- if(quoteCurrency&&quoteCurrency!==accountCurrency){
+ if(calculationType==='contract'&&quoteCurrency&&quoteCurrency!==accountCurrency){
   const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;if(!token)throw new Error('Session expirée. Reconnectez-vous.');
   const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
   const data=await response.json().catch(()=>({}));if(String(window.__aureviaUserId||'').trim()!==ownerId)return null;if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);

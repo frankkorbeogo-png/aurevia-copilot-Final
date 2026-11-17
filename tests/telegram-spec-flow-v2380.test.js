@@ -57,3 +57,31 @@ test('Telegram refuse « M5 » comme substitut au prix réel d’exécution manu
   assert.ok(messages.some(x=>x.text?.includes('Le prix réel est obligatoire')));
  }finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}
 });
+
+test('Telegram réutilise les spécifications broker enregistrées sous la clé canonique de l’instrument',async()=>{
+ const oldFetch=globalThis.fetch,oldEnv={...process.env};
+ Object.assign(process.env,{SUPABASE_URL:'https://example.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'service',TELEGRAM_BOT_TOKEN:'bot',TELEGRAM_WEBHOOK_SECRET:'secret'});
+ let prefs={account_currency:'USD',broker_specs:{XAUUSD:{calculationType:'contract',leverage:2000,minLot:0.01,lotStep:0.01,maxLot:null,contractSize:100,feesPerLot:0}}};
+ const scenario={id:'scenario-1',instrument:'XAU/USD',direction:'BUY',entry:4000,last_price_at:new Date().toISOString(),stop_loss:3990,take_profits:[4010],lot_confirmation_expires_at:new Date(Date.now()+600000).toISOString(),trade_group_id:null};
+ let messages=[];
+ globalThis.fetch=async(input,options={})=>{
+  const url=String(input);
+  if(url.includes('/rpc/aurevia_telegram_access_status'))return response({allowed:true,status:'trial'});
+  if(url.includes('/rest/v1/telegram_connections'))return response([{user_id:'user-1'}]);
+  if(url.includes('/rest/v1/user_preferences')){if(options.method==='PATCH'){prefs=JSON.parse(options.body).preferences;return response({},200);}return response([{preferences:prefs}]);}
+  if(url.includes('/rest/v1/aurevia_analysis_scenarios'))return response([scenario]);
+  if(url.includes('api.telegram.org')){messages.push(JSON.parse(options.body));return response({ok:true,result:{message_id:1}});}
+  throw new Error('Unexpected URL '+url);
+ };
+ try{
+  await handler(callback('start:ABCD1234:unique'));
+  assert.equal(prefs.telegram_trade_setup.spec.contractSize,100);
+  await handler(message('0.05'));
+  assert.equal(prefs.telegram_trade_setup.step,'actualEntryPrice');
+  await handler(message('4000'));
+  assert.equal(prefs.telegram_trade_setup.step,'review');
+  assert.ok(messages.some(x=>x.text?.includes('Taille du contrat : 100')));
+  assert.ok(!messages.some(x=>x.text?.includes('Quelle est la taille du contrat')));
+  assert.ok(!messages.some(x=>x.text?.includes('Quel est ton levier')));
+ }finally{globalThis.fetch=oldFetch;for(const k of Object.keys(process.env))if(!(k in oldEnv))delete process.env[k];Object.assign(process.env,oldEnv);}
+});
