@@ -2,38 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const [auth,app,html]=await Promise.all([
- readFile(new URL('../auth.js',import.meta.url),'utf8'),
+const [app,html]=await Promise.all([
  readFile(new URL('../app.js',import.meta.url),'utf8'),
  readFile(new URL('../index.html',import.meta.url),'utf8')
 ]);
 
-test('les paramètres de gestion du compte sont persistés par utilisateur dans user_preferences',()=>{
- assert.match(auth,/loadRiskManagementSettings\(expectedUserId=null\)/);
- assert.match(auth,/saveRiskManagementSettings\(settings,expectedUserId=null\)/);
- assert.match(auth,/risk_management:clean/);
- assert.match(auth,/\.eq\('user_id',userId\)/);
- assert.match(auth,/raw_ecn/);
+test('le panneau equity, drawdown et limites de pertes est retiré de Gestion du capital',()=>{
+ for(const id of ['riskAccountControls','riskEquity','riskMarginUsed','riskPeakEquity','riskDailyLossLimit','riskWeeklyLossLimit','riskFreeMarginOut','riskDailyPnlOut','riskDailyRemainingOut','riskWeeklyPnlOut','riskWeeklyRemainingOut','riskDrawdownOut','saveRiskControls'])assert.ok(!html.includes('id="'+id+'"'),'panneau supprimé : '+id);
+ assert.doesNotMatch(html,/Suivi de l’equity et des limites|Limite de perte quotidienne|Limite de perte hebdomadaire|Drawdown depuis le pic/);
 });
 
-test('le gestionnaire expose broker, type, equity, marge, levier, drawdown et limites de pertes',()=>{
- for(const id of ['riskBrokerName','riskAccountType','accountBalance','accountCurrency','riskEquity','riskMarginUsed','riskLeverage','riskPeakEquity','riskDailyLossLimit','riskWeeklyLossLimit','riskFreeMarginOut','riskDailyPnlOut','riskDailyRemainingOut','riskWeeklyPnlOut','riskWeeklyRemainingOut','riskDrawdownOut','saveRiskControls']){
-  assert.ok(html.includes('id="'+id+'"'),'champ manquant: '+id);
- }
- assert.doesNotMatch(html,/id="accountBalance"[^>]*value="200"/);
- assert.match(html,/P\/L de ces limites repose sur les clôtures enregistrées, pas sur le P\/L flottant/);
+test('le calculateur de risque et les paramètres broker centralisés restent disponibles',()=>{
+ assert.ok(html.includes('id="riskInstrument"'));
+ assert.ok(html.includes('id="riskAmount"'));
+ assert.ok(html.includes('id="slDistance"'));
+ assert.ok(html.includes('id="calculateRisk"'));
+ assert.ok(html.includes('id="riskBrokerProfileStatus"'));
+ assert.match(app,/calculatePositionRisk\(/);
+ assert.match(app,/applyRiskBrokerProfile\(/);
+ assert.doesNotMatch(app,/renderRiskControls|refreshRiskManagement|saveRiskControls|calculateRiskControls/);
 });
 
-test('les résultats journaliers et hebdomadaires sont calculés depuis les clôtures enregistrées et le journal manuel',()=>{
- assert.match(app,/function getRiskPeriodPnl\(\)/);
- assert.match(app,/close\.net\?\?close\.pnl\?\.net/);
- assert.match(app,/loadJournalTrades\(\)/);
- assert.match(app,/Africa\/Ouagadougou/);
- assert.match(app,/calculateRiskControls\(/);
-});
-
-test('les paramètres sont chargés après connexion et enregistrés avec contrôle du compte actif',()=>{
- assert.match(app,/refreshRiskManagement\(\)/);
- assert.match(app,/saveRiskManagementSettings\([\s\S]*?ownerId\)/);
- assert.match(app,/riskPeakEquity/);
+test('les paramètres broker restent dans Paramètres et ne sont pas redemandés dans Capital ou Positions',()=>{
+ const settingsStart=html.indexOf('<section class="panel" id="brokerProfileSettings">');
+ const settingsEnd=html.indexOf('</section>',settingsStart);
+ const capitalStart=html.indexOf('data-page-view="risque"'),capitalEnd=html.indexOf('data-page-view="journal"',capitalStart);
+ const positionsStart=html.indexOf('data-page-view="positions"'),positionsEnd=html.indexOf('data-page-view="validation-trade"',positionsStart);
+ const settings=html.slice(settingsStart,settingsEnd),capital=html.slice(capitalStart,capitalEnd),positions=html.slice(positionsStart,positionsEnd);
+ assert.ok(settings.includes('id="riskBrokerName"'));
+ assert.ok(settings.includes('id="brokerProfileInstrument"'));
+ assert.ok(!capital.includes('id="riskBrokerName"'));
+ assert.ok(!capital.includes('id="riskAccountType"'));
+ assert.ok(!positions.includes('id="posBrokerName"'));
+ assert.ok(!positions.includes('id="posAccountType"'));
 });
