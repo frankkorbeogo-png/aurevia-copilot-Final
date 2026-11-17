@@ -19,7 +19,7 @@ test('global news distinguishes source observation time from publisher publicati
  assert.match(schemaSql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);
  assert.match(schemaSql,/alter column published_at drop not null/);
  assert.match(schemaSql,/global_news_events_seen_idx/);
- assert.match(cleanupSql,/set published_at = null/i);assert.match(cleanupSql,/source_provider = 'GDELT DOC 2\\.0'/i);
+ assert.ok(cleanupSql.toLowerCase().includes('set published_at = null'));assert.ok(cleanupSql.includes("source_provider = 'GDELT DOC 2.0'"));
 });
 
 
