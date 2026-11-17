@@ -190,10 +190,17 @@ function mountTickerTape(){
   script.text=JSON.stringify({symbols:[
     {proName:'OANDA:XAUUSD',title:'Or / USD'},{proName:'OANDA:XAGUSD',title:'Argent / USD'},
     {proName:'OANDA:EURUSD',title:'EUR/USD'},{proName:'OANDA:GBPUSD',title:'GBP/USD'},
-    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'OANDA:EURGBP',title:'EUR/GBP'},
-    {proName:'OANDA:GBPJPY',title:'GBP/JPY'},{proName:'TVC:DXY',title:'Dollar Index'},
-    {proName:'BITSTAMP:BTCUSD',title:'Bitcoin'},{proName:'BITSTAMP:ETHUSD',title:'Ethereum'},
-    {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:AAPL',title:'Apple'}
+    {proName:'OANDA:USDJPY',title:'USD/JPY'},{proName:'OANDA:AUDUSD',title:'AUD/USD'},
+    {proName:'OANDA:USDCAD',title:'USD/CAD'},{proName:'OANDA:USDCHF',title:'USD/CHF'},
+    {proName:'OANDA:NZDUSD',title:'NZD/USD'},{proName:'OANDA:EURGBP',title:'EUR/GBP'},
+    {proName:'OANDA:EURJPY',title:'EUR/JPY'},{proName:'OANDA:GBPJPY',title:'GBP/JPY'},
+    {proName:'OANDA:EURAUD',title:'EUR/AUD'},{proName:'OANDA:EURCHF',title:'EUR/CHF'},
+    {proName:'OANDA:GBPAUD',title:'GBP/AUD'},{proName:'OANDA:AUDJPY',title:'AUD/JPY'},
+    {proName:'BITSTAMP:BTCUSD',title:'BTC/USD'},{proName:'BITSTAMP:ETHUSD',title:'ETH/USD'},
+    {proName:'COINBASE:SOLUSD',title:'SOL/USD'},{proName:'BITSTAMP:XRPUSD',title:'XRP/USD'},
+    {proName:'NASDAQ:AAPL',title:'Apple'},{proName:'NASDAQ:MSFT',title:'Microsoft'},
+    {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:TSLA',title:'Tesla'},
+    {proName:'NASDAQ:AMZN',title:'Amazon'},{proName:'TVC:DXY',title:'Dollar Index'}
   ],showSymbolLogo:true,isTransparent:true,displayMode:'adaptive',colorTheme:'dark',locale:'fr'});
   const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';
   const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';wrapper.append(widget,script);
