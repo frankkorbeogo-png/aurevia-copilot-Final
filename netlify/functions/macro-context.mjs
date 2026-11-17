@@ -76,7 +76,7 @@ async function fetchDxy(){
   }catch{}
  }
  try{const value=await fetchYahooIceDollarIndex();dxyCache={at:Date.now(),value};return value;}
- catch(error){return {...(rejectedTwelveData||{}),configured:false,available:Boolean(rejectedTwelveData?.available),symbol:'DXY',source:rejectedTwelveData?'Twelve Data (cotation rejetée)':'ICE Dollar Index',notice:'DXY indisponible via Twelve Data et flux ICE futures de secours : '+String(error.message||error).slice(0,180),usableForDirectionalBias:false};}
+ catch(error){return {...(rejectedTwelveData||{}),configured:Boolean(rejectedTwelveData),available:Boolean(rejectedTwelveData?.available),symbol:'DXY',source:rejectedTwelveData?'Twelve Data (cotation rejetée)':'ICE Dollar Index',notice:'DXY indisponible via Twelve Data et flux ICE futures de secours : '+String(error.message||error).slice(0,180),usableForDirectionalBias:false};}
 }
 async function fetchGlobalNews(){
  const base=(process.env.SUPABASE_URL||'').replace(/\/$/,'');
