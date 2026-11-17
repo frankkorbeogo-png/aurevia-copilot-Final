@@ -33,3 +33,13 @@ test('refuse un prix nul ou invalide',()=>{
  const now=Date.now(),q={...base(now),price:0};
  assert.equal(validateMarketQuote(q,{now}).ok,false);
 });
+
+test('affiche la dernière clôture vérifiée hors séance sans la présenter comme récente',()=>{
+ const now=Date.now(),q={...base(now),asOf:new Date(now-8*60*60*1000).toISOString(),freshness:'last_close',marketOpen:false,displayLabel:'Dernière cotation disponible'};
+ const result=validateMarketQuote(q,{now});
+ assert.equal(result.ok,true);assert.equal(result.freshness,'last_close');assert.equal(result.marketOpen,false);
+});
+test('refuse une dernière clôture trop ancienne pour être affichée',()=>{
+ const now=Date.now(),q={...base(now),asOf:new Date(now-8*24*60*60*1000).toISOString(),freshness:'last_close'};
+ assert.equal(validateMarketQuote(q,{now}).ok,false);
+});
