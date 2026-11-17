@@ -1155,11 +1155,16 @@ function updateLicenseGate(state){
   else if(state?.status==='revoked')status.textContent='Cette licence a été révoquée. Contactez le support KOMI Group.';
   else status.textContent=state?.message||'Le statut de votre licence ne peut pas être vérifié pour le moment.';
  }
- const trial=$('licenseTrialInfo');
+ const trial=$('licenseTrialInfo'),settingsStatus=$('settingsLicenseStatus');
  if(trial){
   if(state?.status==='trial'&&state.trial_expires_at)trial.textContent=`Démo gratuite active jusqu’au ${new Date(state.trial_expires_at).toLocaleString('fr-FR')} · ${state.days_remaining??'—'} jour(s) restant(s).`;
   else if(state?.status==='licensed')trial.textContent=state.plan==='admin'?'Accès administrateur KOMI Group.':`Licence active${state.expires_at?' jusqu’au '+new Date(state.expires_at).toLocaleDateString('fr-FR'): ' sans date d’expiration'}.`;
   else if(state?.status)trial.textContent=`Statut de licence : ${state.status}.`;
+ }
+ if(settingsStatus){
+  if(state?.status==='trial')settingsStatus.textContent='Démo active · vous pouvez saisir une clé dès maintenant pour activer votre licence.';
+  else if(state?.status==='licensed')settingsStatus.textContent='Licence active'+(state.expires_at?' jusqu’au '+new Date(state.expires_at).toLocaleDateString('fr-FR'):'.');
+  else settingsStatus.textContent=state?.message||'Saisissez votre clé de licence pour activer votre accès.';
  }
 }
 async function activateUserLicense(inputId='licenseKeyInput',buttonId='activateLicenseBtn',statusId='licenseGateStatus'){
