@@ -1029,7 +1029,7 @@ function bindEvents(){
       const instrument=$('riskInstrument').value,brokerSpec=await applyRiskBrokerProfile(instrument,String(window.__aureviaUserId||'').trim()),quoteCurrency=inferQuoteCurrency(instrument);
       if(!quoteCurrency)throw new Error('Devise de cotation inconnue pour cet instrument : conversion du risque impossible.');
       let quoteToAccount=1;
-      if(quoteCurrency!==accountCurrency){
+      if(brokerSpec.calculationType==='contract'&&quoteCurrency!==accountCurrency){
         const token=await getAnalysisAccessToken();if(!token)throw new Error('Session expirée. Reconnectez-vous pour récupérer le taux de conversion.');
         const response=await fetch(`/api/fx-rate?from=${encodeURIComponent(quoteCurrency)}&to=${encodeURIComponent(accountCurrency)}`,{headers:{authorization:`Bearer ${token}`},cache:'no-store'});
         const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`Conversion ${quoteCurrency} → ${accountCurrency} indisponible.`);
