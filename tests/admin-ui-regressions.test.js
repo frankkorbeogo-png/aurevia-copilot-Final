@@ -17,7 +17,7 @@ test('broker settings save functions are imported and setup notice reflects both
  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
  assert.match(app,/loadRiskManagementSettings, saveRiskManagementSettings/);
  assert.ok(app.includes('loadBrokerSettings(select.value,ownerId),loadRiskManagementSettings(ownerId)'));
- assert.match(app,/Boolean\\(spec&&brokerAccount\\?\\.brokerName\\)/);
+ assert.ok(app.includes('Boolean(spec&&brokerAccount?.brokerName)'));
  assert.match(html,/id="tradingConfigNotice"/);
  assert.match(html,/id="accountCurrencyNotice"/);
 });
