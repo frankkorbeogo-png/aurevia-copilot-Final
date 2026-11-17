@@ -96,7 +96,7 @@ test('manual fill corrections update the real entry price in Supabase without br
  const {readFile}=await import('node:fs/promises');
  const auth=await readFile(new URL('../auth.js',import.meta.url),'utf8');
  const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
- const sql=await readFile(new URL('../supabase/migrations/20261116191000_aurevia_update_manual_fill_price.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141503_aurevia_update_manual_fill_price.sql',import.meta.url),'utf8');
  assert.match(auth,/aurevia_update_actual_fill_price/);
  assert.match(app,/syncActualFillPriceToSupabase/);
  assert.match(sql,/ACTUAL_FILL_PRICE_OUTSIDE_SL_TP/);
@@ -105,7 +105,7 @@ test('manual fill corrections update the real entry price in Supabase without br
 
 test('unique group stores one actual fill price for open and pending TP children',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261116192500_aurevia_unique_pending_actual_fill.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141507_aurevia_unique_pending_actual_fill.sql',import.meta.url),'utf8');
  assert.match(sql,/status in \('OPEN','PENDING'\)/);
  assert.match(sql,/actual_entry_price=p_actual_entry_price/);
  assert.match(sql,/status='OPEN' then p_actual_entry_price else entry_price end/);
@@ -136,7 +136,7 @@ test('une position unique active tous ses TP enfants après confirmation du prix
 });
 test('la RPC de correction du prix réel active ensemble les TP enfants uniques encore en attente',async()=>{
  const {readFile}=await import('node:fs/promises');
- const sql=await readFile(new URL('../supabase/migrations/20261116195000_aurevia_activate_unique_group_on_fill.sql',import.meta.url),'utf8');
+ const sql=await readFile(new URL('../supabase/migrations/20261117141515_aurevia_activate_unique_group_on_fill.sql',import.meta.url),'utf8');
  assert.match(sql,/status='OPEN'/);
  assert.match(sql,/status in \('OPEN','PENDING'\)/);
  assert.match(sql,/activated_at=coalesce\(activated_at,now\(\)\)/);

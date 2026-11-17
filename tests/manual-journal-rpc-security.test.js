@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const migration=await readFile(new URL('../supabase/migrations/20261116221000_aurevia_manual_journal_rpcs_security_invoker.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261117141523_aurevia_manual_journal_rpcs_security_invoker.sql',import.meta.url),'utf8');
 
 test('les RPC du journal manuel s’appuient sur RLS au lieu de contourner les politiques',()=>{
   assert.match(migration,/aurevia_sync_manual_journal\(jsonb\)[\s\S]*?SECURITY INVOKER/);

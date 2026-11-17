@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const migration = await readFile(new URL('../supabase/migrations/20261116154433_global_news_seen_at.sql', import.meta.url), 'utf8');
-const cleanup = await readFile(new URL('../supabase/migrations/20261116230400_aurevia_gdelt_publication_date_cleanup.sql', import.meta.url), 'utf8');
+const cleanup = await readFile(new URL('../supabase/migrations/20261117141541_aurevia_gdelt_publication_date_cleanup.sql', import.meta.url), 'utf8');
 const sync = await readFile(new URL('../netlify/functions/global-news-sync.mjs', import.meta.url), 'utf8');
 const macro = await readFile(new URL('../netlify/functions/macro-context.mjs', import.meta.url), 'utf8');
 

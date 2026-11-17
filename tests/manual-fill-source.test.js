@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
-const migration=await readFile(new URL('../supabase/migrations/20261116230300_aurevia_enforce_manual_fill_source.sql',import.meta.url),'utf8');
+const migration=await readFile(new URL('../supabase/migrations/20261117141538_aurevia_enforce_manual_fill_source.sql',import.meta.url),'utf8');
 
 test('la RPC SQL refuse un prix M5 comme substitut au prix réel manuel',()=>{
  assert.match(migration,/if not v_pending and \(v_actual_entry is null or v_actual_entry<=0\)/);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {buildOfficialFomcEvents} from '../netlify/functions/global-news-sync.mjs';
 
-const cleanup=await readFile(new URL('../supabase/migrations/20261116230100_aurevia_retire_invalid_fred_fomc_dates.sql',import.meta.url),'utf8');
+const cleanup=await readFile(new URL('../supabase/migrations/20261117141530_aurevia_retire_invalid_fred_fomc_dates.sql',import.meta.url),'utf8');
 
 test('le calendrier officiel publie les minutes du FOMC le 18 novembre 2026, pas une décision quotidienne',()=>{
  const events=buildOfficialFomcEvents(new Date('2026-11-16T12:00:00.000Z'));
