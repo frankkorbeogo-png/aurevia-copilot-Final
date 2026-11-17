@@ -63,6 +63,7 @@ async function fetchFrame(symbol,interval){
  const data=await r.json().catch(()=>({}));
  if(r.status===429){retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);const limited=new Error(data.error||'Limite de requêtes atteinte. Réessayez dans une minute.');limited.code='MARKET_RATE_LIMIT';limited.retryAfterSeconds=Number(data.retryAfterSeconds)||60;throw limited;}
  if(!r.ok)throw new Error(data.error||`Flux de marché indisponible (HTTP ${r.status}).`);
+ if(data.providerCode==='TWELVEDATA_QUOTA'||data.code==='TWELVEDATA_QUOTA')retryAfter.set(symbol,Date.now()+ANALYSIS_COOLDOWN_MS);
  if(data.stale===true)throw new Error(`Cache OHLC périmé (${data.staleAgeSeconds??'?'} s) : données conservées pour diagnostic uniquement, interdites pour l’analyse.`);
  const fetchedAt=Date.parse(data.fetchedAt||''),fetchAge=Date.now()-fetchedAt;
  if(!Number.isFinite(fetchedAt)||fetchAge<0||fetchAge>120000)throw new Error('Horodatage de récupération OHLC absent ou trop ancien.');
