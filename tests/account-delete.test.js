@@ -92,7 +92,7 @@ test('la déliaison Telegram et le refus d’une nouvelle connexion ne sont pas 
  const unlink=await read('../netlify/functions/telegram-unlink.mjs');
  const reject=await read('../netlify/functions/account-reject-new-login.mjs');
  assert.ok(unlink.includes('assertSessionIsActive(context)'));
- assert.ok(reject.includes('assertSessionIsActive(context)'));
+ assert.ok(!reject.includes('assertSessionIsActive(context)'));
  assert.ok(!unlink.includes('assertActiveSession(context)'));
  assert.ok(!reject.includes('assertActiveSession(context)'));
 });

@@ -15,6 +15,7 @@ const symbols = Object.fromEntries(Object.entries(MARKET_INSTRUMENTS).map(([id,i
 let selectedSymbol='XAUUSD', selectedTf='15';
 let accountCurrency=null;
 let tradingViewMountToken=0, tradingViewRetryTimer=null, tradingViewResizeObserver=null;
+let economicCalendarCleanup=null;
 let deferredInstallPrompt=null;
 
 const TRADE_SYNC_QUEUE_KEY='aurevia-cloud-sync-retry-v1';
@@ -910,7 +911,8 @@ function bindEvents(){
   window.addEventListener('aurevia:localownerchange',()=>{accountCurrency=null;if($('profileAccountCurrency'))$('profileAccountCurrency').value='';if($('accountCurrency'))$('accountCurrency').value='À configurer dans Paramètres';if($('accountCurrencyNotice'))$('accountCurrencyNotice').hidden=false;if($('tradingConfigNotice'))$('tradingConfigNotice').hidden=false;if($('accountCurrencyStatus'))$('accountCurrencyStatus').textContent='Chargement de la devise du compte…';if($('brokerProfileStatus'))$('brokerProfileStatus').textContent='Chargement des paramètres techniques…';['brokerProfileLeverage','brokerProfileMaxLot','brokerProfileContractSize','brokerProfilePointSize','brokerProfilePointValue','brokerProfileTickSize','brokerProfileTickValue'].forEach(id=>{if($(id))$(id).value='';});if($('brokerProfileCalculationType'))$('brokerProfileCalculationType').value='contract';if($('brokerProfileMinLot'))$('brokerProfileMinLot').value='0.01';if($('brokerProfileLotStep'))$('brokerProfileLotStep').value='0.01';if($('brokerProfileFees'))$('brokerProfileFees').value='0';updateBrokerProfileFields();if($('telegramConnectionStatus'))$('telegramConnectionStatus').textContent='Chargement des préférences Telegram…';if($('telegramChatId'))$('telegramChatId').value='';if($('telegramPairCode'))$('telegramPairCode').textContent='Aucun code généré.';if($('telegramPairStatus'))$('telegramPairStatus').textContent='Aucune liaison Telegram chargée.';['saveTelegramPrefs','sendTelegramTest','unlinkTelegramAccount'].forEach(id=>{if($(id))$(id).disabled=true;});if($('notifyAll'))$('notifyAll').checked=false;if($('notifySignals'))$('notifySignals').checked=true;if($('notifyEconomic'))$('notifyEconomic').checked=false;if($('notifyProductAnnouncements'))$('notifyProductAnnouncements').checked=false;announcementCache=[];announcementFilter='all';renderAnnouncements();if($('announcementStatus'))$('announcementStatus').textContent='Chargement des annonces…';if($('scenarioWatchList'))$('scenarioWatchList').innerHTML='<div class="empty-cell">Chargement des scénarios du compte…</div>';pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;if($('validationScenarioTitle'))$('validationScenarioTitle').textContent='Aucun scénario sélectionné';if($('validationScenarioStatus'))$('validationScenarioStatus').textContent='En attente';if($('validationScenarioLevels'))$('validationScenarioLevels').innerHTML='<span>Instrument <b>—</b></span><span>Direction <b>—</b></span><span>Type d’ordre <b>—</b></span><span>Prix proposé par l’IA M5 <b>—</b></span><span>Stop Loss <b>—</b></span><span>Take Profits <b>—</b></span>';if($('validationTradeStatus'))$('validationTradeStatus').textContent='En attente de votre validation manuelle.';initJournal();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();restoreMyAnalysis();restoreScenarioDraft();});
   window.addEventListener('aurevia:authchange',async event=>{if(!window.__aureviaAuthenticated)return;const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const wasBooted=authenticatedBooted;if(event.detail?.event==='SIGNED_IN'&&wasBooted)window.dispatchEvent(new CustomEvent('aurevia:localownerchange',{detail:{userId:ownerId}}));const access=await refreshLicenseAccess(ownerId);if(String(window.__aureviaUserId||'').trim()!==ownerId||!access)return;bootAuthenticatedApp();refreshAccountCurrency();refreshBrokerProfile();refreshTelegramHomeNotice();loadTelegramUi();loadAnalysis();loadAnnouncements();if(event.detail?.event==='SIGNED_IN'&&wasBooted){pendingValidationScenario=null;if($('validationTradeNav'))$('validationTradeNav').hidden=true;initJournal();restoreMyAnalysis();restoreScenarioDraft();renderJournal();renderJournalStats();renderPositions();renderLinkedJournal();try{const synced=await syncManualJournalToSupabase(loadJournalTrades(),ownerId);if(String(window.__aureviaUserId||'').trim()===ownerId&&synced.reason!=='account_changed'){mergeJournalTrades(synced.entries);renderJournal();renderJournalStats();}}catch(error){console.warn('Synchronisation du journal après changement de compte différée :',error.message);}if(String(window.__aureviaUserId||'').trim()===ownerId)await refreshScenarioWatchList();}if(event.detail?.event==='SIGNED_IN'||event.detail?.event==='INITIAL_SESSION'){try{const restored=await restoreTradeGroupsFromSupabase(String(window.__aureviaUserId||''));if(restored.restored){mergeRestoredTradeGroups(restored.groups,restored.journal);renderPositions();renderLinkedJournal();renderJournal();renderJournalStats();}}catch(error){console.warn('Restauration cloud AUREVIA indisponible :',error.message);}}});
   window.addEventListener('aurevia:licensechange',event=>updateLicenseGate(event.detail));
-  $('activateLicenseBtn')?.addEventListener('click',activateUserLicense);
+  $('activateLicenseBtn')?.addEventListener('click',()=>activateUserLicense('licenseKeyInput','activateLicenseBtn','licenseGateStatus'));
+  $('settingsActivateLicenseBtn')?.addEventListener('click',()=>activateUserLicense('settingsLicenseKeyInput','settingsActivateLicenseBtn','settingsLicenseStatus'));
   $('adminIssueLicenses')?.addEventListener('click',issueAdminLicenses);
   $('adminRefreshLicenses')?.addEventListener('click',loadAdminLicenses);
   window.addEventListener('aurevia:adminchange',event=>{
@@ -938,6 +940,8 @@ function bindEvents(){
     document.querySelectorAll('[data-page]').forEach(a=>a.classList.toggle('active',a.dataset.page===page));
     $('sidebar').classList.remove('open');
     if(page==='marches'){mountTradingView();mountDxyChart();mountTickerTape();}
+    if(economicCalendarCleanup&&page!=='actualites'){economicCalendarCleanup();economicCalendarCleanup=null;}
+    if(page==='actualites'){if(economicCalendarCleanup)economicCalendarCleanup();economicCalendarCleanup=initEconomicCalendar($('calendarStandalone'),getAnalysisAccessToken);}
     if(page==='positions')renderPositions();
     if(page==='dxy'){mountStandaloneDxy();refreshDxyOverview();}
     if(page==='telegram'){loadTelegramUi();refreshTelegramHomeNotice();}
@@ -1151,15 +1155,20 @@ function updateLicenseGate(state){
   else if(state?.status==='revoked')status.textContent='Cette licence a été révoquée. Contactez le support KOMI Group.';
   else status.textContent=state?.message||'Le statut de votre licence ne peut pas être vérifié pour le moment.';
  }
- const trial=$('licenseTrialInfo');
+ const trial=$('licenseTrialInfo'),settingsStatus=$('settingsLicenseStatus');
  if(trial){
   if(state?.status==='trial'&&state.trial_expires_at)trial.textContent=`Démo gratuite active jusqu’au ${new Date(state.trial_expires_at).toLocaleString('fr-FR')} · ${state.days_remaining??'—'} jour(s) restant(s).`;
   else if(state?.status==='licensed')trial.textContent=state.plan==='admin'?'Accès administrateur KOMI Group.':`Licence active${state.expires_at?' jusqu’au '+new Date(state.expires_at).toLocaleDateString('fr-FR'): ' sans date d’expiration'}.`;
   else if(state?.status)trial.textContent=`Statut de licence : ${state.status}.`;
  }
+ if(settingsStatus){
+  if(state?.status==='trial')settingsStatus.textContent='Démo active · vous pouvez saisir une clé dès maintenant pour activer votre licence.';
+  else if(state?.status==='licensed')settingsStatus.textContent='Licence active'+(state.expires_at?' jusqu’au '+new Date(state.expires_at).toLocaleDateString('fr-FR'):'.');
+  else settingsStatus.textContent=state?.message||'Saisissez votre clé de licence pour activer votre accès.';
+ }
 }
-async function activateUserLicense(){
- const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$('activateLicenseBtn'),input=$('licenseKeyInput'),status=$('licenseGateStatus');
+async function activateUserLicense(inputId='licenseKeyInput',buttonId='activateLicenseBtn',statusId='licenseGateStatus'){
+ const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;const button=$(buttonId),input=$(inputId),status=$(statusId);
  const key=String(input?.value||'').trim().toUpperCase();
  if(!key){if(status)status.textContent='Saisissez votre clé de licence.';return;}
  const token=await getAnalysisAccessToken();if(String(window.__aureviaUserId||'').trim()!==ownerId)return;if(!token){if(status)status.textContent='Reconnectez-vous pour activer votre licence.';return;}

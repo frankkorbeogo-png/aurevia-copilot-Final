@@ -16,3 +16,13 @@ test('les boutons de connexion sont liés avant la restauration de session Supab
  assert.ok(init.indexOf("bindGoogleAuth('googleSignupGateBtn','signup')")<init.indexOf('supabase.auth.getSession()'));
  assert.match(init,/button\.dataset\.authBound==='1'/);
 });
+
+test('la création de compte exige la case de confidentialité et enregistre le reçu côté serveur',async()=>{
+ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+ const endpoint=await readFile(new URL('../netlify/functions/privacy-consent.mjs',import.meta.url),'utf8');
+ const session=await readFile(new URL('../netlify/functions/session-api.mjs',import.meta.url),'utf8');
+ assert.match(html,/data-privacy-consent/);assert.match(auth,/Pour créer votre compte, cochez d’abord la case/);
+ assert.match(auth,/recordSignupPrivacyConsent\(session\)/);assert.match(auth,/privacyPolicyVersion:mode==='signup'\?'2026-11-17':null/);
+ assert.match(endpoint,/privacy_policy_acceptances/);assert.match(endpoint,/google_oauth_pre_signup/);
+ assert.match(session,/CONSENT_REQUIRED/);assert.match(session,/privacy_policy_acceptances/);
+});

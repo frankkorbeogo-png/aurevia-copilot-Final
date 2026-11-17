@@ -700,3 +700,7 @@ body.auth-required>header,body.auth-required>aside,body.auth-required>main{visib
 @media(max-width:640px){.economic-events-grid{font-size:.78rem}.economic-events-grid th,.economic-events-grid td{padding:8px}.dxy-overview{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .calendar-tv-source-link{display:inline-flex;margin-top:10px;color:var(--accent,#c5a2ff);font-size:.82rem;text-decoration:underline;text-underline-offset:3px}
+
+
+/* Consentement obligatoire et activation visible dans les paramètres. */
+.privacy-consent{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;margin:12px 0;border:1px solid rgba(166,135,255,.42);border-radius:12px;background:rgba(100,72,170,.12);color:var(--text,#f2efff);font-size:.92rem;line-height:1.45;cursor:pointer}.privacy-consent input{flex:0 0 auto;width:18px;height:18px;margin:2px 0 0;accent-color:#9d7bff}.privacy-policy-inline{margin:8px 0 14px;padding:0 14px;color:var(--muted,#b9b4cb);font-size:.85rem}.privacy-policy-inline summary{cursor:pointer;color:#c8b8ff;font-weight:600}.privacy-policy-inline div{padding:10px 0;line-height:1.55}.settings-license-panel{margin:16px;padding:16px}.settings-license-panel h3{margin:0}.settings-license-panel label{display:block;margin:10px 0 6px}.settings-license-panel input{width:100%;margin-bottom:10px}

@@ -40,3 +40,19 @@ test('la porte de connexion annonce Google OAuth uniquement, sans mot de passe A
  assert.match(s,/signInWithOAuth\(\{provider:'google'/);
  assert.doesNotMatch(h,/id=["'](?:password|aureviaPassword)["']/i);
 });
+
+test('une session mémorisée révoquée ne peut pas restaurer l’accès après suppression administrative',async()=>{
+ const s=await read('auth.js');
+ assert.match(s,/forgetAccountSession\(email\)/);
+ assert.match(s,/error\.status===401\|\|error\.status===404/);
+ assert.match(s,/Si l’administrateur a supprimé votre compte, choisissez « Créer un compte »/);
+ assert.match(s,/localStorage\.removeItem\('aurevia_active_session_id'\)/);
+});
+
+test('un compte révoqué par suppression administrative est présenté comme devant être recréé',async()=>{
+ const s=await read('auth.js');
+ assert.match(s,/aurevia_signup_required_v1/);
+ assert.match(s,/Compte supprimé · Créer un compte/);
+ assert.match(s,/googleAuthStarter\?\.\(login,'signup',account\.email\)/);
+ assert.match(s,/markSignupRequired\(email,true\)/);
+});

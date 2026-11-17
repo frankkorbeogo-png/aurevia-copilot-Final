@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {handler} from '../netlify/functions/privacy-consent.mjs';
+const USER='3ed0c702-03f1-4264-9e85-746d66401b51',SESSION='9bd61c1d-98a8-4b13-92bb-8796f8d0a9b0';
+const token=`header.${Buffer.from(JSON.stringify({sub:USER,session_id:SESSION})).toString('base64url')}.signature`;
+const env=()=>{process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service';process.env.SUPABASE_PUBLISHABLE_KEY='publishable';};
+const cleanup=()=>{for(const k of ['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','SUPABASE_PUBLISHABLE_KEY'])delete process.env[k];};
+const parse=r=>JSON.parse(r.body);
+test('privacy-consent enregistre le reçu versionné côté serveur après authentification',async()=>{const old=globalThis.fetch;env();let inserted=null;globalThis.fetch=async(url,options={})=>{const u=String(url);if(u.includes('/auth/v1/user'))return new Response(JSON.stringify({id:USER,email:'user@example.com'}),{status:200});if(u.includes('/rest/v1/privacy_policy_acceptances')){inserted=JSON.parse(options.body);return new Response(JSON.stringify([{accepted_at:'2026-11-17T18:01:00Z'}]),{status:201});}return new Response('{}',{status:200});};try{const r=await handler({httpMethod:'POST',headers:{authorization:`Bearer ${token}`},body:JSON.stringify({accepted:true,policy_version:'2026-11-17'})});assert.equal(r.statusCode,200);assert.equal(parse(r).ok,true);assert.equal(inserted.user_id,USER);assert.equal(inserted.policy_version,'2026-11-17');assert.equal(inserted.acceptance_method,'google_oauth_pre_signup');}finally{globalThis.fetch=old;cleanup();}});
+test('privacy-consent refuse une version inconnue ou une acceptation absente',async()=>{const old=globalThis.fetch;env();let called=false;globalThis.fetch=async()=>{called=true;return new Response('{}',{status:200});};try{const r=await handler({httpMethod:'POST',headers:{authorization:`Bearer ${token}`},body:JSON.stringify({accepted:false,policy_version:'ancienne'})});assert.equal(r.statusCode,400);assert.equal(parse(r).code,'CONSENT_REQUIRED');assert.equal(called,false);}finally{globalThis.fetch=old;cleanup();}});

@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 const read=async f=>readFile(new URL('../'+f,import.meta.url),'utf8');
 test('le calendrier affiche TradingView directement sans attendre un endpoint tiers',async()=>{
- const s=await read('news.js');
+ const s=await read('news.js'),app=await read('app.js');
  assert.match(s,/embed-widget-events\.js/);
+ assert.match(app,/page==='actualites'[\s\S]*?initEconomicCalendar\(\$\('calendarStandalone'\),getAnalysisAccessToken\)/);
  assert.match(s,/renderTradingView|tradingview-widget-container/);
  assert.match(s,/locale:'fr'/);
  assert.match(s,/colorTheme:'dark'/);
@@ -21,5 +22,5 @@ test('le calendrier TradingView est mondial et visible dès son montage',async()
 test('le calendrier reste séparé du contexte macro',async()=>{
  const s=await read('news.js');assert.doesNotMatch(s,/api\/macro-context/);
 });
-test('le cache PWA est versionné pour la mise à jour',async()=>{const s=await read('sw.js');assert.match(s,/aurevia-shell-v2\.4\.21/);});
+test('le cache PWA est versionné pour la mise à jour',async()=>{const s=await read('sw.js');assert.match(s,/aurevia-shell-v2\.4\.22/);});
 test('la route API publique peut rester présente sans être requise par le widget',async()=>{const s=await read('netlify.toml');assert.match(s,/from = "\/api\/economic-calendar"[\s\S]*?to = "\/.netlify\/functions\/economic-calendar"/);});
