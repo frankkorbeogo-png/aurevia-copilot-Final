@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const read=async f=>readFile(new URL('../'+f,import.meta.url),'utf8');
+test('le cache OHLC est adapté à la durée de chaque unité de temps',async()=>{const s=await read('netlify/functions/market-data.mjs');assert.match(s,/CACHE_TTL_MS/);assert.match(s,/'15min':4\*60000/);assert.match(s,/'30min':8\*60000/);assert.match(s,/'4h':45\*60000/);});
+test('les requêtes OHLC identiques sont mutualisées et un quota déclenche un coupe-circuit',async()=>{const s=await read('netlify/functions/market-data.mjs');assert.match(s,/inFlight\.has\(cacheKey\)/);assert.match(s,/quotaBlockedUntil\.set\(key,Date\.now\(\)\+60000\)/);assert.match(s,/if\(now<blockedUntil\)/);});
+test('les erreurs quota ne déclenchent pas de retries fournisseur',async()=>{const s=await read('netlify/functions/market-data.mjs');assert.match(s,/failure\.code==='TWELVEDATA_QUOTA'/);assert.doesNotMatch(s,/for\s*\(let attempt=0;attempt<2/);});
+test('le DXY macro est mis en cache pour limiter les crédits',async()=>{const s=await read('netlify/functions/macro-context.mjs');assert.match(s,/DXY_CACHE_TTL_MS=5\*60\*1000/);assert.match(s,/dxyCache\.value&&Date\.now\(\)-dxyCache\.at<DXY_CACHE_TTL_MS/);});
+test('les appels de cotation ont un cache de 30 secondes et exposent le quota',async()=>{const s=await read('netlify/functions/market-quote.mjs');assert.match(s,/QUOTE_CACHE_TTL_MS=30000/);assert.match(s,/code:'TWELVEDATA_QUOTA'/);});
+test('une analyse suspendue refuse le cache OHLC périmé et temporise le quota',async()=>{const s=await read('analysis.js');assert.match(s,/data\.stale===true/);assert.match(s,/providerCode==='TWELVEDATA_QUOTA'/);assert.match(s,/retryAfter\.set\(symbol,Date\.now\(\)\+ANALYSIS_COOLDOWN_MS\)/);});
