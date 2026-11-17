@@ -72,6 +72,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/privacy-consent"
+  to = "/.netlify/functions/privacy-consent"
+  status = 200
+
+[[redirects]]
   from = "/api/session"
   to = "/.netlify/functions/session-api"
   status = 200
