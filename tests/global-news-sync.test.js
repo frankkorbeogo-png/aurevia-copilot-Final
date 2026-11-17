@@ -16,7 +16,7 @@ test('global news distinguishes source observation time from publisher publicati
  const cleanupSql=await readFile(new URL('../supabase/migrations/20261116230400_aurevia_gdelt_publication_date_cleanup.sql',import.meta.url),'utf8');
  assert.match(source,/seen_at/);assert.match(source,/published_at/);
  assert.match(schemaSql,/add column if not exists seen_at timestamptz/);
- assert.match(schemaSql,/set seen_at = coalesce\\(seen_at, published_at, created_at\\)/);
+ assert.match(schemaSql,/set seen_at = coalesce\(seen_at, published_at, created_at\)/);
  assert.match(schemaSql,/alter column published_at drop not null/);
  assert.match(schemaSql,/global_news_events_seen_idx/);
  assert.ok(cleanupSql.includes('set published_at = null')&&cleanupSql.includes("source_provider = 'GDELT DOC 2.0'"));
