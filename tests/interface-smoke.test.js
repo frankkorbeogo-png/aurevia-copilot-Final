@@ -132,7 +132,9 @@ test('le profil broker est centralisé dans Paramètres et jamais ressaisi dans 
   const settings=html.slice(settingsStart,settingsEnd);
   const capital=html.slice(capitalStart,capitalEnd);
   const positions=html.slice(positionsStart,positionsEnd);
-  assert.ok(settings.includes('id="riskBrokerName"'));
+  assert.ok(!settings.includes('id="riskBrokerName"'));
+  assert.ok(!settings.includes('id="riskAccountType"'));
+  assert.ok(!settings.includes('id="saveBrokerAccountProfile"'));
   assert.ok(settings.includes('id="brokerProfileInstrument"'));
   assert.ok(!capital.includes('id="riskBrokerName"'));
   assert.ok(!capital.includes('id="riskAccountType"'));
