@@ -37,4 +37,3 @@ export async function handler(event){
  })();
  inFlight.set(symbol,task);try{return await task;}finally{inFlight.delete(symbol);}
 }
-}
