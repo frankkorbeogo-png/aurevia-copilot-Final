@@ -9,14 +9,15 @@ const pending=[
  '20261116184406','20261116185127','20261116185500','20261116190000',
  '20261116190500','20261116191000','20261116192500','20261116193000',
  '20261116194000','20261116195000','20261116220000','20261116221000',
- '20261116223000','20261116230000','20261116230100','20261116230200','20261116230300','20261116230400','20261116230500','20261117112653'
+ '20261116223000','20261116230000','20261116230100','20261116230200','20261116230300','20261116230400','20261116230500','20261117112653','20261117112653'
 ];
 
 test('le dossier de production contient 63 migrations historiques canoniques et 20 migrations de livraison',()=>{
- assert.equal(names.length,83);
- assert.equal(new Set(versions).size,83);
+ assert.equal(names.length,84);
+ assert.equal(new Set(versions).size,84);
  assert.ok(names.some(x=>x.startsWith('20261110073307_create_aurevia_core_tables')));
  assert.ok(names.some(x=>x.startsWith('20261116160908_aurevia_manual_journal_cloud_sync')));
+ assert.ok(names.some(x=>x.startsWith('20261117074953_aurevia_privacy_policy_acceptances')));
  for(const version of pending)assert.ok(names.some(x=>x.startsWith(version+'_')),'migration de livraison absente: '+version);
 });
 

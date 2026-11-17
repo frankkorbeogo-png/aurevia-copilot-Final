@@ -2,9 +2,9 @@
 
 ## État vérifié en lecture seule le 16 novembre 2026
 
-- Production : projet Supabase imkwbizyblzuevkodzqc, 63 migrations appliquées; dernière version 20261116160908.
-- Staging : projet Supabase cfoipulmnkisaaiirmps, 55 migrations appliquées. Ce projet a été créé comme snapshot isolé le 16 novembre; ses migrations bootstrap et ses versions générées ne correspondent pas à l'historique de production.
-- Dépôt : le dossier supabase/migrations contient désormais 63 fichiers reconstruits exactement depuis les enregistrements de migrations déjà appliquées en production, plus 19 migrations de livraison en attente.
+- Production : projet Supabase imkwbizyblzuevkodzqc, 64 migrations appliquées; dernière version 20261117074953.
+- Staging : projet Supabase cfoipulmnkisaaiirmps, 57 migrations appliquées au dernier contrôle. Ce projet a été créé comme snapshot isolé le 16 novembre; ses migrations bootstrap et ses versions générées ne correspondent pas à l'historique de production.
+- Dépôt : le dossier supabase/migrations contient désormais 64 fichiers reconstruits depuis les enregistrements de migrations appliquées en production, plus 20 migrations de livraison en attente.
 - Les snapshots de staging sont archivés dans supabase/staging-bootstrap/ et ne sont pas inclus dans le dossier de migrations de production.
 - Le doublon identique de la migration aurevia_telegram_access_entitlement a été retiré de l'historique staging après vérification du hash SQL; le schéma n'a pas été modifié par ce nettoyage de métadonnées.
 - La migration allow_users_to_unlink_own_telegram a été retirée du dossier de production et archivée dans supabase/retired-migrations/: la déliaison passe par telegram-unlink.mjs, qui vérifie l'utilisateur et la session active avant la suppression avec le rôle service. Une politique DELETE directe côté client n'est pas nécessaire.
@@ -13,7 +13,7 @@
 
 Les fichiers de migration historiques ont été reconstruits à partir de supabase_migrations.schema_migrations en production, en conservant les versions exactes, les noms canoniques et le SQL appliqué. Cela évite de rejouer les 63 migrations existantes lors d'une future livraison.
 
-Les 19 migrations ci-dessous sont les seules migrations de cette livraison absentes de l'historique de production. Elles sont conservées dans l'ordre chronologique :
+Les 20 migrations ci-dessous sont les seules migrations de cette livraison absentes de l'historique de production. Elles sont conservées dans l'ordre chronologique :
 
 1. 20261116184406_aurevia_scenario_scores_and_order_preservation.sql
 2. 20261116185127_aurevia_validate_scenario_order_levels.sql
