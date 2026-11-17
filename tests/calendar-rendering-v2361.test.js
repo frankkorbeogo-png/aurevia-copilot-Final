@@ -8,14 +8,14 @@ test('le calendrier affiche TradingView directement sans attendre un endpoint ti
  assert.match(s,/renderTradingView|tradingview-widget-container/);
  assert.match(s,/locale:'fr'/);
  assert.match(s,/colorTheme:'dark'/);
- assert.doesNotMatch(s,/fetch\(/);
+ assert.match(s,/fetch\('\/api\/economic-calendar'/);assert.match(s,/renderCalendarTable/);
  assert.doesNotMatch(s,/renderCalendar\(container,payload\)/);
 });
 test('le calendrier TradingView est mondial et visible dès son montage',async()=>{
  const s=await read('news.js');
  assert.match(s,/importanceFilter:'-1,0,1'/);
  assert.doesNotMatch(s,/countryFilter:/);
- assert.match(s,/mount\.replaceChildren\(widget\)/);
+ assert.match(s,/mount\.replaceChildren\(widget\)/);assert.match(s,/fallbackTimer=setTimeout/);
  assert.match(s,/height='min\(760px, 78vh\)'/);
 });
 test('le calendrier reste séparé du contexte macro',async()=>{
