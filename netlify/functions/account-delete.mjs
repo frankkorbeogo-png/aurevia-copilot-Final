@@ -1,4 +1,4 @@
-import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
+import {verifyBearerUser,assertSessionIsActive,json} from './_session-auth.mjs';
 const headers=(key)=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'POST,OPTIONS','access-control-allow-headers':'authorization,content-type'}};
@@ -7,7 +7,7 @@ export async function handler(event){
  if(body.confirmation!=='SUPPRIMER')return json(400,{error:'Confirmation de suppression manquante.'});
  try{
   const context=await verifyBearerUser(event);
-  await assertActiveSession(context);
+  await assertSessionIsActive(context);
   // The last-admin check, session revocation, data purge and Auth deletion
   // run under one database transaction with a serialized administrator lock.
   const response=await fetch(`${context.base}/rest/v1/rpc/aurevia_account_delete_guarded`,{

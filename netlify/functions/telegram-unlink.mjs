@@ -1,10 +1,10 @@
-import {verifyBearerUser,assertActiveSession,json} from './_session-auth.mjs';
+import {verifyBearerUser,assertSessionIsActive,json} from './_session-auth.mjs';
 const headers=(key)=>({apikey:key,authorization:`Bearer ${key}`,'content-type':'application/json'});
 export async function handler(event){
  if(event.httpMethod==='OPTIONS')return {statusCode:204,headers:{'access-control-allow-origin':'same-origin','access-control-allow-methods':'POST,OPTIONS','access-control-allow-headers':'authorization,content-type'}};
  if(event.httpMethod!=='POST')return json(405,{error:'Méthode non autorisée.'});
  let context;
- try{context=await verifyBearerUser(event);await assertActiveSession(context);}
+ try{context=await verifyBearerUser(event);await assertSessionIsActive(context);}
  catch(error){return json(error.statusCode||401,{ok:false,error:error.message||'Session invalide.',code:error.code||null});}
  const {base,service,user}=context,auth=headers(service),userFilter=`user_id=eq.${encodeURIComponent(user.id)}`;
  try{

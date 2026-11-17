@@ -11,8 +11,8 @@ const sharedRevocationMigration = await read('../supabase/migrations/20261113181
 
 test('la suppression personnelle vérifie le jeton Supabase et la session AUREVIA active', () => {
   assert.ok(endpoint.includes('verifyBearerUser(event)'));
-  assert.ok(endpoint.includes('assertActiveSession(context)'));
-  assert.ok(endpoint.indexOf('assertActiveSession(context)') < endpoint.indexOf('/rest/v1/rpc/aurevia_account_delete_guarded'));
+  assert.ok(endpoint.includes('assertSessionIsActive(context)'));
+  assert.ok(endpoint.indexOf('assertSessionIsActive(context)') < endpoint.indexOf('/rest/v1/rpc/aurevia_account_delete_guarded'));
   assert.ok(endpoint.includes('LAST_ADMIN_PROTECTED'));
   assert.ok(endpoint.includes('context.user.id'));
   assert.ok(endpoint.includes('/rest/v1/rpc/aurevia_account_delete_guarded'));
@@ -79,4 +79,20 @@ test('la suppression standard ne crée pas de blocage e-mail tandis que la suppr
   assert.match(block,/aurevia_admin_permanent_delete_block/);
   assert.match(block,/body\.confirmation!=='SUPPRIMER DÉFINITIVEMENT'/);
   assert.match(block,/email_blocked:action==='permanent_delete_user'/);
+});
+
+test('la suppression de compte reste possible après expiration de licence, avec une session valide',async()=>{
+ const auth=await read('../netlify/functions/_session-auth.mjs');
+ const endpoint=await read('../netlify/functions/account-delete.mjs');
+ assert.ok(auth.includes('export async function assertSessionIsActive(context)'));
+ assert.ok(endpoint.includes('assertSessionIsActive(context)'));
+ assert.ok(!endpoint.includes('assertActiveSession(context)'));
+});
+test('la déliaison Telegram et le refus d’une nouvelle connexion ne sont pas bloqués par une licence expirée',async()=>{
+ const unlink=await read('../netlify/functions/telegram-unlink.mjs');
+ const reject=await read('../netlify/functions/account-reject-new-login.mjs');
+ assert.ok(unlink.includes('assertSessionIsActive(context)'));
+ assert.ok(reject.includes('assertSessionIsActive(context)'));
+ assert.ok(!unlink.includes('assertActiveSession(context)'));
+ assert.ok(!reject.includes('assertActiveSession(context)'));
 });

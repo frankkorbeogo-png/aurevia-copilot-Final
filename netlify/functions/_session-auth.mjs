@@ -19,9 +19,13 @@ export async function rpc(base,service,name,args){
  if(!response.ok)throw Object.assign(new Error(data?.message||data?.msg||data?.error||`RPC ${name} indisponible (${response.status}).`),{statusCode:response.status===404?503:500});
  return data;
 }
-export async function assertActiveSession(context){
+export async function assertSessionIsActive(context){
  const active=await rpc(context.base,context.service,'aurevia_session_is_active_for_user',{p_user_id:context.user.id,p_session_id:context.sessionId});
  if(active!==true)throw Object.assign(new Error('Cette session a été remplacée ou révoquée. Reconnectez-vous avec Google.'),{statusCode:409,code:'SESSION_REPLACED'});
+ return true;
+}
+export async function assertActiveSession(context){
+ await assertSessionIsActive(context);
  const isAdmin=await rpc(context.base,context.service,'aurevia_is_admin',{p_user_id:context.user.id});
  if(isAdmin===true)return true;
  const license=await rpc(context.base,context.service,'aurevia_license_status',{p_user_id:context.user.id});
