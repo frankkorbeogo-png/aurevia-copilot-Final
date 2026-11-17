@@ -18,3 +18,9 @@ test('les contextes secondaires sont compactés et la sortie est plafonnée', as
   const collaboration = await readFile(new URL('../netlify/functions/ai-collaboration.mjs', import.meta.url), 'utf8');
   assert.match(collaboration, /body\.max_tokens=1500/);
 });
+
+test('le client charge 251 bougies pour conserver 250 clôturées et transmet exactement 250 au serveur', async () => {
+  const client = await readFile(new URL('../analysis.js', import.meta.url), 'utf8');
+  assert.match(client, /fetchFrame\(pair,FRAMES\.M15,251\)/);
+  assert.match(client, /m15\.candles\.slice\(-250\)/);
+});
