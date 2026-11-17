@@ -48,3 +48,11 @@ test('une session mémorisée révoquée ne peut pas restaurer l’accès après
  assert.match(s,/Si l’administrateur a supprimé votre compte, choisissez « Créer un compte »/);
  assert.match(s,/localStorage\.removeItem\('aurevia_active_session_id'\)/);
 });
+
+test('un compte révoqué par suppression administrative est présenté comme devant être recréé',async()=>{
+ const s=await read('auth.js');
+ assert.match(s,/aurevia_signup_required_v1/);
+ assert.match(s,/Compte supprimé · Créer un compte/);
+ assert.match(s,/googleAuthStarter\?\.\(login,'signup',account\.email\)/);
+ assert.match(s,/markSignupRequired\(email,true\)/);
+});
