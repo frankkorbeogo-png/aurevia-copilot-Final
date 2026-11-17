@@ -123,25 +123,33 @@ test('la devise du compte est définie une fois dans les paramètres et réutili
 test('le build publie le moteur universel de calcul contractuel',async()=>{const build=await readFile(new URL('../scripts/build.mjs',import.meta.url),'utf8');const sw=await readFile(new URL('../sw.js',import.meta.url),'utf8');assert.match(build,/contract-engine\.js/);assert.match(sw,/contract-engine\.js/);});
 
 test('le profil broker est centralisé dans Paramètres et jamais ressaisi dans Capital ou Positions',()=>{
-  const settings=html.match(/<section class="panel" id="brokerProfileSettings">[\\s\\S]*?<\\/section>/)?.[0]||'';
-  const capital=html.match(/<section class="page-view" data-page-view="risque"[\\s\\S]*?<section class="page-view"/)?.[0]||'';
-  const positions=html.match(/<section class="page-view" data-page-view="positions"[\\s\\S]*?<section class="page-view"/)?.[0]||'';
-  assert.match(settings,/id="riskBrokerName"/);
-  assert.match(settings,/id="brokerProfileInstrument"/);
-  assert.doesNotMatch(capital,/id="riskBrokerName"|id="riskAccountType"/);
-  assert.doesNotMatch(positions,/id="posBrokerName"|id="posAccountType"/);
-  assert.match(positions,/id="legacyPositionBrokerFields" hidden disabled/);
-  assert.match(positions,/id="posContract"/);
+  const settingsStart=html.indexOf('<section class="panel" id="brokerProfileSettings">');
+  const settingsEnd=html.indexOf('</section>',settingsStart);
+  const capitalStart=html.indexOf('data-page-view="risque"');
+  const capitalEnd=html.indexOf('data-page-view="journal"',capitalStart);
+  const positionsStart=html.indexOf('data-page-view="positions"');
+  const positionsEnd=html.indexOf('data-page-view="validation-trade"',positionsStart);
+  const settings=html.slice(settingsStart,settingsEnd);
+  const capital=html.slice(capitalStart,capitalEnd);
+  const positions=html.slice(positionsStart,positionsEnd);
+  assert.ok(settings.includes('id="riskBrokerName"'));
+  assert.ok(settings.includes('id="brokerProfileInstrument"'));
+  assert.ok(!capital.includes('id="riskBrokerName"'));
+  assert.ok(!capital.includes('id="riskAccountType"'));
+  assert.ok(!positions.includes('id="posBrokerName"'));
+  assert.ok(!positions.includes('id="posAccountType"'));
+  assert.ok(positions.includes('id="legacyPositionBrokerFields" hidden disabled'));
+  assert.ok(positions.includes('id="posContract"'));
 });
 test('la validation et le suivi des positions reprennent les spécifications enregistrées par instrument',async()=>{
   const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
-  assert.match(app,/loadBrokerSettings\\(scenario\\.instrument,ownerId\\)/);
-  assert.match(app,/async function applyBrokerProfileToPosition\\(instrument,ownerId\\)/);
-  assert.match(app,/await applyBrokerProfileToPosition\\(\\$\\('posInstrument'\\)\\.value,ownerId\\)/);
-  assert.match(app,/Aucune spécification broker enregistrée pour/);
+  assert.ok(app.includes('loadBrokerSettings(scenario.instrument,ownerId)'));
+  assert.ok(app.includes('async function applyBrokerProfileToPosition(instrument,ownerId)'));
+  assert.ok(app.includes("await applyBrokerProfileToPosition($('posInstrument').value,ownerId)"));
+  assert.ok(app.includes('Aucune spécification broker enregistrée pour'));
 });
 test('le logo de marque reste visible sans fusion d’écran avec le fond galactique',async()=>{
   const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
-  assert.match(css,/\\.brand-logo\\{display:block!important/);
-  assert.match(css,/mix-blend-mode:normal!important/);
+  assert.ok(css.includes('.brand-logo{display:block!important'));
+  assert.ok(css.includes('mix-blend-mode:normal!important'));
 });
