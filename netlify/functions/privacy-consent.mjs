@@ -10,7 +10,9 @@ export async function handler(event){
  if(!Number.isFinite(acceptedAt)||acceptedAt>Date.now()+5*60*1000||acceptedAt<Date.parse('2026-11-17T00:00:00Z'))return json(400,{error:'Horodatage de consentement invalide.'});
  try{
   const context=await verifyBearerUser(event);
-  if(Date.parse(context.user.created_at||'')<Date.parse('2026-11-17T00:00:00Z'))return json(409,{error:'Cette procédure est réservée aux nouvelles inscriptions.'});
+  const createdAt=Date.parse(context.user.created_at||'');
+  if(!Number.isFinite(createdAt)||createdAt<Date.parse('2026-11-17T00:00:00Z'))return json(409,{error:'Cette procédure est réservée aux nouvelles inscriptions.'});
+  if(acceptedAt>createdAt+5*60*1000)return json(400,{error:'La date d’acceptation doit précéder la création du compte.'});
   const response=await fetch(`${context.base}/rest/v1/privacy_policy_acceptances?on_conflict=user_id,policy_version`,{
    method:'POST',headers:{...headers(context.service),prefer:'resolution=merge-duplicates,return=minimal'},
    body:JSON.stringify({user_id:context.user.id,policy_version:VERSION,accepted_at:new Date(acceptedAt).toISOString(),acceptance_method:'google_oauth_pre_signup'}),
