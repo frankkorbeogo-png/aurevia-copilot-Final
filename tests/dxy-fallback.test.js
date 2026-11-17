@@ -5,6 +5,7 @@ import {assessDxyQuote,fetchYahooIceDollarIndex} from '../netlify/functions/macr
 const macro=await readFile(new URL('../netlify/functions/macro-context.mjs',import.meta.url),'utf8');
 const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
 const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 test('DXY has a timestamp-validated ICE futures fallback clearly labeled as a proxy',()=>{
  assert.match(macro,/DX-Y\.NYB/);assert.match(macro,/ICE U\.S\. Dollar Index futures/);assert.match(macro,/fetchYahooIceDollarIndex/);
  assert.match(macro,/assessment\.usableForDirectionalBias/);assert.match(macro,/proxy:true/);
@@ -14,7 +15,7 @@ test('DXY without a usable timestamp cannot create directional bias',()=>{
 });
 test('DXY view exposes quote status, refresh and full interactive chart',()=>{
  assert.match(app,/refreshDxyOverview/);assert.match(app,/Exploitation IA/);assert.match(app,/Dernière cotation/);
- assert.match(html,/id="dxyQuoteOverview"/);assert.match(html,/symbols\/TVC-DXY/);
+ assert.match(html,/id="dxyQuoteOverview"/);assert.match(html,/symbols\/TVC-DXY/);assert.match(app,/hidesidetoolbar=0&symboledit=1/);assert.match(css,/dxy-overview/);
 });
 
 test('ICE Dollar Index futures fallback returns a timestamped, explicitly labeled proxy',async()=>{
