@@ -35,3 +35,14 @@ test('les snapshots de staging et les migrations retirées sont archivés hors d
  assert.match(plan,/64 migrations appliquées/);
  assert.match(plan,/20 migrations/);
 });
+
+test('la RPC avancée de création protège le prix réel, les ordres conditionnels et la devise',async()=>{
+ const sql=await readFile(new URL('../supabase/migrations/20261117112653_aurevia_restore_advanced_trade_rpc_after_currency_guard_regression.sql',import.meta.url),'utf8');
+ assert.match(sql,/ACTUAL_FILL_PRICE_REQUIRED/);
+ assert.match(sql,/PENDING_ORDER_ACTUAL_FILL_NOT_ALLOWED/);
+ assert.match(sql,/STOP_LIMIT_REQUIRES_TRIGGER_AND_LIMIT/);
+ assert.match(sql,/STOP_LIMIT_PRICE_ORDER_INVALID/);
+ assert.match(sql,/PROFILE_ACCOUNT_CURRENCY_MISMATCH/);
+ assert.match(sql,/REVOKE ALL ON FUNCTION public\.aurevia_create_position_from_scenario\(uuid,uuid,text,numeric,jsonb,jsonb\)/);
+ assert.match(sql,/GRANT EXECUTE ON FUNCTION public\.aurevia_create_position_from_scenario\(uuid,uuid,text,numeric,jsonb,jsonb,boolean\) TO service_role/);
+});
