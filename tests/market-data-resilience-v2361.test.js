@@ -11,7 +11,7 @@ test('un cache OHLC récent peut servir de repli avec un marqueur de fraîcheur 
  assert.match(source,/stale:true/);assert.match(source,/staleAgeSeconds/);
 });
 test('le cache périmé ne masque pas une panne sans historique valide',()=>{
- assert.match(source,/Aucune réponse exploitable du fournisseur|Flux de marché temporairement indisponible/);
+ assert.match(source,/Flux de marché temporairement indisponible/);
  assert.match(source,/retryable:true/);
 });
 
