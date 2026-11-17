@@ -1,0 +1,18 @@
+-- Reconstructed from the already-applied production migration history (20261117074953).
+-- RLS is enabled and intentionally has no client policies: only trusted server-side service_role
+-- can insert or read consent receipts. User identity is tied to auth.users.
+create table if not exists public.privacy_policy_acceptances (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  policy_version text not null,
+  accepted_at timestamptz not null default now(),
+  acceptance_method text not null default 'google_oauth_pre_signup',
+  constraint privacy_policy_acceptances_method_check
+    check (acceptance_method = any (array['google_oauth_pre_signup'::text,'in_app_reacceptance'::text])),
+  constraint privacy_policy_acceptances_user_version_unique unique (user_id, policy_version)
+);
+create index if not exists privacy_policy_acceptances_user_accepted_idx
+  on public.privacy_policy_acceptances (user_id, accepted_at desc);
+alter table public.privacy_policy_acceptances enable row level security;
+revoke all on table public.privacy_policy_acceptances from public, anon, authenticated;
+grant select, insert, update, delete on table public.privacy_policy_acceptances to service_role;
