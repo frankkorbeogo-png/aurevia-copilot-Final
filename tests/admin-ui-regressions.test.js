@@ -13,11 +13,13 @@ test('administrator console buttons have explicit handlers',()=>{
  assert.match(app,/data-admin-action/);assert.match(app,/data-announcement-toggle/);assert.match(app,/data-announcement-expire/);
 });
 
-test('broker settings save functions are imported and setup notice reflects both required profiles',async()=>{
+test('instrument specifications remain in Settings without broker name or account type',async()=>{
  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
- assert.match(app,/loadRiskManagementSettings, saveRiskManagementSettings/);
- assert.ok(app.includes('loadBrokerSettings(select.value,ownerId),loadRiskManagementSettings(ownerId)'));
- assert.ok(app.includes('Boolean(spec&&brokerAccount?.brokerName)'));
+ const start=html.indexOf('<section class="panel" id="brokerProfileSettings">');
+ const end=html.indexOf('</section>',start);const settings=html.slice(start,end);
+ assert.match(app,/loadBrokerSettings\(select.value,ownerId\)/);
+ assert.match(app,/saveBrokerSettings\(instrument,spec,ownerId\)/);
+ assert.doesNotMatch(settings,/riskBrokerName|riskAccountType|saveBrokerAccountProfile/);
  assert.match(html,/id="tradingConfigNotice"/);
  assert.match(html,/id="accountCurrencyNotice"/);
 });
