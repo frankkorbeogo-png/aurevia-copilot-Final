@@ -16,7 +16,7 @@ test('administrator console buttons have explicit handlers',()=>{
 test('broker settings save functions are imported and setup notice reflects both required profiles',async()=>{
  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
  assert.match(app,/loadRiskManagementSettings, saveRiskManagementSettings/);
- assert.match(app,/loadBrokerSettings\\(select\\.value,ownerId\\),loadRiskManagementSettings\\(ownerId\\)/);
+ assert.ok(app.includes('loadBrokerSettings(select.value,ownerId),loadRiskManagementSettings(ownerId)'));
  assert.match(app,/Boolean\\(spec&&brokerAccount\\?\\.brokerName\\)/);
  assert.match(html,/id="tradingConfigNotice"/);
  assert.match(html,/id="accountCurrencyNotice"/);
