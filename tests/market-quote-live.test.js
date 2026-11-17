@@ -10,3 +10,14 @@ test('instrument quote uses the timestamped Twelve Data quote endpoint',()=>{
 test('selected instrument quote refreshes periodically while markets view is open',()=>{
  assert.match(app,/data-page-view="marches".*refreshSelectedQuote\(\);},60000/);
 });
+
+test('markets page mounts the TradingView ticker tape used for multi-instrument quotes',async()=>{
+ const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+ assert.match(html,/id="multiQuotesWidget"/);
+ assert.match(app,/function mountTickerTape\(\)/);
+ assert.match(app,/multiQuotesWidget/);
+});
+test('verified selected quote is reflected in its instrument tile and home watchlist',()=>{
+ assert.match(app,/ticker-live-price/);
+ assert.match(app,/\.home-asset\[data-symbol=/);
+});
