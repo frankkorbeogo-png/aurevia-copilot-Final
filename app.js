@@ -902,6 +902,7 @@ async function issueAdminLicenses(){
 }
 function bindEvents(){
   let pendingAdminRoute=false;
+  $('refreshDxyOverview')?.addEventListener('click',refreshDxyOverview);
   $('saveAccountCurrency')?.addEventListener('click',persistAccountCurrency);
   $('saveBrokerProfile')?.addEventListener('click',persistBrokerProfile);
   $('saveBrokerAccountProfile')?.addEventListener('click',persistBrokerAccountProfile);
