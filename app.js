@@ -584,6 +584,19 @@ async function loadAdminConsole(page=adminPage,search=adminSearchValue){
  }
 }
 
+let activeRiskBrokerSpec=null;
+async function applyRiskBrokerProfile(instrument,ownerId){
+ const spec=await loadBrokerSettings(instrument,ownerId);
+ if(String(window.__aureviaUserId||'').trim()!==ownerId)throw new Error('Le compte actif a changé. Rechargez la page.');
+ if(!spec)throw new Error('Aucune spécification broker enregistrée pour '+instrument+'. Configurez-la dans Paramètres avant de calculer le risque.');
+ const unit=spec.calculationType==='contract'?Number(spec.contractSize):spec.calculationType==='point'?Number(spec.pointValue)/Number(spec.pointSize):Number(spec.tickValue)/Number(spec.tickSize);
+ if(!Number.isFinite(unit)||unit<=0)throw new Error('La fiche broker de '+instrument+' est incomplète : vérifiez la taille du contrat ou les valeurs de point/tick.');
+ if(!Number.isFinite(Number(spec.minLot))||Number(spec.minLot)<=0||!Number.isFinite(Number(spec.lotStep))||Number(spec.lotStep)<=0)throw new Error('Les limites de volume du profil broker sont invalides.');
+ activeRiskBrokerSpec={...spec,unitValuePerLot:unit};
+ $('unitValue').value=String(unit);$('riskMinLot').value=String(spec.minLot);$('riskLotStep').value=String(spec.lotStep);$('riskMaxLot').value=spec.maxLot??'';$('riskLeverage').value=spec.leverage??'';
+ const status=$('riskBrokerProfileStatus');if(status)status.textContent='Profil broker chargé : '+instrument+' · '+spec.calculationType+' · levier '+(spec.leverage||'non défini')+'.';
+ return activeRiskBrokerSpec;
+}
 function readPositionContractSpec(){
   return {
     accountCurrency:accountCurrency||'', leverage:$('posLeverage').value.trim()?Number($('posLeverage').value):null,
@@ -997,7 +1010,6 @@ function bindEvents(){
     try{
       const equity=Number($('riskEquity').value||0),peak=Math.max(Number($('riskPeakEquity').value||0),equity);
       const saved=await saveRiskManagementSettings({
-        brokerName:$('riskBrokerName').value,accountType:$('riskAccountType').value,
         balance:Number($('accountBalance').value||0),equity,marginUsed:Number($('riskMarginUsed').value||0),
         peakEquity:peak,dailyLossLimit:Number($('riskDailyLossLimit').value||0),
         weeklyLossLimit:Number($('riskWeeklyLossLimit').value||0),defaultLeverage:Number($('riskLeverage').value||2000)
@@ -1009,11 +1021,12 @@ function bindEvents(){
     }catch(error){if(String(window.__aureviaUserId||'').trim()===ownerId&&$('riskControlStatus'))$('riskControlStatus').textContent='Enregistrement impossible : '+error.message;}
     finally{if(button)button.disabled=false;}
   });
+  $('riskInstrument')?.addEventListener('change',async()=>{const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;try{await applyRiskBrokerProfile($('riskInstrument').value,ownerId);}catch(error){activeRiskBrokerSpec=null;if($('riskBrokerProfileStatus'))$('riskBrokerProfileStatus').textContent=error.message;}});
   $('calculateRisk').addEventListener('click',async()=>{
     const button=$('calculateRisk');if(button)button.disabled=true;
     try{
       if(!accountCurrency)throw new Error('Renseignez la devise du compte dans Paramètres avant de calculer.');
-      const instrument=$('riskInstrument').value,quoteCurrency=inferQuoteCurrency(instrument);
+      const instrument=$('riskInstrument').value,brokerSpec=await applyRiskBrokerProfile(instrument,String(window.__aureviaUserId||'').trim()),quoteCurrency=inferQuoteCurrency(instrument);
       if(!quoteCurrency)throw new Error('Devise de cotation inconnue pour cet instrument : conversion du risque impossible.');
       let quoteToAccount=1;
       if(quoteCurrency!==accountCurrency){
