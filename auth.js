@@ -13,6 +13,7 @@ function showStatus(message,isError=false){const el=$('authStatus');if(el){el.te
 const REMEMBERED_ACCOUNTS_KEY='aurevia_remembered_accounts_v1';
 const ACCOUNT_SESSIONS_KEY='aurevia_account_sessions_v1';
 const LOCAL_DATA_OWNER_KEY='aurevia_local_data_owner_id';
+const PRIVACY_POLICY_VERSION='2026-11-17-v1';
 const LOCAL_ACCOUNT_DATA_KEYS=[
  'aurevia-copilot-journal-v1','aurevia-position-groups-v2','aurevia-linked-journal-v2',
  'aurevia_last_telegram_analysis','aurevia_scenario_summary_draft','aurevia_last_confrontation',
@@ -192,6 +193,11 @@ async function activateSession(session,action){
    pendingSession=null;await supabase.auth.signOut({scope:'local'});sessionReady=false;currentUser=null;renderRememberedAccounts();render();
    const message='Deux comptes sont déjà mémorisés sur cet appareil. Retirez-en un avant de connecter un troisième compte.';const gateStatus=$('authGateStatus');if(gateStatus)gateStatus.textContent=message;showStatus(message,true);return;
   }
+  if(consumedAuthIntent?.mode==='signup'){
+   if(consumedAuthIntent.privacyPolicyVersion!==PRIVACY_POLICY_VERSION||!consumedAuthIntent.privacyAcceptedAt||!Number.isFinite(Date.parse(consumedAuthIntent.privacyAcceptedAt)))throw new Error('L’acceptation de la politique de confidentialité est absente ou invalide. Recommencez la création du compte.');
+   const consentSave=await supabase.from('privacy_policy_acceptances').upsert({user_id:session.user.id,policy_version:PRIVACY_POLICY_VERSION,accepted_at:consumedAuthIntent.privacyAcceptedAt,acceptance_method:'google_oauth_pre_signup'},{onConflict:'user_id,policy_version'});
+   if(consentSave.error)throw new Error('Impossible d’enregistrer votre acceptation de la politique de confidentialité : '+consentSave.error.message);
+  }
   await sessionRequest(action,session.access_token);
   const licenseResponse=await fetch('/api/license',{headers:{authorization:`Bearer ${session.access_token}`},cache:'no-store'});
   const licenseState=await licenseResponse.json().catch(()=>({}));
@@ -220,8 +226,13 @@ export async function initAuth(){
   const remembered=getRememberedAccounts();const expected=String(expectedEmail||'').trim().toLowerCase();
   if(!expected&&remembered.length>=2){const message='La limite de deux comptes mémorisés est atteinte. Retirez un compte avant d’en ajouter un autre.';const status=$('authGateStatus')||$('authStatus');if(status)status.textContent=message;showStatus(message,true);return;}
   if(expected&&!remembered.some(x=>x.email===expected)){showStatus('Ce compte ne figure plus dans la mémoire de cet appareil.',true);renderRememberedAccounts();return;}
+  if(mode==='signup'){
+   const consent=$('privacyConsentGate');
+   if(!consent?.checked){const message='Pour créer votre compte, vous devez lire et accepter la politique de confidentialité.';const status=$('authGateStatus')||$('authStatus');if(status)status.textContent=message;showStatus(message,true);consent?.focus();return;}
+  }
   btn.disabled=true;const oldLabel=btn.textContent;
-  try{sessionStorage.setItem('aurevia_auth_intent',JSON.stringify({mode,startedAt:Date.now(),expectedEmail:expected||null}));}catch{}
+  const privacyAcceptedAt=mode==='signup'?new Date().toISOString():null;
+  try{sessionStorage.setItem('aurevia_auth_intent',JSON.stringify({mode,startedAt:Date.now(),expectedEmail:expected||null,privacyPolicyVersion:mode==='signup'?PRIVACY_POLICY_VERSION:null,privacyAcceptedAt}));}catch{}
   const status=$('authGateStatus')||$('authStatus');if(status)status.textContent=expected?`Reconnexion au compte ${expected} avec Google…`:mode==='signup'?'Ouverture de la création de compte Google…':'Ouverture de la connexion Google…';
   try{
    await ensureClient();
