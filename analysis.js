@@ -57,7 +57,8 @@ async function requestAureviaAnalysis(symbol,m15,context){
 }
 async function fetchFrame(symbol,interval){
  const token=await getAnalysisAccessToken();if(!token)throw new Error('Connexion Google requise pour les données de marché.');
- const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=250`;
+ const outputsize=interval==='15min'?251:250; // 251 reçues pour conserver 250 bougies clôturées après exclusion de la bougie en formation.
+ const url=`/api/market-data?symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(interval)}&outputsize=${outputsize}`;
  // Une seule tentative par unité : les retries côté client consomment des crédits
  // supplémentaires et aggravent un quota déjà atteint. Le serveur mutualise les appels.
  const r=await fetch(url,{headers:{authorization:`Bearer ${token}`},cache:'no-store',signal:AbortSignal.timeout(12000)});
