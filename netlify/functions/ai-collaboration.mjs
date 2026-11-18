@@ -59,7 +59,8 @@ async function ask(p,messages,timeout=18000,options={}){
  if(p.id==='groq'){
   body.max_completion_tokens=aggressive?1200:1800;
   if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}
- }else {body.max_tokens=aggressive?4200:3200;if(p.id==='openrouter'&&aggressive)body.response_format={type:'json_object'};}
+ }else if(p.id==='cloudflare'){body.max_tokens=aggressive?1200:1600;}
+ else {body.max_tokens=aggressive?2400:1800;if(p.id==='openrouter')body.response_format={type:'json_object'};}
  const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
  const serialized=JSON.stringify(body);
@@ -78,11 +79,12 @@ async function ask(p,messages,timeout=18000,options={}){
  const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(JSON.stringify(j),'utf8'),httpStatus:r.status,latencyMs:Date.now()-started,compacted:aggressive};
  if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
  const choice=j?.choices?.[0],message=choice?.message;
- const content=typeof message?.content==='string'?message.content:Array.isArray(message?.content)?message.content.map(part=>typeof part==='string'?part:(part?.text||'')).join('\\n'):'';
- const fallbackContent=typeof message?.reasoning==='string'?message.reasoning:Array.isArray(message?.reasoning)?message.reasoning.map(part=>typeof part==='string'?part:(part?.text||'')).join('\\n'):'';
- const output=content.trim()?content:fallbackContent.trim();
- if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(fallbackContent)}});
- try{return {...parseJson(output),_providerDiagnostics:diagnostics};}
+ const extractText=value=>typeof value==='string'?value:Array.isArray(value)?value.map(part=>typeof part==='string'?part:(part?.text||part?.content||'')).join('\\n'):'';
+ const content=extractText(message?.content)||extractText(choice?.text)||extractText(j?.output_text);
+ const reasoning=[extractText(message?.reasoning),extractText(message?.reasoning_details),extractText(message?.analysis)].filter(Boolean).join('\\n');
+ const output=content.trim()?content:reasoning.trim();
+ if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(reasoning),choiceCount:Array.isArray(j?.choices)?j.choices.length:0,hasMessage:Boolean(message)}});
+ try{return {...parseJson(output),_providerDiagnostics:{...diagnostics,contentSource:content.trim()?'content':'reasoning'}};}
  catch(e){throw Object.assign(new Error(p.name+' réponse non JSON exploitable'),{code:'INVALID_PROVIDER_JSON',diagnostics});}
 }
 
@@ -105,14 +107,14 @@ export async function runAureviaCollaboration({messages}){
  };
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const analysisStarted=Date.now();
- const PRIMARY_TIMEOUT_MS=8500,CRITIC_TIMEOUT_MS=6500,RETRY_TIMEOUT_MS=3500,MAX_ANALYSIS_BUDGET_MS=25000;
+ const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=3500,MAX_ANALYSIS_BUDGET_MS=25000;
  const [groqResult,cloudflareResult]=await Promise.all([
   groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413)return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,remaining),{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
   runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>ask(cloudflare,[
    {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
    ...messages.filter(m=>m.role!=='system')
-  ],PRIMARY_TIMEOUT_MS))
+  ],CLOUDFLARE_TIMEOUT_MS))
  ]);
  results.groq=groqResult;results.cloudflare=cloudflareResult;
  const groqOk=groqResult.ok,cloudflareOk=cloudflareResult.ok;
