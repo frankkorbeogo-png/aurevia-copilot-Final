@@ -201,7 +201,7 @@ function mountTickerTape(){
     {proName:'COINBASE:SOLUSD',title:'SOL/USD'},{proName:'BITSTAMP:XRPUSD',title:'XRP/USD'},
     {proName:'NASDAQ:AAPL',title:'Apple'},{proName:'NASDAQ:MSFT',title:'Microsoft'},
     {proName:'NASDAQ:NVDA',title:'NVIDIA'},{proName:'NASDAQ:TSLA',title:'Tesla'},
-    {proName:'NASDAQ:AMZN',title:'Amazon'},{proName:'TVC:DXY',title:'Dollar Index'}
+    {proName:'NASDAQ:AMZN',title:'Amazon'},{proName:'CAPITALCOM:DXY',title:'Dollar Index'}
   ],showSymbolLogo:true,isTransparent:true,displayMode:'adaptive',colorTheme:'dark',locale:'fr'});
   const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';
   const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';wrapper.append(widget,script);
@@ -212,7 +212,7 @@ function mountDxyChart(){
   const frame=document.createElement('iframe');
   frame.title='Graphique Dollar Index DXY sur TradingView';
   frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';
-  frame.style.width='100%';frame.style.height='100%';frame.style.minHeight='320px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://www.tradingview.com/widgetembed/?frameElementId=dxy_chart&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
+  frame.style.width='100%';frame.style.height='100%';frame.style.minHeight='320px';frame.style.border='0';frame.allow='fullscreen';frame.src='https://www.tradingview.com/widgetembed/?frameElementId=dxy_chart&symbol=CAPITALCOM%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
   box.replaceChildren(frame);box.dataset.loaded='1';
 }
 function setSelectedSymbol(symbol){
@@ -732,7 +732,7 @@ function mountStandaloneDxy(){
  frame.title='Graphique Dollar Index DXY — TradingView';
  frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';
  frame.style.width='100%';frame.style.height='min(720px,78vh)';frame.style.minHeight='520px';frame.style.border='0';frame.allow='fullscreen';
- frame.src='https://www.tradingview.com/widgetembed/?frameElementId=aurevia_dxy_chart&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=%5B%5D&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
+ frame.src='https://www.tradingview.com/widgetembed/?frameElementId=aurevia_dxy_chart&symbol=CAPITALCOM%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=%5B%5D&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
  host.replaceChildren(frame);
 }
 async function createPositionFromForm(){

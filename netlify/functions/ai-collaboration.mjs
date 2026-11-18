@@ -28,43 +28,48 @@ const arr=x=>Array.isArray(x)?x.slice(0,10).map(v=>clean(v,240)).filter(Boolean)
 export async function runAureviaCollaboration({messages}){
  const ps=Object.fromEntries(configuredAIProviders().map(p=>[p.id,p]));
  const groq=ps.groq,openrouter=ps.openrouter,cloudflare=ps.cloudflare;
- if(!cloudflare)throw Object.assign(new Error('Cloudflare est indispensable comme solution de secours, mais n’est pas configuré.'),{code:'CLOUDFLARE_NOT_CONFIGURED'});
+ if(!cloudflare)throw Object.assign(new Error('Cloudflare est indispensable comme contrôleur indépendant et solution de secours, mais n’est pas configuré.'),{code:'CLOUDFLARE_NOT_CONFIGURED'});
  const raw=messages.find(m=>m.role==='user')?.content||'{}';let market={};try{market=JSON.parse(raw);}catch{}
- const info={instrument:market.instrument||null,candleCountM30:Array.isArray(market.candles)?market.candles.length:0};
+ const candleCountM30=Array.isArray(market.candles)?market.candles.length:0;
+ const info={instrument:market.instrument||null,candleCountM30};
+ if(candleCountM30!==250)throw Object.assign(new Error('Le pipeline IA exige exactement 250 bougies M30.'),{code:'M30_HISTORY_INCOMPLETE',receivedCandleCountM30:candleCountM30,requiredCandleCountM30:250});
  const results={groq:null,openrouter:null,cloudflare:null};
- let lead=null,leadProvider=null,leadRole='ANALYSTE_PRINCIPAL';
- if(groq){
-  const t=Date.now();try{lead=await ask(groq,messages,18000);leadProvider=groq;results.groq={ok:true,provider:groq.name,model:groq.model,role:'ANALYSTE_PRINCIPAL',inputCandleCountM30:info.candleCountM30,latencyMs:Date.now()-t,...lead,decision:dir(lead)};}
-  catch(e){results.groq={ok:false,provider:groq.name,role:'ANALYSTE_PRINCIPAL',error:clean(e.message,180)};}
- }else results.groq={ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré'};
- if(!lead){
-  const t=Date.now();try{
-   lead=await ask(cloudflare,[{role:'system',content:base+' Groq est indisponible. Tu prends exceptionnellement le rôle d’analyste de secours et dois produire une analyse complète multi-timeframes, les signaux BUY/SELL/WAIT, les scores de lecture du marché, les scénarios chiffrés seulement si justifiés, les risques et les données manquantes. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,risks,missingData,noScenarioReason,watchDirectives}.'},...messages.filter(m=>m.role!=='system')],18000);
-   leadProvider=cloudflare;leadRole='ANALYSTE_SECOURS';results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:leadRole,inputCandleCountM30:info.candleCountM30,latencyMs:Date.now()-t,...lead,decision:dir(lead),fallbackFor:'Groq'};
-  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_SECOURS',error:clean(e.message,180)};throw Object.assign(new Error('Groq et Cloudflare indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:Object.values(results).filter(Boolean)});}
- }
+ const runTimed=async(provider,role,call)=>{
+  const started=Date.now();
+  try{const result=await call();return {ok:true,provider:provider.name,model:provider.model,role,inputCandleCountM30:candleCountM30,latencyMs:Date.now()-started,...result};}
+  catch(e){return {ok:false,provider:provider.name,role,error:clean(e?.message||'Erreur fournisseur',180),latencyMs:Date.now()-started,inputCandleCountM30:candleCountM30};}
+ };
+ // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
+ const [groqResult,cloudflareResult]=await Promise.all([
+  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',()=>ask(groq,messages,18000)):
+   Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
+  runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>ask(cloudflare,[
+   {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
+   ...messages.filter(m=>m.role!=='system')
+  ],18000))
+ ]);
+ results.groq=groqResult;results.cloudflare=cloudflareResult;
+ const groqOk=groqResult.ok,cloudflareOk=cloudflareResult.ok;
+ if(!groqOk&&!cloudflareOk)throw Object.assign(new Error('Groq et Cloudflare sont indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:[groqResult,cloudflareResult]});
+ const lead=groqOk?groqResult:cloudflareResult;
+ const leadProvider=groqOk?groq:cloudflare;
+ const leadRole=groqOk?'ANALYSTE_PRINCIPAL':'ANALYSTE_SECOURS';
  if(openrouter){
-  const t=Date.now();try{
-   const review=await ask(openrouter,[{role:'system',content:base+' Tu es l’ANALYSTE CONTRADICTEUR. Vérifie rigoureusement le raisonnement principal, recherche faiblesses, confirmations, invalidations et contradictions. Propose un scénario alternatif uniquement si les données le justifient. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,primaryProvider:leadProvider.name})}],18000);
-   results.openrouter={ok:true,provider:openrouter.name,model:openrouter.model,role:'ANALYSTE_CONTREDICTEUR',inputCandleCountM30:info.candleCountM30,latencyMs:Date.now()-t,...review,decision:dir(review),agreements:arr(review.agreements),disagreements:arr(review.disagreements),criticalBlockers:arr(review.criticalBlockers)};
-  }catch(e){results.openrouter={ok:false,provider:openrouter.name,role:'ANALYSTE_CONTREDICTEUR',error:clean(e.message,180)};}
- }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré'};
- if(leadProvider!==cloudflare){
-  const t=Date.now();try{
-   const audit=await ask(cloudflare,[{role:'system',content:base+' Tu es l’ANALYSTE DE CONTRÔLE indépendant et solution de secours. Fais ta propre lecture des données, vérifie les contradictions et risques oubliés, et vérifie la conclusion principale et la critique OpenRouter. Si Groq ou OpenRouter est indisponible, assure la continuité de l’analyse en signalant cette indisponibilité. JSON: {decision,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,openrouterReview:results.openrouter})}],18000);
-   results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:'ANALYSTE_CONTROLE',inputCandleCountM30:info.candleCountM30,latencyMs:Date.now()-t,...audit,decision:dir(audit),criticalBlockers:arr(audit.criticalBlockers),risks:arr(audit.risks),missingData:arr(audit.missingData)};
-  }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_CONTROLE',error:clean(e.message,180)};}
- }
- const valid=Object.values(results).filter(x=>x?.ok);
- const blockers=valid.flatMap(x=>x.criticalBlockers||[]).map(x=>clean(x,240)).filter(Boolean);
- const audit=results.cloudflare?.ok?results.cloudflare:null,critic=results.openrouter?.ok?results.openrouter:null;
- let decision=dir(lead),reason='Décision principale conservée après les contrôles disponibles.';
- if(audit?.veto===true||audit?.riskLevel==='CRITICAL'){decision='WAIT';reason='WAIT : veto de contrôle Cloudflare — '+clean(audit.vetoReason||'risque critique',220);}
+  results.openrouter=await runTimed(openrouter,'ANALYSTE_CONTREDICTEUR',()=>ask(openrouter,[
+   {role:'system',content:base+' Tu es l’analyste contradicteur. Compare les analyses indépendantes de Groq et Cloudflare lorsqu’elles existent. Recherche faiblesses, contradictions, confirmations, invalidations et risques. Ne valide pas par complaisance. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
+   {role:'user',content:JSON.stringify({marketData:market,groqAnalysis:groqOk?groqResult:null,cloudflareIndependentAnalysis:cloudflareOk?cloudflareResult:null,selectedPrimary:leadRole})}
+  ],18000));
+ }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré',inputCandleCountM30:candleCountM30};
+ const audit=cloudflareOk?cloudflareResult:null,critic=results.openrouter?.ok?results.openrouter:null;
+ const blockers=[...(audit?.criticalBlockers||[]),...(critic?.criticalBlockers||[])].map(x=>clean(x,240)).filter(Boolean);
+ let decision=dir(lead),reason='Analyse principale conservée après les contrôles disponibles.';
+ if(audit?.veto===true||audit?.riskLevel==='CRITICAL'){decision='WAIT';reason='WAIT : veto du contrôle indépendant Cloudflare — '+clean(audit.vetoReason||'risque critique',220);}
  else if(blockers.length){decision='WAIT';reason='WAIT : points critiques relevés — '+blockers.slice(0,3).join(' · ');}
- else if(critic?.verdict==='CONTESTE'&&['BUY','SELL'].includes(dir(lead))&&dir(critic)!==dir(lead)){decision=dir(critic)==='WAIT'?'WAIT':dir(critic);reason='Scénario principal contesté par OpenRouter ; décision revue après contre-analyse.';}
- const allThree=Boolean(results.groq?.ok&&results.openrouter?.ok&&results.cloudflare?.ok);
- const fallbackUsed=leadProvider===cloudflare||!results.openrouter?.ok||!results.cloudflare?.ok||!results.groq?.ok;
- return {data:{...lead,decision,collaboration:{mode:'THREE_AI_ROLE_REVIEW',...info,providerOrder:['Groq','OpenRouter','Cloudflare'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers:results,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Les scores sont qualitatifs et non des probabilités. Si une IA est indisponible, la synthèse est signalée comme dégradée.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(results).filter(x=>x&&!x.ok)};
+ else if(critic?.verdict==='CONTESTE'&&['BUY','SELL'].includes(dir(lead))&&dir(critic)!==dir(lead)){decision=dir(critic)==='WAIT'?'WAIT':dir(critic);reason='Scénario principal contesté par OpenRouter après comparaison indépendante.';}
+ const providers={groq:groqResult,openrouter:results.openrouter,cloudflare:cloudflareResult};
+ const allThree=Boolean(groqOk&&results.openrouter?.ok&&cloudflareOk);
+ const fallbackUsed=!groqOk||!results.openrouter?.ok||!cloudflareOk;
+ return {data:{...lead,decision,collaboration:{mode:'PARALLEL_PRIMARY_AND_INDEPENDENT_REVIEW',...info,providerOrder:['Groq + Cloudflare en parallèle','OpenRouter en contradiction'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,independentCloudflareDecision:audit?dir(audit):null,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Groq et Cloudflare analysent indépendamment les 250 bougies M30 en parallèle ; OpenRouter confronte leurs résultats. Les scores sont qualitatifs et non des probabilités. Toute indisponibilité fournisseur dégrade la collaboration.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(providers).filter(x=>x&&!x.ok)};
 }
 
 export async function runAureviaM5Confirmation({scenario, candles, indicators, structure}) {
