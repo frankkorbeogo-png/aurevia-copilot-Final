@@ -251,17 +251,17 @@ async function loadAnalysis(){
   $('mtfRows').innerHTML=state.rows?.length?state.rows.map(r=>`<tr><td>${r.tf}</td><td>${r.ema200===null?'—':Number(r.ema200).toFixed(2)}</td><td>${r.rsi14===null?'—':Number(r.rsi14).toFixed(1)}</td><td>${escapeText(r.bias)} · ${escapeText(r.breaks)}</td></tr>`).join(''):`<tr><td colspan="4" class="empty-cell">${state.tableMessage||'Données multi-timeframes indisponibles.'}</td></tr>`;
   const availablePlans=['buy','sell'].filter(side=>['IDENTIFIED','WATCH'].includes(state.scenarios?.[side]?.status));
   $('signalState').textContent=(state.decision==='WAIT'&&availablePlans.length)?'PLANS CHIFFRÉS':(state.decision||'WAIT');const macro=state.macroContext;const watchText=state.decision==='WAIT'&&Array.isArray(state.watchDirectives)&&state.watchDirectives.length?'\n\nDIRECTIVES À ATTENDRE :\n'+state.watchDirectives.map((x,i)=>`${i+1}. Condition : ${x.condition}\n   Réaction attendue : ${x.expectedReaction}\n   Confirmation : ${x.confirmation}\n   Invalidation : ${x.invalidation}`).join('\n\n'):'';const detailBlocks=[];
-  if(state.marketReading)detailBlocks.push('LECTURE DÉTAILLÉE DU MARCHÉ :\\n'+state.marketReading);
+  if(state.marketReading)detailBlocks.push('LECTURE DÉTAILLÉE DU MARCHÉ :\n'+state.marketReading);
   if(state.decisionDetails?.collaboration){
    const c=state.decisionDetails.collaboration,providers=c.providers||{};
-   detailBlocks.push('CONTRÔLE DES IA :\\n'+['groq','openrouter','cloudflare'].map(id=>{const p=providers[id];return (p?.provider||id)+' — '+(p?.ok?'réponse reçue':'indisponible')+(p?.error?' ('+p.error+')':'');}).join('\\n')+'\\nSynthèse : '+(c.synthesisReason||'Contrôle terminé.'));
-   if(c.agreements?.length)detailBlocks.push('POINTS CONFIRMÉS :\\n'+c.agreements.map(x=>'• '+x).join('\\n'));
-   if(c.disagreements?.length)detailBlocks.push('DIVERGENCES :\\n'+c.disagreements.map(x=>'• '+x).join('\\n'));
-   if(c.criticalBlockers?.length)detailBlocks.push('BLOCAGES CRITIQUES :\\n'+c.criticalBlockers.map(x=>'• '+x).join('\\n'));
+   detailBlocks.push('CONTRÔLE DES IA :\n'+['groq','openrouter','cloudflare'].map(id=>{const p=providers[id];return (p?.provider||id)+' — '+(p?.ok?'réponse reçue':'indisponible')+(p?.error?' ('+p.error+')':'');}).join('\n')+'\nSynthèse : '+(c.synthesisReason||'Contrôle terminé.'));
+   if(c.agreements?.length)detailBlocks.push('POINTS CONFIRMÉS :\n'+c.agreements.map(x=>'• '+x).join('\n'));
+   if(c.disagreements?.length)detailBlocks.push('DIVERGENCES :\n'+c.disagreements.map(x=>'• '+x).join('\n'));
+   if(c.criticalBlockers?.length)detailBlocks.push('BLOCAGES CRITIQUES :\n'+c.criticalBlockers.map(x=>'• '+x).join('\n'));
   }
-  if(state.risks?.length)detailBlocks.push('RISQUES :\\n'+state.risks.map(x=>'• '+(typeof x==='string'?x:JSON.stringify(x))).join('\\n'));
-  if(state.decisionDetails?.missingData?.length)detailBlocks.push('DONNÉES MANQUANTES :\\n'+state.decisionDetails.missingData.map(x=>'• '+(typeof x==='string'?x:JSON.stringify(x))).join('\\n'));
-  $('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+watchText+(detailBlocks.length?'\\n\\n'+detailBlocks.join('\\n\\n'):'')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`sources macro chargées · DXY ${macro.dxy?.usableForDirectionalBias?'horodaté et exploitable':'non exploitable ou indisponible'} · FRED ${macro.fred?.availableSeries??0}/${macro.fred?.totalSeries??6} séries disponibles (dernière observation ${macro.fred?.asOf||'inconnue'}).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
+  if(state.risks?.length)detailBlocks.push('RISQUES :\n'+state.risks.map(x=>'• '+(typeof x==='string'?x:JSON.stringify(x))).join('\n'));
+  if(state.decisionDetails?.missingData?.length)detailBlocks.push('DONNÉES MANQUANTES :\n'+state.decisionDetails.missingData.map(x=>'• '+(typeof x==='string'?x:JSON.stringify(x))).join('\n'));
+  $('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+watchText+(detailBlocks.length?'\n\n'+detailBlocks.join('\n\n'):'')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`sources macro chargées · DXY ${macro.dxy?.usableForDirectionalBias?'horodaté et exploitable':'non exploitable ou indisponible'} · FRED ${macro.fred?.availableSeries??0}/${macro.fred?.totalSeries??6} séries disponibles (dernière observation ${macro.fred?.asOf||'inconnue'}).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
   if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
   $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} / 100`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
