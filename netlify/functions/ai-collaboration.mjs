@@ -20,7 +20,7 @@ function compactRoleMessages(messages,role,aggressive=false){
   let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?7000:12000)};}
   if(Array.isArray(data.candles)){
    // Les 250 bougies M30 restent présentes, y compris lors de la tentative compacte.
-   data.candles=data.candles.slice(-250).map(c=>[c.t,c.o,c.h,c.l,c.c,c.v??null]);
+   data.candles=data.candles.slice(-250).map(c=>{const n=v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(7)):null;return [c.t,n(c.o),n(c.h),n(c.l),n(c.c),...(c.v==null?[]:[n(c.v)])];});
   }
   if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(aggressive?-4:-8);
   if(aggressive){
@@ -58,7 +58,7 @@ async function ask(p,messages,timeout=18000,options={}){
  if(p.id==='groq'){
   body.max_completion_tokens=aggressive?1200:1800;
   if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}
- }else body.max_tokens=aggressive?2600:3200;
+ }else {body.max_tokens=aggressive?4200:3200;if(p.id==='openrouter'&&aggressive)body.response_format={type:'json_object'};}
  const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
  const serialized=JSON.stringify(body);
@@ -69,7 +69,7 @@ async function ask(p,messages,timeout=18000,options={}){
  if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
  const choice=j?.choices?.[0],message=choice?.message;
  const content=typeof message?.content==='string'?message.content:Array.isArray(message?.content)?message.content.map(part=>typeof part==='string'?part:(part?.text||'')).join('\\n'):'';
- const fallbackContent=typeof message?.reasoning==='string'?message.reasoning:'';
+ const fallbackContent=typeof message?.reasoning==='string'?message.reasoning:Array.isArray(message?.reasoning)?message.reasoning.map(part=>typeof part==='string'?part:(part?.text||'')).join('\\n'):'';
  const output=content.trim()?content:fallbackContent.trim();
  if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(fallbackContent)}});
  try{return {...parseJson(output),_providerDiagnostics:diagnostics};}
@@ -91,7 +91,7 @@ export async function runAureviaCollaboration({messages}){
  const runTimed=async(provider,role,call)=>{
   const started=Date.now();
   try{const result=await call();return {ok:true,provider:provider.name,model:provider.model,role,inputCandleCountM30:candleCountM30,latencyMs:Date.now()-started,...result};}
-  catch(e){return {ok:false,provider:provider.name,role,error:clean(e?.message||'Erreur fournisseur',180),latencyMs:Date.now()-started,inputCandleCountM30:candleCountM30};}
+  catch(e){return {ok:false,provider:provider.name,model:provider.model,role,error:clean(e?.message||'Erreur fournisseur',180),code:e?.code||null,diagnostics:e?.diagnostics||null,latencyMs:Date.now()-started,inputCandleCountM30:candleCountM30};}
  };
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const [groqResult,cloudflareResult]=await Promise.all([
@@ -109,10 +109,10 @@ export async function runAureviaCollaboration({messages}){
  const leadProvider=groqOk?groq:cloudflare;
  const leadRole=groqOk?'ANALYSTE_PRINCIPAL':'ANALYSTE_SECOURS';
  if(openrouter){
-  results.openrouter=await runTimed(openrouter,'ANALYSTE_CONTREDICTEUR',()=>ask(openrouter,[
+  results.openrouter=await runTimed(openrouter,'ANALYSTE_CONTREDICTEUR',async()=>{const criticMessages=[
    {role:'system',content:base+' Tu es l’analyste contradicteur. Compare les analyses indépendantes de Groq et Cloudflare lorsqu’elles existent. Recherche faiblesses, contradictions, confirmations, invalidations et risques. Ne valide pas par complaisance. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
    {role:'user',content:JSON.stringify({marketSummary:{instrument:market.instrument,timeframe:market.timeframe,candleCountM30,latestCandles:(market.candles||[]).slice(-12),indicators:market.indicators,structure:market.structure,patterns:(market.patterns||[]).slice(-8),context:market.context},groqAnalysis:groqOk?groqResult:null,cloudflareIndependentAnalysis:cloudflareOk?cloudflareResult:null,selectedPrimary:leadRole})}
-  ],18000));
+  ];try{return await ask(openrouter,criticMessages,18000);}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code))throw e;return await ask(openrouter,criticMessages,18000,{aggressive:true});}});
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré',inputCandleCountM30:candleCountM30};
  const audit=cloudflareOk?cloudflareResult:null,critic=results.openrouter?.ok?results.openrouter:null;
  const blockers=[...(audit?.criticalBlockers||[]),...(critic?.criticalBlockers||[])].map(x=>clean(x,240)).filter(Boolean);
