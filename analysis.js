@@ -97,7 +97,7 @@ async function runInstrumentAnalysis(symbol){
   const analyses={};
   for(const [tf,data] of Object.entries(frames)){
    // Une unité optionnelle périmée ne doit jamais influencer le contexte H4/H1/M30. Les bougies restent visibles via le diagnostic.
-   if(stale.includes(tf)&&tf!=='M15')continue;
+   if(stale.includes(tf))continue;
    const candles=data.candles;if(!Array.isArray(candles)||candles.length<30)continue;
    const structure=detectMarketStructure(candles);
    analyses[tf]={indicators:calculateIndicators(candles),structure,patterns:[...detectCandlestickPatterns(candles),...detectChartPatterns(candles)],fibonacci:calculateFibonacciRetracements(structure.swings,structure.bias),volumeProfile:calculateFixedRangeVolumeProfile(candles),last:candles.at(-1)};
