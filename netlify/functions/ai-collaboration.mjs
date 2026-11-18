@@ -9,18 +9,31 @@ function parseJson(s){
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
 }
-function compactRoleMessages(messages,role){
+function compactRoleMessages(messages,role,aggressive=false){
  return messages.map(message=>{
-  if(message.role==='system')return {...message,content:String(message.content||'').slice(0,7000)};
-  let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,9000)};}
+  if(message.role==='system'){
+   const content=String(message.content||'');
+   if(!aggressive)return {...message,content};
+   // Conserver le début des consignes et la fin contenant le schéma JSON.
+   return {...message,content:content.length>6500?content.slice(0,4400)+'\\n[Consignes intermédiaires condensées]\\n'+content.slice(-1900):content};
+  }
+  let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?7000:12000)};}
   if(Array.isArray(data.candles)){
-   // Garder les 250 clôtures, mais réduire la sérialisation à des tuples OHLCV.
+   // Les 250 bougies M30 restent présentes, y compris lors de la tentative compacte.
    data.candles=data.candles.slice(-250).map(c=>[c.t,c.o,c.h,c.l,c.c,c.v??null]);
   }
-  if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(-8);
+  if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(aggressive?-4:-8);
+  if(aggressive){
+   for(const key of ['indicators','structure','volumeProfile','fibonacci']){
+    if(data[key]&&typeof data[key]==='object'){
+     const entries=Object.entries(data[key]).slice(0,12);
+     data[key]=Object.fromEntries(entries);
+    }
+   }
+  }
   if(data.context?.timeframes){
    for(const [tf,frame] of Object.entries(data.context.timeframes)){
-    if(frame&&typeof frame==='object')data.context.timeframes[tf]={available:frame.available,bias:frame.bias,ema20:frame.ema20,ema50:frame.ema50,ema200:frame.ema200,rsi14:frame.rsi14,macd:frame.macd,breaks:(frame.breaks||[]).slice(-3),sweeps:(frame.sweeps||[]).slice(-2),supports:(frame.supports||[]).slice(-3),resistances:(frame.resistances||[]).slice(-3)};
+    if(frame&&typeof frame==='object')data.context.timeframes[tf]={available:frame.available,bias:frame.bias,ema20:frame.ema20,ema50:frame.ema50,ema200:frame.ema200,rsi14:frame.rsi14,macd:frame.macd,breaks:(frame.breaks||[]).slice(aggressive?-1:-3),sweeps:(frame.sweeps||[]).slice(aggressive?-1:-2),supports:(frame.supports||[]).slice(aggressive?-2:-3),resistances:(frame.resistances||[]).slice(aggressive?-2:-3)};
    }
   }
   if(data.context?.macro&&typeof data.context.macro==='object'){
@@ -30,22 +43,37 @@ function compactRoleMessages(messages,role){
   return {...message,content:JSON.stringify(data)};
  });
 }
-async function ask(p,messages,timeout=18000){
- const selected=compactRoleMessages(messages,p.id);
+function safeProviderError(status,payload){
+ const raw=String(payload?.error?.message||payload?.message||'').replace(/[\\r\\n\\t]+/g,' ').replace(/Bearer\\s+\\S+/gi,'Bearer [masqué]').slice(0,140);
+ if(status===413)return 'Requête trop volumineuse (HTTP 413)';
+ if(status===429)return 'Limite ou quota fournisseur atteint (HTTP 429)';
+ if(status===401||status===403)return 'Authentification ou permission refusée (HTTP '+status+')';
+ if(status>=500)return 'Erreur temporaire du fournisseur (HTTP '+status+')';
+ return 'Requête refusée (HTTP '+status+')'+(raw?' : '+raw:'');
+}
+async function ask(p,messages,timeout=18000,options={}){
+ const aggressive=options.aggressive===true;
+ const selected=compactRoleMessages(messages,p.id,aggressive);
  const body={model:p.model,messages:selected,temperature:0.2,stream:false};
  if(p.id==='groq'){
-  body.max_completion_tokens=1800;
+  body.max_completion_tokens=aggressive?1200:1800;
   if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}
- }else body.max_tokens=1800;
+ }else body.max_tokens=aggressive?2600:3200;
  const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
- const r=await fetch(p.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});
+ const serialized=JSON.stringify(body);
+ const started=Date.now();
+ const r=await fetch(p.url,{method:'POST',headers,body:serialized,signal:AbortSignal.timeout(timeout)});
  const j=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(p.name+' HTTP '+r.status+' '+clean(j?.error?.message||j?.message||'',100));
- const message=j?.choices?.[0]?.message;
- const c=typeof message?.content==='string'?message.content:Array.isArray(message?.content)?message.content.map(part=>typeof part==='string'?part:(part?.text||'')).join('\n'):'';
- if(!c.trim())throw new Error(p.name+' réponse vide (finish_reason: '+String(j?.choices?.[0]?.finish_reason||'inconnu')+')');
- return parseJson(c);
+ const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(JSON.stringify(j),'utf8'),httpStatus:r.status,latencyMs:Date.now()-started,compacted:aggressive};
+ if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
+ const choice=j?.choices?.[0],message=choice?.message;
+ const content=typeof message?.content==='string'?message.content:Array.isArray(message?.content)?message.content.map(part=>typeof part==='string'?part:(part?.text||'')).join('\\n'):'';
+ const fallbackContent=typeof message?.reasoning==='string'?message.reasoning:'';
+ const output=content.trim()?content:fallbackContent.trim();
+ if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(fallbackContent)}});
+ try{return {...parseJson(output),_providerDiagnostics:diagnostics};}
+ catch(e){throw Object.assign(new Error(p.name+' réponse non JSON exploitable'),{code:'INVALID_PROVIDER_JSON',diagnostics});}
 }
 
 const base='Tu es une IA d’AUREVIA COPILOT. Réponds en français et en JSON valide. N’invente aucun cours, indicateur, niveau ni donnée absente. BUY, SELL ou WAIT sont les seules décisions. Les scores sur 100 mesurent la qualité de lecture/confluence, jamais une probabilité de gain.';
@@ -67,7 +95,7 @@ export async function runAureviaCollaboration({messages}){
  };
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const [groqResult,cloudflareResult]=await Promise.all([
-  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',()=>ask(groq,messages,18000)):
+  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,18000);}catch(e){if(e?.providerStatus!==413)return Promise.reject(e);return await ask(groq,messages,18000,{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
   runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>ask(cloudflare,[
    {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
