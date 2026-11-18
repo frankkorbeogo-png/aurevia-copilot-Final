@@ -61,3 +61,30 @@ test('la suppression définitive est liée avant la restauration asynchrone de s
   assert.match(endpoint, /LAST_ADMIN_PROTECTED/);
   assert.match(endpoint, /deleted:true/);
 });
+
+
+test('M30 est l’unité principale et transmet exactement 250 bougies clôturées au moteur IA', async () => {
+  const analysis = await read('analysis.js');
+  const endpoint = await read('netlify/functions/ai-analysis.mjs');
+  const collaboration = await read('netlify/functions/ai-collaboration.mjs');
+  assert.match(analysis, /frames\.M30=await fetchFrame\(pair,FRAMES\.M30,251\)/);
+  assert.match(analysis, /primary\.candles\.slice\(-250\)/);
+  assert.match(analysis, /primary:\{candles:primary\.candles/);
+  assert.match(endpoint, /primary\.candles\.length!==250/);
+  assert.match(endpoint, /decisionTimeframe:'M30'/);
+  assert.match(endpoint, /candleCountM30:candles\.length/);
+  assert.match(endpoint, /250 bougies clôturées/);
+  assert.match(collaboration, /inputCandleCountM30:info\.candleCountM30/);
+  assert.match(collaboration, /candleCountM30:Array\.isArray\(market\.candles\)/);
+});
+
+test('M15 reste un affinage facultatif et M5 conserve la confirmation d’entrée', async () => {
+  const endpoint = await read('netlify/functions/ai-analysis.mjs');
+  const collaboration = await read('netlify/functions/ai-collaboration.mjs');
+  const index = await read('index.html');
+  assert.match(endpoint, /M15 \(affinement des zones et du timing\)/);
+  assert.match(collaboration, /scénario M30/);
+  assert.match(index, /M30 · Analyse/);
+  assert.match(index, /M15 · Affinage/);
+  assert.match(index, /validation automatique par l’IA sur M5/);
+});
