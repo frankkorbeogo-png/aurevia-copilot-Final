@@ -250,7 +250,18 @@ async function loadAnalysis(){
   $('chartStatus').textContent=state.message||'Données externes';
   $('mtfRows').innerHTML=state.rows?.length?state.rows.map(r=>`<tr><td>${r.tf}</td><td>${r.ema200===null?'—':Number(r.ema200).toFixed(2)}</td><td>${r.rsi14===null?'—':Number(r.rsi14).toFixed(1)}</td><td>${escapeText(r.bias)} · ${escapeText(r.breaks)}</td></tr>`).join(''):`<tr><td colspan="4" class="empty-cell">${state.tableMessage||'Données multi-timeframes indisponibles.'}</td></tr>`;
   const availablePlans=['buy','sell'].filter(side=>['IDENTIFIED','WATCH'].includes(state.scenarios?.[side]?.status));
-  $('signalState').textContent=(state.decision==='WAIT'&&availablePlans.length)?'PLANS CHIFFRÉS':(state.decision||'WAIT');const macro=state.macroContext;const watchText=state.decision==='WAIT'&&Array.isArray(state.watchDirectives)&&state.watchDirectives.length?'\n\nDIRECTIVES À ATTENDRE :\n'+state.watchDirectives.map((x,i)=>`${i+1}. Condition : ${x.condition}\n   Réaction attendue : ${x.expectedReaction}\n   Confirmation : ${x.confirmation}\n   Invalidation : ${x.invalidation}`).join('\n\n'):'';$('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+watchText+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`sources macro chargées · DXY ${macro.dxy?.usableForDirectionalBias?'horodaté et exploitable':'non exploitable ou indisponible'} · FRED ${macro.fred?.availableSeries??0}/${macro.fred?.totalSeries??6} séries disponibles (dernière observation ${macro.fred?.asOf||'inconnue'}).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
+  $('signalState').textContent=(state.decision==='WAIT'&&availablePlans.length)?'PLANS CHIFFRÉS':(state.decision||'WAIT');const macro=state.macroContext;const watchText=state.decision==='WAIT'&&Array.isArray(state.watchDirectives)&&state.watchDirectives.length?'\n\nDIRECTIVES À ATTENDRE :\n'+state.watchDirectives.map((x,i)=>`${i+1}. Condition : ${x.condition}\n   Réaction attendue : ${x.expectedReaction}\n   Confirmation : ${x.confirmation}\n   Invalidation : ${x.invalidation}`).join('\n\n'):'';const detailBlocks=[];
+  if(state.marketReading)detailBlocks.push('LECTURE DÉTAILLÉE DU MARCHÉ :\\n'+state.marketReading);
+  if(state.decisionDetails?.collaboration){
+   const c=state.decisionDetails.collaboration,providers=c.providers||{};
+   detailBlocks.push('CONTRÔLE DES IA :\\n'+['groq','openrouter','cloudflare'].map(id=>{const p=providers[id];return (p?.provider||id)+' — '+(p?.ok?'réponse reçue':'indisponible')+(p?.error?' ('+p.error+')':'');}).join('\\n')+'\\nSynthèse : '+(c.synthesisReason||'Contrôle terminé.'));
+   if(c.agreements?.length)detailBlocks.push('POINTS CONFIRMÉS :\\n'+c.agreements.map(x=>'• '+x).join('\\n'));
+   if(c.disagreements?.length)detailBlocks.push('DIVERGENCES :\\n'+c.disagreements.map(x=>'• '+x).join('\\n'));
+   if(c.criticalBlockers?.length)detailBlocks.push('BLOCAGES CRITIQUES :\\n'+c.criticalBlockers.map(x=>'• '+x).join('\\n'));
+  }
+  if(state.risks?.length)detailBlocks.push('RISQUES :\\n'+state.risks.map(x=>'• '+(typeof x==='string'?x:JSON.stringify(x))).join('\\n'));
+  if(state.decisionDetails?.missingData?.length)detailBlocks.push('DONNÉES MANQUANTES :\\n'+state.decisionDetails.missingData.map(x=>'• '+(typeof x==='string'?x:JSON.stringify(x))).join('\\n'));
+  $('signalExplain').textContent=(state.signalReason||'WAIT : données ou confirmations insuffisantes. Aucune probabilité n’est publiée sans calibration historique.')+watchText+(detailBlocks.length?'\\n\\n'+detailBlocks.join('\\n\\n'):'')+(selectedSymbol==='XAUUSD'?`\n\nContexte macro : ${macro?.configured?`sources macro chargées · DXY ${macro.dxy?.usableForDirectionalBias?'horodaté et exploitable':'non exploitable ou indisponible'} · FRED ${macro.fred?.availableSeries??0}/${macro.fred?.totalSeries??6} séries disponibles (dernière observation ${macro.fred?.asOf||'inconnue'}).`:(macro?.notice||'Données macro non disponibles ; aucun biais macro n’est supposé.')}`:'');
   if(analyzeStatus)analyzeStatus.textContent=state.message||'Analyse terminée.';
   $('probabilityValue').textContent=Number.isFinite(state.score)?`${state.score} / 100`:'—';$('probabilityBar').style.width=`${Number.isFinite(state.score)?Math.max(0,Math.min(100,state.score)):0}%`;
   renderAITradePlan(state);
@@ -714,13 +725,15 @@ async function refreshDxyOverview(){
 }
 window.addEventListener('aurevia:dxyrefresh',refreshDxyOverview);
 function mountStandaloneDxy(){
- const host=$('dxyStandalone');if(!host||host.dataset.loaded==='1')return;
+ const host=$('dxyStandalone');if(!host)return;
+ // Toujours reconstruire le widget avec le symbole explicite : aucun symbole par défaut AAPL.
  host.dataset.loaded='1';
- const wrapper=document.createElement('div');wrapper.className='tradingview-widget-container';wrapper.style.width='100%';wrapper.style.height='min(720px,78vh)';wrapper.style.minHeight='520px';
- const widget=document.createElement('div');widget.className='tradingview-widget-container__widget';widget.style.width='100%';widget.style.height='100%';
- const script=document.createElement('script');script.type='text/javascript';script.async=true;script.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
- script.text=JSON.stringify({autosize:true,symbol:'TVC:DXY',interval:'60',timezone:'Etc/UTC',theme:'dark',style:'1',locale:'fr',allow_symbol_change:false,hide_top_toolbar:false,hide_legend:false,save_image:false,calendar:false,backgroundColor:'#0b0910',gridColor:'#24192c',support_host:'https://www.tradingview.com'});
- wrapper.append(widget,script);host.replaceChildren(wrapper);
+ const frame=document.createElement('iframe');
+ frame.title='Graphique Dollar Index DXY — TradingView';
+ frame.loading='lazy';frame.referrerPolicy='no-referrer-when-downgrade';
+ frame.style.width='100%';frame.style.height='min(720px,78vh)';frame.style.minHeight='520px';frame.style.border='0';frame.allow='fullscreen';
+ frame.src='https://www.tradingview.com/widgetembed/?frameElementId=aurevia_dxy_chart&symbol=TVC%3ADXY&interval=60&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=0b0910&studies=%5B%5D&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&locale=fr';
+ host.replaceChildren(frame);
 }
 async function createPositionFromForm(){
   const ownerId=String(window.__aureviaUserId||'').trim();if(!ownerId)return;
