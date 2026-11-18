@@ -9,10 +9,10 @@ function parseJson(s){
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
 }
-async function ask(p,messages,timeout=11000){
+async function ask(p,messages,timeout=18000){
  const body={model:p.model,messages,temperature:0.2,stream:false};
- if(p.id==='groq'){body.max_completion_tokens=1500;if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}}
- else body.max_tokens=1500;
+ if(p.id==='groq'){body.max_completion_tokens=3200;if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}}
+ else body.max_tokens=3200;
  const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
  const r=await fetch(p.url,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(timeout)});
@@ -39,7 +39,7 @@ export async function runAureviaCollaboration({messages}){
  }else results.groq={ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré'};
  if(!lead){
   const t=Date.now();try{
-   lead=await ask(cloudflare,[{role:'system',content:base+' Groq est indisponible. Tu prends exceptionnellement le rôle d’analyste de secours et dois produire une analyse complète multi-timeframes, les signaux BUY/SELL/WAIT, les scores de lecture du marché, les scénarios chiffrés seulement si justifiés, les risques et les données manquantes. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,risks,missingData,noScenarioReason,watchDirectives}.'},...messages.filter(m=>m.role!=='system')],12000);
+   lead=await ask(cloudflare,[{role:'system',content:base+' Groq est indisponible. Tu prends exceptionnellement le rôle d’analyste de secours et dois produire une analyse complète multi-timeframes, les signaux BUY/SELL/WAIT, les scores de lecture du marché, les scénarios chiffrés seulement si justifiés, les risques et les données manquantes. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,risks,missingData,noScenarioReason,watchDirectives}.'},...messages.filter(m=>m.role!=='system')],18000);
    leadProvider=cloudflare;leadRole='ANALYSTE_SECOURS';results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:leadRole,inputCandleCountM15:info.candleCountM15,latencyMs:Date.now()-t,...lead,decision:dir(lead),fallbackFor:'Groq'};
   }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_SECOURS',error:clean(e.message,180)};throw Object.assign(new Error('Groq et Cloudflare indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:Object.values(results).filter(Boolean)});}
  }
@@ -51,7 +51,7 @@ export async function runAureviaCollaboration({messages}){
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré'};
  if(leadProvider!==cloudflare){
   const t=Date.now();try{
-   const audit=await ask(cloudflare,[{role:'system',content:base+' Tu es l’ANALYSTE DE CONTRÔLE indépendant et solution de secours. Fais ta propre lecture des données, vérifie les contradictions et risques oubliés, et vérifie la conclusion principale et la critique OpenRouter. Si Groq ou OpenRouter est indisponible, assure la continuité de l’analyse en signalant cette indisponibilité. JSON: {decision,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,openrouterReview:results.openrouter})}],11000);
+   const audit=await ask(cloudflare,[{role:'system',content:base+' Tu es l’ANALYSTE DE CONTRÔLE indépendant et solution de secours. Fais ta propre lecture des données, vérifie les contradictions et risques oubliés, et vérifie la conclusion principale et la critique OpenRouter. Si Groq ou OpenRouter est indisponible, assure la continuité de l’analyse en signalant cette indisponibilité. JSON: {decision,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,openrouterReview:results.openrouter})}],18000);
    results.cloudflare={ok:true,provider:cloudflare.name,model:cloudflare.model,role:'ANALYSTE_CONTROLE',inputCandleCountM15:info.candleCountM15,latencyMs:Date.now()-t,...audit,decision:dir(audit),criticalBlockers:arr(audit.criticalBlockers),risks:arr(audit.risks),missingData:arr(audit.missingData)};
   }catch(e){results.cloudflare={ok:false,provider:cloudflare.name,role:'ANALYSTE_CONTROLE',error:clean(e.message,180)};}
  }
