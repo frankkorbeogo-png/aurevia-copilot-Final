@@ -59,7 +59,7 @@ async function ask(p,messages,timeout=18000,options={}){
  if(p.id==='groq'){
   body.max_completion_tokens=aggressive?1200:1800;
   if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}
- }else if(p.id==='cloudflare){body.max_tokens=aggressive?1200:1600;}
+ }else if(p.id==='cloudflare'){body.max_tokens=aggressive?1200:1600;}
  else {body.max_tokens=aggressive?2400:1800;if(p.id==='openrouter')body.response_format={type:'json_object'};}
  const headers={authorization:'Bearer '+p.key,'content-type':'application/json'};
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
