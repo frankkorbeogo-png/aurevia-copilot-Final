@@ -34,7 +34,7 @@ export async function runAureviaCollaboration({messages}){
  const results={groq:null,openrouter:null,cloudflare:null};
  let lead=null,leadProvider=null,leadRole='ANALYSTE_PRINCIPAL';
  if(groq){
-  const t=Date.now();try{lead=await ask(groq,messages,11000);leadProvider=groq;results.groq={ok:true,provider:groq.name,model:groq.model,role:'ANALYSTE_PRINCIPAL',inputCandleCountM15:info.candleCountM15,latencyMs:Date.now()-t,...lead,decision:dir(lead)};}
+  const t=Date.now();try{lead=await ask(groq,messages,18000);leadProvider=groq;results.groq={ok:true,provider:groq.name,model:groq.model,role:'ANALYSTE_PRINCIPAL',inputCandleCountM15:info.candleCountM15,latencyMs:Date.now()-t,...lead,decision:dir(lead)};}
   catch(e){results.groq={ok:false,provider:groq.name,role:'ANALYSTE_PRINCIPAL',error:clean(e.message,180)};}
  }else results.groq={ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré'};
  if(!lead){
@@ -45,7 +45,7 @@ export async function runAureviaCollaboration({messages}){
  }
  if(openrouter){
   const t=Date.now();try{
-   const review=await ask(openrouter,[{role:'system',content:base+' Tu es l’ANALYSTE CONTRADICTEUR. Vérifie rigoureusement le raisonnement principal, recherche faiblesses, confirmations, invalidations et contradictions. Propose un scénario alternatif uniquement si les données le justifient. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,primaryProvider:leadProvider.name})}],12000);
+   const review=await ask(openrouter,[{role:'system',content:base+' Tu es l’ANALYSTE CONTRADICTEUR. Vérifie rigoureusement le raisonnement principal, recherche faiblesses, confirmations, invalidations et contradictions. Propose un scénario alternatif uniquement si les données le justifient. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},{role:'user',content:JSON.stringify({marketData:market,primaryAnalysis:lead,primaryProvider:leadProvider.name})}],18000);
    results.openrouter={ok:true,provider:openrouter.name,model:openrouter.model,role:'ANALYSTE_CONTREDICTEUR',inputCandleCountM15:info.candleCountM15,latencyMs:Date.now()-t,...review,decision:dir(review),agreements:arr(review.agreements),disagreements:arr(review.disagreements),criticalBlockers:arr(review.criticalBlockers)};
   }catch(e){results.openrouter={ok:false,provider:openrouter.name,role:'ANALYSTE_CONTREDICTEUR',error:clean(e.message,180)};}
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré'};
