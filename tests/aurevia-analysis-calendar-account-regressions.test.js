@@ -9,7 +9,7 @@ test('le calendrier économique utilise exclusivement le widget TradingView', as
   assert.match(news, /embed-widget-events\.js/);
   assert.match(news, /Calendrier économique fourni exclusivement par TradingView/);
   assert.match(news, /script\.onerror\s*=\s*unavailable/);
-  assert.match(news, /setTimeout\(\(\)=>\{if\(!inner\.querySelector\('iframe'\)\)unavailable\(\)\},15000\)/);
+  assert.match(news, /setTimeout\(\(\)=>\{if\(!inner\.querySelector\('iframe'\)\)unavailable\(\);\},15000\)/);
   assert.match(news, /retry\.addEventListener\('click',load\)/);
   assert.match(news, /return\s*\(\)=>\{disposed=true/);
   assert.doesNotMatch(news, /ShowMyTrades|economic-calendar-api|alternativeCalendarProvider/i);
