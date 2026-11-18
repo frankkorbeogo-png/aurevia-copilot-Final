@@ -63,7 +63,16 @@ async function ask(p,messages,timeout=18000,options={}){
  if(p.id==='openrouter'){headers['HTTP-Referer']='https://aurevia-copilot-ia.netlify.app';headers['X-Title']='AUREVIA COPILOT';}
  const serialized=JSON.stringify(body);
  const started=Date.now();
- const r=await fetch(p.url,{method:'POST',headers,body:serialized,signal:AbortSignal.timeout(timeout)});
+ let r;
+ try{
+  r=await fetch(p.url,{method:'POST',headers,body:serialized,signal:AbortSignal.timeout(timeout)});
+ }catch(e){
+  const causeCode=String(e?.cause?.code||e?.cause?.errno||'').slice(0,80)||null;
+  const errorName=String(e?.name||'Error').slice(0,80);
+  const timedOut=errorName==='TimeoutError'||errorName==='AbortError'||causeCode==='ETIMEDOUT';
+  const networkDiagnostics={kind:timedOut?'TIMEOUT':'NETWORK_FAILURE',errorName,causeCode,elapsedMs:Date.now()-started,timeoutMs:timeout};
+  throw Object.assign(new Error(p.name+' '+(timedOut?'délai dépassé':'erreur réseau')+(causeCode?' ('+causeCode+')':'')),{code:timedOut?'PROVIDER_TIMEOUT':'PROVIDER_NETWORK_ERROR',networkDiagnostics});
+ }
  const j=await r.json().catch(()=>({}));
  const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(JSON.stringify(j),'utf8'),httpStatus:r.status,latencyMs:Date.now()-started,compacted:aggressive};
  if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
@@ -91,7 +100,7 @@ export async function runAureviaCollaboration({messages}){
  const runTimed=async(provider,role,call)=>{
   const started=Date.now();
   try{const result=await call();return {ok:true,provider:provider.name,model:provider.model,role,inputCandleCountM30:candleCountM30,latencyMs:Date.now()-started,...result};}
-  catch(e){return {ok:false,provider:provider.name,model:provider.model,role,error:clean(e?.message||'Erreur fournisseur',180),code:e?.code||null,diagnostics:e?.diagnostics||null,latencyMs:Date.now()-started,inputCandleCountM30:candleCountM30};}
+  catch(e){return {ok:false,provider:provider.name,model:provider.model,role,error:clean(e?.message||'Erreur fournisseur',180),code:e?.code||null,networkDiagnostics:e?.networkDiagnostics||null,diagnostics:e?.diagnostics||null,latencyMs:Date.now()-started,inputCandleCountM30:candleCountM30};}
  };
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const [groqResult,cloudflareResult]=await Promise.all([
