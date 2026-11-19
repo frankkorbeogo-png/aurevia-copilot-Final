@@ -4,7 +4,7 @@ import {validateM5AIConsensus} from '../../m5-entry-validation.js';
 const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
 const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
 function parseJson(s){
- const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\\s*/i,'').replace(/\\s*\x60{3}$/,'');
+ const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');
  const a=raw.indexOf('{'),b=raw.lastIndexOf('}');
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
@@ -82,13 +82,13 @@ export function compactRoleMessages(messages,role,aggressive=false){
   if(role==='openrouter'&&data.marketSummary){
    data=compactCriticPayload(data,aggressive);
   }else if(Array.isArray(data.candles)){
-   data.candles=compactCandleHistory(data.candles,{precision:aggressive?7:8,withTimestamps:true});
-   if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(aggressive?-5:-8);
-   if(aggressive){
+   // La requête initiale Cloudflare garde le schéma OHLC objet. Seul le retry Groq utilise les tuples.
+   if(role==='groq'&&aggressive){
+    data.candles=compactCandleHistory(data.candles,{precision:7,withTimestamps:true});
     const original=data;
     data={
      instrument:original.instrument,decisionTimeframe:'M30',
-     candleEncoding:'250 OHLC M30 candles, chronological. Each row: [first row epoch seconds; later rows delta seconds, open, high, low, close].',
+     candleEncoding:'Exactly 250 chronological M30 OHLC candles. Row 1: [epoch seconds, open, high, low, close]. Following rows: [delta seconds from prior candle, open, high, low, close].',
      candles:original.candles,
      indicators:boundedValue(original.indicators,{maxDepth:2,arrayLimit:4,stringLimit:160}),
      structure:boundedValue(original.structure,{maxDepth:2,arrayLimit:4,stringLimit:160}),
@@ -99,8 +99,14 @@ export function compactRoleMessages(messages,role,aggressive=false){
      context:{timeframes:boundedValue(original.context?.timeframes,{maxDepth:2,arrayLimit:3,stringLimit:140}),
       macro:original.context?.macro?{dxy:boundedValue(original.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(original.context.macro.notice||'').slice(0,120)}:null}
     };
-   }else if(data.context?.timeframes){
-    data.context.timeframes=boundedValue(data.context.timeframes,{maxDepth:3,arrayLimit:4,stringLimit:240});
+   }else{
+    if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(-5);
+    data.indicators=boundedValue(data.indicators,{maxDepth:3,arrayLimit:5,stringLimit:220});
+    data.structure=boundedValue(data.structure,{maxDepth:3,arrayLimit:5,stringLimit:220});
+    data.patterns=boundedValue(data.patterns,{maxDepth:2,arrayLimit:4,stringLimit:160});
+    data.volumeProfile=boundedValue(data.volumeProfile,{maxDepth:2,arrayLimit:3,stringLimit:120});
+    data.fibonacci=boundedValue(data.fibonacci,{maxDepth:2,arrayLimit:3,stringLimit:120});
+    data.context=boundedValue(data.context,{maxDepth:3,arrayLimit:4,stringLimit:180});
    }
   }
   return {...message,content:JSON.stringify(data)};
