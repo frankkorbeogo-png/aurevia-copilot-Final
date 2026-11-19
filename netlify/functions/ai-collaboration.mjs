@@ -9,51 +9,98 @@ function parseJson(s){
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
 }
-function compactRoleMessages(messages,role,aggressive=false){
+const CANDLE_HISTORY_SIZE=250;
+const PRIORITY_FIELDS=['trend','bias','direction','ema20','ema50','ema100','ema200','rsi','rsi14','macd','bollinger','atr','adx','bos','choch','breaks','sweeps','supports','resistances','orderBlocks','order_blocks','fvgs','liquidity','poc','vah','val','hvn','lvn','lastCandleTime','available','freshness','asOf','usableForDirectionalBias'];
+function boundedValue(value,{depth=0,maxDepth=2,arrayLimit=5,stringLimit=420}={}){
+ if(value==null||typeof value==='boolean')return value;
+ if(typeof value==='number')return Number.isFinite(value)?value:null;
+ if(typeof value==='string')return value.slice(0,stringLimit);
+ if(depth>=maxDepth)return undefined;
+ if(Array.isArray(value))return value.slice(-arrayLimit).map(v=>boundedValue(v,{depth:depth+1,maxDepth,arrayLimit,stringLimit})).filter(v=>v!==undefined);
+ if(typeof value==='object'){
+  const keys=Object.keys(value),ordered=[...PRIORITY_FIELDS.filter(k=>Object.hasOwn(value,k)),...keys.filter(k=>!PRIORITY_FIELDS.includes(k))].slice(0,18);
+  const out={};for(const key of ordered){const item=boundedValue(value[key],{depth:depth+1,maxDepth,arrayLimit,stringLimit});if(item!==undefined)out[key]=item;}return out;
+ }
+ return undefined;
+}
+function compactCandleHistory(candles,{precision=7,withTimestamps=true}={}){
+ if(!Array.isArray(candles)||candles.length!==CANDLE_HISTORY_SIZE)throw Object.assign(new Error('Historique M30 incomplet : 250 bougies sont obligatoires.'),{code:'M30_HISTORY_INCOMPLETE'});
+ const rows=[];let previousTime=null;
+ for(const candle of candles){
+  const tRaw=Array.isArray(candle)?candle[0]:candle?.t;
+  const time=typeof tRaw==='number'?(tRaw>1e12?Math.floor(tRaw/1000):Math.floor(tRaw)):Math.floor(Date.parse(tRaw)/1000);
+  const values=Array.isArray(candle)?candle.slice(1,5):[candle?.o,candle?.h,candle?.l,candle?.c];
+  const nums=values.map(v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(precision)):NaN);
+  if(!Number.isFinite(time)||nums.some(v=>!Number.isFinite(v))||nums[1]<Math.max(nums[0],nums[3])||nums[2]>Math.min(nums[0],nums[3]))throw Object.assign(new Error('Bougie M30 invalide dans le contexte IA.'),{code:'M30_CANDLE_INVALID'});
+  const timeField=withTimestamps?(previousTime===null?time:time-previousTime):undefined;
+  if(previousTime!==null&&time<=previousTime)throw Object.assign(new Error('Horodatages M30 non croissants.'),{code:'M30_CANDLE_ORDER_INVALID'});
+  rows.push(withTimestamps?[timeField,...nums]:nums);previousTime=time;
+ }
+ return rows;
+}
+function compactCriticPayload(data,aggressive=false){
+ const market=data.marketSummary||{};
+ const compactScenario=x=>x&&typeof x==='object'?{
+  direction:x.direction,entryZone:boundedValue(x.entryZone,{maxDepth:2,arrayLimit:4,stringLimit:180}),
+  entry:x.entry,stopLoss:x.stopLoss,takeProfits:Array.isArray(x.takeProfits)?x.takeProfits.slice(0,3):[],
+  reason:String(x.reason||'').slice(0,500)
+ }:null;
+ const compactAnalysis=x=>x&&typeof x==='object'?{
+  decision:x.decision,summary:String(x.summary||'').slice(0,700),
+  marketReading:String(x.marketReading||'').slice(0,aggressive?900:1500),
+  buy:compactScenario(x.buy),sell:compactScenario(x.sell),
+  riskLevel:x.riskLevel,veto:x.veto,vetoReason:String(x.vetoReason||'').slice(0,300),
+  criticalBlockers:Array.isArray(x.criticalBlockers)?x.criticalBlockers.slice(0,4):[],
+  risks:Array.isArray(x.risks)?x.risks.slice(0,4):[],
+  missingData:Array.isArray(x.missingData)?x.missingData.slice(0,4):[]
+ }:null;
+ return {
+  marketSummary:{
+   instrument:market.instrument,timeframe:market.timeframe,candleCountM30:market.candleCountM30,
+   latestCandles:Array.isArray(market.latestCandles)?market.latestCandles.slice(-12):[],
+   indicators:boundedValue(market.indicators,{maxDepth:2,arrayLimit:4,stringLimit:180}),
+   structure:boundedValue(market.structure,{maxDepth:2,arrayLimit:4,stringLimit:180}),
+   patterns:Array.isArray(market.patterns)?market.patterns.slice(-4).map(x=>String(x).slice(0,160)):[],
+   context:{timeframes:boundedValue(market.context?.timeframes,{maxDepth:2,arrayLimit:3,stringLimit:160}),
+    macro:market.context?.macro?{dxy:boundedValue(market.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(market.context.macro.notice||'').slice(0,160)}:null}
+  },
+  groqAnalysis:compactAnalysis(data.groqAnalysis),
+  cloudflareIndependentAnalysis:compactAnalysis(data.cloudflareIndependentAnalysis),
+  selectedPrimary:data.selectedPrimary
+ };
+}
+export function compactRoleMessages(messages,role,aggressive=false){
  return messages.map(message=>{
   if(message.role==='system'){
    const content=String(message.content||'');
    if(!aggressive)return {...message,content};
-   if(role==='groq')return {...message,content:'AUREVIA COPILOT. Analyse en français, JSON valide, aucune invention. Décision BUY/SELL/WAIT fondée sur les 250 bougies M30 fournies (chaque ligne [timestamp epoch, open, high, low, close]); H4/H1/M15 sont des contextes facultatifs; macro et DXY ne sont jamais obligatoires. Détecte tendance, consolidation, BOS/CHoCH, liquidité, supports/résistances, EMA, RSI, MACD, Bollinger, ATR et figures uniquement si données disponibles. Propose BUY/SELL seulement avec zone de mitigation, entrée, SL structurel, 1-3 TP cohérents et RR; entrée seulement après mitigation puis confirmation M5. WAIT si M30 indécis ou données essentielles périmées. Score technique 0-100 non probabiliste; 5-10 facteurs pondérés dont somme=100. estimatedWinRate=null si non démontrable. Aucun ordre exécuté. Schéma exact: {decision:"BUY|SELL|WAIT",summary,marketReading,noScenarioReason,watchDirectives:[{condition,expectedReaction,confirmation,invalidation}],buy,sell,risks:[],missingData:[]}. Scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType,triggerPrice,limitPrice,confirmationScore,scoreComponents:[{label,passed,weight,reasoning}],estimatedWinRate,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}.'};
-   // Conserver les règles et le schéma JSON, mais retirer les développements non décisionnels sur le retry Groq.
-   return {...message,content:content.length>6500?content.slice(0,4400)+'\\n[Consignes condensées pour retry Groq]\\n'+content.slice(-1900):content};
+   if(role==='groq')return {...message,content:'AUREVIA COPILOT. Analyse en français, JSON valide, aucune invention. Décision BUY/SELL/WAIT fondée sur exactement 250 bougies M30 clôturées fournies sous forme [horodatage epoch ou delta secondes, open, high, low, close], dans l’ordre chronologique. Les horodatages delta sont relatifs à la bougie précédente. M30 est prioritaire; H4/H1/M15 et macro sont des contextes facultatifs, jamais inventés. Étudie tendance, consolidation, BOS/CHoCH, liquidité, supports/résistances, EMA, RSI, MACD, Bollinger et ATR uniquement si fournis. BUY/SELL seulement avec zone de mitigation, entrée, SL structurel et 1-3 TP cohérents; activation après mitigation puis confirmation M5. WAIT si M30 réellement indécis ou données M30 essentielles invalides/périmées. Score 0-100 = confluence, jamais probabilité de gain; facteurs vérifiés pondérés somme 100. estimatedWinRate=null si non démontrable. Aucun ordre exécuté. JSON: {decision:"BUY|SELL|WAIT",summary,marketReading,noScenarioReason,watchDirectives:[{condition,expectedReaction,confirmation,invalidation}],buy,sell,risks:[],missingData:[]}. Scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType,triggerPrice,limitPrice,confirmationScore,scoreComponents:[{label,passed,weight,reasoning}],estimatedWinRate,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}.'};
+   if(role==='openrouter')return {...message,content:'Tu es le contradicteur indépendant AUREVIA. Compare les deux lectures fournies sans complaisance. Repère contradictions, invalidations, risques et éventuelles erreurs de niveaux. Réponds uniquement en JSON valide, sans inventer de données. Format: {decision:"BUY|SELL|WAIT",verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'};
+   return {...message,content:content.length>5000?content.slice(0,3500)+'\n[Instructions compactées]\n'+content.slice(-1200):content};
   }
-  let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?7000:12000)};}
-  if(Array.isArray(data.candles)){
-   // Conserver exactement les 250 bougies M30 clôturées; format numérique compact sans volume pour la seule relance Groq.
-   data.candles=data.candles.slice(-250).map(c=>{const n=v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(aggressive?4:7)):null;const t=typeof c.t==='number'?Math.floor(c.t/1000):Math.floor(Date.parse(c.t)/1000);return [Number.isFinite(t)?t:c.t,n(c.o),n(c.h),n(c.l),n(c.c)];});
-  }
-  if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(-5);
-  if(aggressive){
-   // Projection par liste blanche : aucune métadonnée volumineuse ou champ non décisionnel ne part chez Groq.
-   const bound=(value,depth=0)=>{
-    if(value==null||typeof value==='boolean'||typeof value==='number')return value;
-    if(typeof value==='string')return value.slice(0,180);
-    if(depth>=3)return undefined;
-    if(Array.isArray(value))return value.slice(-6).map(v=>bound(v,depth+1)).filter(v=>v!==undefined);
-    if(typeof value==='object'){const out={};for(const [k,v] of Object.entries(value).slice(0,16)){const x=bound(v,depth+1);if(x!==undefined)out[k]=x;}return out;}
-    return undefined;
-   };
-   const original=data;
-   data={
-    instrument:original.instrument,
-    decisionTimeframe:'M30',
-    candles:Array.isArray(original.candles)?original.candles.slice(-250):[],
-    indicators:bound(original.indicators),
-    structure:bound(original.structure),
-    patterns:Array.isArray(original.patterns)?original.patterns.slice(-5):[],
-    volumeProfile:bound(original.volumeProfile),
-    fibonacci:bound(original.fibonacci),
-    price:original.price,
-    previousClose:original.previousClose,
-    context:{
-     timeframes:bound(original.context?.timeframes),
-     macro:bound(original.context?.macro)
-    }
-   };
-  }else if(data.context?.timeframes){
-   for(const [tf,frame] of Object.entries(data.context.timeframes)){
-    if(frame&&typeof frame==='object')data.context.timeframes[tf]={available:frame.available,bias:frame.bias,ema20:frame.ema20,ema50:frame.ema50,ema200:frame.ema200,rsi14:frame.rsi14,macd:frame.macd,breaks:(frame.breaks||[]).slice(-3),sweeps:(frame.sweeps||[]).slice(-2),supports:(frame.supports||[]).slice(-3),resistances:(frame.resistances||[]).slice(-3)};
+  let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?2500:6000)};}
+  if(role==='openrouter'&&data.marketSummary){
+   data=compactCriticPayload(data,aggressive);
+  }else if(Array.isArray(data.candles)){
+   data.candles=compactCandleHistory(data.candles,{precision:aggressive?7:8,withTimestamps:true});
+   if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(aggressive?-5:-8);
+   if(aggressive){
+    const original=data;
+    data={
+     instrument:original.instrument,decisionTimeframe:'M30',
+     candleEncoding:'250 OHLC M30 candles, chronological. Each row: [first row epoch seconds; later rows delta seconds, open, high, low, close].',
+     candles:original.candles,
+     indicators:boundedValue(original.indicators,{maxDepth:2,arrayLimit:4,stringLimit:160}),
+     structure:boundedValue(original.structure,{maxDepth:2,arrayLimit:4,stringLimit:160}),
+     patterns:Array.isArray(original.patterns)?original.patterns.slice(-5):[],
+     volumeProfile:boundedValue(original.volumeProfile,{maxDepth:2,arrayLimit:3,stringLimit:120}),
+     fibonacci:boundedValue(original.fibonacci,{maxDepth:2,arrayLimit:3,stringLimit:120}),
+     price:original.price,previousClose:original.previousClose,
+     context:{timeframes:boundedValue(original.context?.timeframes,{maxDepth:2,arrayLimit:3,stringLimit:140}),
+      macro:original.context?.macro?{dxy:boundedValue(original.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(original.context.macro.notice||'').slice(0,120)}:null}
+    };
+   }else if(data.context?.timeframes){
+    data.context.timeframes=boundedValue(data.context.timeframes,{maxDepth:3,arrayLimit:4,stringLimit:240});
    }
   }
   return {...message,content:JSON.stringify(data)};
