@@ -20,26 +20,41 @@ function compactRoleMessages(messages,role,aggressive=false){
   }
   let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?7000:12000)};}
   if(Array.isArray(data.candles)){
-   // Garder les 250 bougies M30, avec timestamps epoch et OHLC compactés pour réduire fortement le payload.
-   data.candles=data.candles.slice(-250).map(c=>{const n=v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(aggressive?5:7)):null;const t=Date.parse(c.t);return [Number.isFinite(t)?Math.floor(t/1000):c.t,n(c.o),n(c.h),n(c.l),n(c.c)];});
+   // Conserver exactement les 250 bougies M30 clôturées; format numérique compact sans volume pour la seule relance Groq.
+   data.candles=data.candles.slice(-250).map(c=>{const n=v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(aggressive?4:7)):null;const t=typeof c.t==='number'?Math.floor(c.t/1000):Math.floor(Date.parse(c.t)/1000);return [Number.isFinite(t)?t:c.t,n(c.o),n(c.h),n(c.l),n(c.c)];});
   }
-  if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(aggressive?-4:-8);
+  if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(-5);
   if(aggressive){
-   for(const key of ['indicators','structure','volumeProfile','fibonacci']){
-    if(data[key]&&typeof data[key]==='object'){
-     const entries=Object.entries(data[key]).slice(0,12);
-     data[key]=Object.fromEntries(entries);
+   // Projection par liste blanche : aucune métadonnée volumineuse ou champ non décisionnel ne part chez Groq.
+   const bound=(value,depth=0)=>{
+    if(value==null||typeof value==='boolean'||typeof value==='number')return value;
+    if(typeof value==='string')return value.slice(0,180);
+    if(depth>=3)return undefined;
+    if(Array.isArray(value))return value.slice(-6).map(v=>bound(v,depth+1)).filter(v=>v!==undefined);
+    if(typeof value==='object'){const out={};for(const [k,v] of Object.entries(value).slice(0,16)){const x=bound(v,depth+1);if(x!==undefined)out[k]=x;}return out;}
+    return undefined;
+   };
+   const original=data;
+   data={
+    instrument:original.instrument,
+    decisionTimeframe:'M30',
+    candles:Array.isArray(original.candles)?original.candles.slice(-250):[],
+    indicators:bound(original.indicators),
+    structure:bound(original.structure),
+    patterns:Array.isArray(original.patterns)?original.patterns.slice(-5):[],
+    volumeProfile:bound(original.volumeProfile),
+    fibonacci:bound(original.fibonacci),
+    price:original.price,
+    previousClose:original.previousClose,
+    context:{
+     timeframes:bound(original.context?.timeframes),
+     macro:bound(original.context?.macro)
     }
-   }
-  }
-  if(data.context?.timeframes){
+   };
+  }else if(data.context?.timeframes){
    for(const [tf,frame] of Object.entries(data.context.timeframes)){
-    if(frame&&typeof frame==='object')data.context.timeframes[tf]={available:frame.available,bias:frame.bias,ema20:frame.ema20,ema50:frame.ema50,ema200:frame.ema200,rsi14:frame.rsi14,macd:frame.macd,breaks:(frame.breaks||[]).slice(aggressive?-1:-3),sweeps:(frame.sweeps||[]).slice(aggressive?-1:-2),supports:(frame.supports||[]).slice(aggressive?-2:-3),resistances:(frame.resistances||[]).slice(aggressive?-2:-3)};
+    if(frame&&typeof frame==='object')data.context.timeframes[tf]={available:frame.available,bias:frame.bias,ema20:frame.ema20,ema50:frame.ema50,ema200:frame.ema200,rsi14:frame.rsi14,macd:frame.macd,breaks:(frame.breaks||[]).slice(-3),sweeps:(frame.sweeps||[]).slice(-2),supports:(frame.supports||[]).slice(-3),resistances:(frame.resistances||[]).slice(-3)};
    }
-  }
-  if(data.context?.macro&&typeof data.context.macro==='object'){
-   const m=data.context.macro;
-   data.context.macro={dxy:m.dxy?{price:m.dxy.price,asOf:m.dxy.asOf,usableForDirectionalBias:m.dxy.usableForDirectionalBias,change:m.dxy.change}:null,fred:m.fred?{availableSeries:m.fred.availableSeries,totalSeries:m.fred.totalSeries}:null,notice:m.notice};
   }
   return {...message,content:JSON.stringify(data)};
  });
