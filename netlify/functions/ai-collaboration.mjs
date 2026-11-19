@@ -3,7 +3,7 @@ import {validateM5AIConsensus} from '../../m5-entry-validation.js';
 
 const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
 const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
-function parseJson(s){
+export function parseJson(s){
  const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');
  const a=raw.indexOf('{'),b=raw.lastIndexOf('}');
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
@@ -184,7 +184,7 @@ export async function runAureviaCollaboration({messages}){
  const analysisStarted=Date.now();
  const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=5500,MAX_ANALYSIS_BUDGET_MS=25000;
  const [groqResult,cloudflareResult]=await Promise.all([
-  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413&&e?.code!=='OUTPUT_TRUNCATED')return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,remaining),{aggressive:true});}}):
+  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413&&e?.code!=='OUTPUT_TRUNCATED')return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,Math.max(700,remaining-500)),{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
   runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>{
    const auditMessages=[
@@ -196,7 +196,7 @@ export async function runAureviaCollaboration({messages}){
     if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON','OUTPUT_TRUNCATED'].includes(e?.code)&&e?.providerStatus!==413)throw e;
     const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);
     if(remaining<1800)throw e;
-    return await ask(cloudflare,auditMessages,Math.min(4500,remaining),{aggressive:true});
+    return await ask(cloudflare,auditMessages,Math.min(4500,Math.max(700,remaining-500)),{aggressive:true});
    }
   })
  ]);
@@ -210,7 +210,7 @@ export async function runAureviaCollaboration({messages}){
   results.openrouter=await runTimed(openrouter,'ANALYSTE_CONTREDICTEUR',async()=>{const criticMessages=[
    {role:'system',content:base+' Tu es l’analyste contradicteur. Compare les analyses indépendantes de Groq et Cloudflare lorsqu’elles existent. Recherche faiblesses, contradictions, confirmations, invalidations et risques. Ne valide pas par complaisance. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
    {role:'user',content:JSON.stringify({marketSummary:{instrument:market.instrument,timeframe:market.timeframe,candleCountM30,latestCandles:(market.candles||[]).slice(-12).map(c=>[c.t,c.o,c.h,c.l,c.c]),indicators:market.indicators,structure:market.structure,patterns:(market.patterns||[]).slice(-5),context:{timeframes:market.context?.timeframes,macro:market.context?.macro?{dxy:market.context.macro.dxy,notice:market.context.macro.notice}:null}},groqAnalysis:groqOk?{decision:groqResult.decision,summary:String(groqResult.summary||'').slice(0,1200),marketReading:String(groqResult.marketReading||'').slice(0,4500),buy:groqResult.buy?{direction:groqResult.buy.direction,entryZone:groqResult.buy.entryZone,entry:groqResult.buy.entry,stopLoss:groqResult.buy.stopLoss,takeProfits:groqResult.buy.takeProfits,reason:String(groqResult.buy.reason||'').slice(0,900)}:null,sell:groqResult.sell?{direction:groqResult.sell.direction,entryZone:groqResult.sell.entryZone,entry:groqResult.sell.entry,stopLoss:groqResult.sell.stopLoss,takeProfits:groqResult.sell.takeProfits,reason:String(groqResult.sell.reason||'').slice(0,900)}:null,risks:groqResult.risks,missingData:groqResult.missingData}:null,cloudflareIndependentAnalysis:cloudflareOk?{decision:cloudflareResult.decision,summary:String(cloudflareResult.summary||'').slice(0,1200),marketReading:String(cloudflareResult.marketReading||'').slice(0,4500),buy:cloudflareResult.buy?{direction:cloudflareResult.buy.direction,entryZone:cloudflareResult.buy.entryZone,entry:cloudflareResult.buy.entry,stopLoss:cloudflareResult.buy.stopLoss,takeProfits:cloudflareResult.buy.takeProfits,reason:String(cloudflareResult.buy.reason||'').slice(0,900)}:null,sell:cloudflareResult.sell?{direction:cloudflareResult.sell.direction,entryZone:cloudflareResult.sell.entryZone,entry:cloudflareResult.sell.entry,stopLoss:cloudflareResult.sell.stopLoss,takeProfits:cloudflareResult.sell.takeProfits,reason:String(cloudflareResult.sell.reason||'').slice(0,900)}:null,riskLevel:cloudflareResult.riskLevel,veto:cloudflareResult.veto,vetoReason:cloudflareResult.vetoReason,criticalBlockers:cloudflareResult.criticalBlockers,risks:cloudflareResult.risks,missingData:cloudflareResult.missingData}:null,selectedPrimary:leadRole})}
-  ];const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<1500)throw Object.assign(new Error('Budget temps restant insuffisant pour la contre-analyse OpenRouter.'),{code:'ANALYSIS_TIME_BUDGET'});try{return await ask(openrouter,criticMessages,Math.min(CRITIC_TIMEOUT_MS,remaining));}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code)&&e?.providerStatus!==413)throw e;const retryRemaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(retryRemaining<1800)throw e;return await ask(openrouter,criticMessages,Math.min(4500,retryRemaining),{aggressive:true});}});
+  ];const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<1500)throw Object.assign(new Error('Budget temps restant insuffisant pour la contre-analyse OpenRouter.'),{code:'ANALYSIS_TIME_BUDGET'});try{return await ask(openrouter,criticMessages,Math.min(CRITIC_TIMEOUT_MS,Math.max(700,remaining-500)));}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON','OUTPUT_TRUNCATED'].includes(e?.code)&&e?.providerStatus!==413)throw e;const retryRemaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(retryRemaining<1800)throw e;return await ask(openrouter,criticMessages,Math.min(4500,retryRemaining),{aggressive:true});}});
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré',inputCandleCountM30:candleCountM30};
  const audit=cloudflareOk?cloudflareResult:null,critic=results.openrouter?.ok?results.openrouter:null;
  const blockers=[...(audit?.criticalBlockers||[]),...(critic?.criticalBlockers||[])].map(x=>clean(x,240)).filter(Boolean);
