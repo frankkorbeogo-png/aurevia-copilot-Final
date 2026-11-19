@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compactRoleMessages } from '../netlify/functions/ai-collaboration.mjs';
+import { compactRoleMessages, parseJson } from '../netlify/functions/ai-collaboration.mjs';
 
 function candles(count=250){
  const start=Date.parse('2026-11-18T00:00:00Z');
@@ -59,4 +59,17 @@ test('OpenRouter critic payload is bounded and preserves decision levels',()=>{
 test('M30 invalid candle count is rejected rather than silently shortened',()=>{
  const p=payload();p.candles=p.candles.slice(-249);
  assert.throws(()=>compactRoleMessages([{role:'user',content:JSON.stringify(p)}],'groq',true),{code:'M30_HISTORY_INCOMPLETE'});
+});
+
+test('Initial Groq request retains full OHLC object schema and all 250 candles',()=>{
+ const input=payload();
+ const result=compactRoleMessages([{role:'user',content:JSON.stringify(input)}],'groq',false);
+ const out=JSON.parse(result[0].content);
+ assert.equal(out.candles.length,250);
+ assert.equal(Array.isArray(out.candles[0]),false);
+ assert.equal(out.candles[0].t,input.candles[0].t);
+ assert.equal(out.candles[249].c,input.candles[249].c);
+});
+test('JSON parser accepts fenced provider JSON',()=>{
+ assert.deepEqual(parseJson('```json\n{"decision":"WAIT"}\n```'),{decision:'WAIT'});
 });
