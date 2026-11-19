@@ -58,10 +58,10 @@ function compactCriticPayload(data,aggressive=false){
   marketSummary:{
    instrument:market.instrument,timeframe:market.timeframe,candleCountM30:market.candleCountM30,
    latestCandles:Array.isArray(market.latestCandles)?market.latestCandles.slice(-12):[],
-   indicators:boundedValue(market.indicators,{maxDepth:2,arrayLimit:4,stringLimit:180}),
-   structure:boundedValue(market.structure,{maxDepth:2,arrayLimit:4,stringLimit:180}),
+   indicators:boundedValue(market.indicators,{maxDepth:3,arrayLimit:4,stringLimit:180}),
+   structure:boundedValue(market.structure,{maxDepth:3,arrayLimit:4,stringLimit:180}),
    patterns:Array.isArray(market.patterns)?market.patterns.slice(-4).map(x=>String(x).slice(0,160)):[],
-   context:{timeframes:boundedValue(market.context?.timeframes,{maxDepth:2,arrayLimit:3,stringLimit:160}),
+   context:{timeframes:boundedValue(market.context?.timeframes,{maxDepth:3,arrayLimit:3,stringLimit:160}),
     macro:market.context?.macro?{dxy:boundedValue(market.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(market.context.macro.notice||'').slice(0,160)}:null}
   },
   groqAnalysis:compactAnalysis(data.groqAnalysis),
@@ -90,13 +90,13 @@ export function compactRoleMessages(messages,role,aggressive=false){
      instrument:original.instrument,decisionTimeframe:'M30',
      candleEncoding:'Exactly 250 chronological M30 OHLC candles. Row 1: [epoch seconds, open, high, low, close]. Following rows: [delta seconds from prior candle, open, high, low, close].',
      candles:original.candles,
-     indicators:boundedValue(original.indicators,{maxDepth:2,arrayLimit:4,stringLimit:160}),
-     structure:boundedValue(original.structure,{maxDepth:2,arrayLimit:4,stringLimit:160}),
+     indicators:boundedValue(original.indicators,{maxDepth:3,arrayLimit:4,stringLimit:160}),
+     structure:boundedValue(original.structure,{maxDepth:3,arrayLimit:4,stringLimit:160}),
      patterns:Array.isArray(original.patterns)?original.patterns.slice(-5):[],
      volumeProfile:boundedValue(original.volumeProfile,{maxDepth:2,arrayLimit:3,stringLimit:120}),
      fibonacci:boundedValue(original.fibonacci,{maxDepth:2,arrayLimit:3,stringLimit:120}),
      price:original.price,previousClose:original.previousClose,
-     context:{timeframes:boundedValue(original.context?.timeframes,{maxDepth:2,arrayLimit:3,stringLimit:140}),
+     context:{timeframes:boundedValue(original.context?.timeframes,{maxDepth:3,arrayLimit:3,stringLimit:140}),
       macro:original.context?.macro?{dxy:boundedValue(original.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(original.context.macro.notice||'').slice(0,120)}:null}
     };
    }else{
