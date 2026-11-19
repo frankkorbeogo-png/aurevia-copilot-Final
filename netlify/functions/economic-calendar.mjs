@@ -17,12 +17,10 @@ export async function handler(event) {
   const query = new URLSearchParams({
     select: 'id,event_name,release_date,scheduled_at,source_timezone,currency,impact,source_url,source_provider,time_basis',
     is_active: 'eq.true',
-    scheduled_at: 'gte.' + now.toISOString(),
     order: 'scheduled_at.asc',
     limit: '250'
   });
-  query.set('scheduled_at', 'gte.' + now.toISOString());
-  query.append('scheduled_at', 'lte.' + end.toISOString());
+  query.set('scheduled_at', 'gte.' + now.toISOString() + '&scheduled_at=lte.' + end.toISOString());
 
   try {
     const response = await fetch(context.base + '/rest/v1/economic_release_events?' + query.toString(), {
