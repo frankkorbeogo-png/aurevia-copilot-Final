@@ -125,7 +125,7 @@ async function ask(p,messages,timeout=18000,options={}){
  const selected=compactRoleMessages(messages,p.id,aggressive);
  const body={model:p.model,messages:selected,temperature:0.2,stream:false};
  if(p.id==='groq'){
-  body.max_completion_tokens=aggressive?1200:1800;
+  body.max_completion_tokens=aggressive?2200:1800;
   if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}
  }else if(p.id==='cloudflare'){body.max_tokens=aggressive?1200:1600;}
  else {body.max_tokens=aggressive?2400:1800;if(p.id==='openrouter')body.response_format={type:'json_object'};}
@@ -147,9 +147,14 @@ async function ask(p,messages,timeout=18000,options={}){
  const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(JSON.stringify(j),'utf8'),httpStatus:r.status,latencyMs:Date.now()-started,compacted:aggressive};
  if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
  const choice=j?.choices?.[0],message=choice?.message;
- const extractText=value=>typeof value==='string'?value:Array.isArray(value)?value.map(part=>typeof part==='string'?part:(part?.text||part?.content||'')).join('\\n'):'';
- const content=extractText(message?.content)||extractText(choice?.text)||extractText(j?.output_text);
- const reasoning=[extractText(message?.reasoning),extractText(message?.reasoning_details),extractText(message?.analysis)].filter(Boolean).join('\\n');
+ const extractText=value=>{
+  if(typeof value==='string')return value;
+  if(Array.isArray(value))return value.map(part=>typeof part==='string'?part:extractText(part?.text??part?.content??part?.summary??'')).filter(Boolean).join('\n');
+  if(value&&typeof value==='object')return extractText(value.text??value.content??value.summary??'');
+  return '';
+ };
+ const content=extractText(message?.content)||extractText(choice?.text)||extractText(j?.output_text)||extractText(j?.output);
+ const reasoning=[extractText(message?.reasoning),extractText(message?.reasoning_details),extractText(message?.analysis),extractText(j?.reasoning),extractText(j?.reasoning_details)].filter(Boolean).join('\n');
  const output=content.trim()?content:reasoning.trim();
  if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(reasoning),choiceCount:Array.isArray(j?.choices)?j.choices.length:0,hasMessage:Boolean(message)}});
  try{return {...parseJson(output),_providerDiagnostics:{...diagnostics,contentSource:content.trim()?'content':'reasoning'}};}
@@ -175,14 +180,23 @@ export async function runAureviaCollaboration({messages}){
  };
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const analysisStarted=Date.now();
- const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=3500,MAX_ANALYSIS_BUDGET_MS=25000;
+ const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=5500,MAX_ANALYSIS_BUDGET_MS=25000;
  const [groqResult,cloudflareResult]=await Promise.all([
   groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413)return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,remaining),{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
-  runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>ask(cloudflare,[
-   {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
-   ...messages.filter(m=>m.role!=='system')
-  ],CLOUDFLARE_TIMEOUT_MS))
+  runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>{
+   const auditMessages=[
+    {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
+    ...messages.filter(m=>m.role!=='system')
+   ];
+   try{return await ask(cloudflare,auditMessages,CLOUDFLARE_TIMEOUT_MS);}
+   catch(e){
+    if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code)&&e?.providerStatus!==413)throw e;
+    const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);
+    if(remaining<1800)throw e;
+    return await ask(cloudflare,auditMessages,Math.min(4500,remaining),{aggressive:true});
+   }
+  })
  ]);
  results.groq=groqResult;results.cloudflare=cloudflareResult;
  const groqOk=groqResult.ok,cloudflareOk=cloudflareResult.ok;
@@ -194,7 +208,7 @@ export async function runAureviaCollaboration({messages}){
   results.openrouter=await runTimed(openrouter,'ANALYSTE_CONTREDICTEUR',async()=>{const criticMessages=[
    {role:'system',content:base+' Tu es l’analyste contradicteur. Compare les analyses indépendantes de Groq et Cloudflare lorsqu’elles existent. Recherche faiblesses, contradictions, confirmations, invalidations et risques. Ne valide pas par complaisance. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
    {role:'user',content:JSON.stringify({marketSummary:{instrument:market.instrument,timeframe:market.timeframe,candleCountM30,latestCandles:(market.candles||[]).slice(-12).map(c=>[c.t,c.o,c.h,c.l,c.c]),indicators:market.indicators,structure:market.structure,patterns:(market.patterns||[]).slice(-5),context:{timeframes:market.context?.timeframes,macro:market.context?.macro?{dxy:market.context.macro.dxy,notice:market.context.macro.notice}:null}},groqAnalysis:groqOk?{decision:groqResult.decision,summary:String(groqResult.summary||'').slice(0,1200),marketReading:String(groqResult.marketReading||'').slice(0,4500),buy:groqResult.buy?{direction:groqResult.buy.direction,entryZone:groqResult.buy.entryZone,entry:groqResult.buy.entry,stopLoss:groqResult.buy.stopLoss,takeProfits:groqResult.buy.takeProfits,reason:String(groqResult.buy.reason||'').slice(0,900)}:null,sell:groqResult.sell?{direction:groqResult.sell.direction,entryZone:groqResult.sell.entryZone,entry:groqResult.sell.entry,stopLoss:groqResult.sell.stopLoss,takeProfits:groqResult.sell.takeProfits,reason:String(groqResult.sell.reason||'').slice(0,900)}:null,risks:groqResult.risks,missingData:groqResult.missingData}:null,cloudflareIndependentAnalysis:cloudflareOk?{decision:cloudflareResult.decision,summary:String(cloudflareResult.summary||'').slice(0,1200),marketReading:String(cloudflareResult.marketReading||'').slice(0,4500),buy:cloudflareResult.buy?{direction:cloudflareResult.buy.direction,entryZone:cloudflareResult.buy.entryZone,entry:cloudflareResult.buy.entry,stopLoss:cloudflareResult.buy.stopLoss,takeProfits:cloudflareResult.buy.takeProfits,reason:String(cloudflareResult.buy.reason||'').slice(0,900)}:null,sell:cloudflareResult.sell?{direction:cloudflareResult.sell.direction,entryZone:cloudflareResult.sell.entryZone,entry:cloudflareResult.sell.entry,stopLoss:cloudflareResult.sell.stopLoss,takeProfits:cloudflareResult.sell.takeProfits,reason:String(cloudflareResult.sell.reason||'').slice(0,900)}:null,riskLevel:cloudflareResult.riskLevel,veto:cloudflareResult.veto,vetoReason:cloudflareResult.vetoReason,criticalBlockers:cloudflareResult.criticalBlockers,risks:cloudflareResult.risks,missingData:cloudflareResult.missingData}:null,selectedPrimary:leadRole})}
-  ];const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<1500)throw Object.assign(new Error('Budget temps restant insuffisant pour la contre-analyse OpenRouter.'),{code:'ANALYSIS_TIME_BUDGET'});try{return await ask(openrouter,criticMessages,Math.min(CRITIC_TIMEOUT_MS,remaining));}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code))throw e;const retryRemaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(retryRemaining<1500)throw e;return await ask(openrouter,criticMessages,Math.min(RETRY_TIMEOUT_MS,retryRemaining),{aggressive:true});}});
+  ];const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<1500)throw Object.assign(new Error('Budget temps restant insuffisant pour la contre-analyse OpenRouter.'),{code:'ANALYSIS_TIME_BUDGET'});try{return await ask(openrouter,criticMessages,Math.min(CRITIC_TIMEOUT_MS,remaining));}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code)&&e?.providerStatus!==413)throw e;const retryRemaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(retryRemaining<1800)throw e;return await ask(openrouter,criticMessages,Math.min(4500,retryRemaining),{aggressive:true});}});
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré',inputCandleCountM30:candleCountM30};
  const audit=cloudflareOk?cloudflareResult:null,critic=results.openrouter?.ok?results.openrouter:null;
  const blockers=[...(audit?.criticalBlockers||[]),...(critic?.criticalBlockers||[])].map(x=>clean(x,240)).filter(Boolean);
