@@ -20,7 +20,8 @@ export async function handler(event) {
     order: 'scheduled_at.asc',
     limit: '250'
   });
-  query.set('scheduled_at', 'gte.' + now.toISOString() + '&scheduled_at=lte.' + end.toISOString());
+  query.set('scheduled_at', 'gte.' + now.toISOString());
+  query.append('scheduled_at', 'lte.' + end.toISOString());
 
   try {
     const response = await fetch(context.base + '/rest/v1/economic_release_events?' + query.toString(), {
