@@ -3,43 +3,111 @@ import {validateM5AIConsensus} from '../../m5-entry-validation.js';
 
 const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
 const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
-function parseJson(s){
- const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\\s*/i,'').replace(/\\s*\x60{3}$/,'');
+export function parseJson(s){
+ const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');
  const a=raw.indexOf('{'),b=raw.lastIndexOf('}');
  if(a<0||b<a)throw new Error('Réponse JSON inexploitable.');
  return JSON.parse(raw.slice(a,b+1));
 }
-function compactRoleMessages(messages,role,aggressive=false){
+const CANDLE_HISTORY_SIZE=250;
+const PRIORITY_FIELDS=['trend','bias','direction','ema20','ema50','ema100','ema200','rsi','rsi14','macd','bollinger','atr','adx','bos','choch','breaks','sweeps','supports','resistances','orderBlocks','order_blocks','fvgs','liquidity','poc','vah','val','hvn','lvn','lastCandleTime','available','freshness','asOf','usableForDirectionalBias'];
+function boundedValue(value,{depth=0,maxDepth=2,arrayLimit=5,stringLimit=420}={}){
+ if(value==null||typeof value==='boolean')return value;
+ if(typeof value==='number')return Number.isFinite(value)?value:null;
+ if(typeof value==='string')return value.slice(0,stringLimit);
+ if(depth>=maxDepth)return undefined;
+ if(Array.isArray(value))return value.slice(-arrayLimit).map(v=>boundedValue(v,{depth:depth+1,maxDepth,arrayLimit,stringLimit})).filter(v=>v!==undefined);
+ if(typeof value==='object'){
+  const keys=Object.keys(value),ordered=[...PRIORITY_FIELDS.filter(k=>Object.hasOwn(value,k)),...keys.filter(k=>!PRIORITY_FIELDS.includes(k))].slice(0,18);
+  const out={};for(const key of ordered){const item=boundedValue(value[key],{depth:depth+1,maxDepth,arrayLimit,stringLimit});if(item!==undefined)out[key]=item;}return out;
+ }
+ return undefined;
+}
+function compactCandleHistory(candles,{precision=7,withTimestamps=true}={}){
+ if(!Array.isArray(candles)||candles.length!==CANDLE_HISTORY_SIZE)throw Object.assign(new Error('Historique M30 incomplet : 250 bougies sont obligatoires.'),{code:'M30_HISTORY_INCOMPLETE'});
+ const rows=[];let previousTime=null;
+ for(const candle of candles){
+  const tRaw=Array.isArray(candle)?candle[0]:candle?.t;
+  const time=typeof tRaw==='number'?(tRaw>1e12?Math.floor(tRaw/1000):Math.floor(tRaw)):Math.floor(Date.parse(tRaw)/1000);
+  const values=Array.isArray(candle)?candle.slice(1,5):[candle?.o,candle?.h,candle?.l,candle?.c];
+  const nums=values.map(v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(precision)):NaN);
+  if(!Number.isFinite(time)||nums.some(v=>!Number.isFinite(v))||nums[1]<Math.max(nums[0],nums[3])||nums[2]>Math.min(nums[0],nums[3]))throw Object.assign(new Error('Bougie M30 invalide dans le contexte IA.'),{code:'M30_CANDLE_INVALID'});
+  const timeField=withTimestamps?(previousTime===null?time:time-previousTime):undefined;
+  if(previousTime!==null&&time<=previousTime)throw Object.assign(new Error('Horodatages M30 non croissants.'),{code:'M30_CANDLE_ORDER_INVALID'});
+  rows.push(withTimestamps?[timeField,...nums]:nums);previousTime=time;
+ }
+ return rows;
+}
+function compactCriticPayload(data,aggressive=false){
+ const market=data.marketSummary||{};
+ const compactScenario=x=>x&&typeof x==='object'?{
+  direction:x.direction,entryZone:boundedValue(x.entryZone,{maxDepth:2,arrayLimit:4,stringLimit:180}),
+  entry:x.entry,stopLoss:x.stopLoss,takeProfits:Array.isArray(x.takeProfits)?x.takeProfits.slice(0,3):[],
+  reason:String(x.reason||'').slice(0,500)
+ }:null;
+ const compactAnalysis=x=>x&&typeof x==='object'?{
+  decision:x.decision,summary:String(x.summary||'').slice(0,700),
+  marketReading:String(x.marketReading||'').slice(0,aggressive?900:1500),
+  buy:compactScenario(x.buy),sell:compactScenario(x.sell),
+  riskLevel:x.riskLevel,veto:x.veto,vetoReason:String(x.vetoReason||'').slice(0,300),
+  criticalBlockers:Array.isArray(x.criticalBlockers)?x.criticalBlockers.slice(0,4):[],
+  risks:Array.isArray(x.risks)?x.risks.slice(0,4):[],
+  missingData:Array.isArray(x.missingData)?x.missingData.slice(0,4):[]
+ }:null;
+ return {
+  marketSummary:{
+   instrument:market.instrument,timeframe:market.timeframe,candleCountM30:market.candleCountM30,
+   latestCandles:Array.isArray(market.latestCandles)?market.latestCandles.slice(-12):[],
+   indicators:boundedValue(market.indicators,{maxDepth:3,arrayLimit:4,stringLimit:180}),
+   structure:boundedValue(market.structure,{maxDepth:3,arrayLimit:4,stringLimit:180}),
+   patterns:Array.isArray(market.patterns)?market.patterns.slice(-4).map(x=>String(x).slice(0,160)):[],
+   context:{timeframes:boundedValue(market.context?.timeframes,{maxDepth:3,arrayLimit:3,stringLimit:160}),
+    macro:market.context?.macro?{dxy:boundedValue(market.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(market.context.macro.notice||'').slice(0,160)}:null}
+  },
+  groqAnalysis:compactAnalysis(data.groqAnalysis),
+  cloudflareIndependentAnalysis:compactAnalysis(data.cloudflareIndependentAnalysis),
+  selectedPrimary:data.selectedPrimary
+ };
+}
+export function compactRoleMessages(messages,role,aggressive=false){
  return messages.map(message=>{
   if(message.role==='system'){
    const content=String(message.content||'');
    if(!aggressive)return {...message,content};
-   if(role==='groq')return {...message,content:'AUREVIA COPILOT. Analyse en français, JSON valide, aucune invention. Décision BUY/SELL/WAIT fondée sur les 250 bougies M30 fournies (chaque ligne [timestamp epoch, open, high, low, close]); H4/H1/M15 sont des contextes facultatifs; macro et DXY ne sont jamais obligatoires. Détecte tendance, consolidation, BOS/CHoCH, liquidité, supports/résistances, EMA, RSI, MACD, Bollinger, ATR et figures uniquement si données disponibles. Propose BUY/SELL seulement avec zone de mitigation, entrée, SL structurel, 1-3 TP cohérents et RR; entrée seulement après mitigation puis confirmation M5. WAIT si M30 indécis ou données essentielles périmées. Score technique 0-100 non probabiliste; 5-10 facteurs pondérés dont somme=100. estimatedWinRate=null si non démontrable. Aucun ordre exécuté. Schéma exact: {decision:"BUY|SELL|WAIT",summary,marketReading,noScenarioReason,watchDirectives:[{condition,expectedReaction,confirmation,invalidation}],buy,sell,risks:[],missingData:[]}. Scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType,triggerPrice,limitPrice,confirmationScore,scoreComponents:[{label,passed,weight,reasoning}],estimatedWinRate,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}.'};
-   // Conserver les règles et le schéma JSON, mais retirer les développements non décisionnels sur le retry Groq.
-   return {...message,content:content.length>6500?content.slice(0,4400)+'\\n[Consignes condensées pour retry Groq]\\n'+content.slice(-1900):content};
+   if(role==='groq')return {...message,content:'AUREVIA COPILOT. Analyse en français, JSON valide, aucune invention. Décision BUY/SELL/WAIT fondée sur exactement 250 bougies M30 clôturées fournies sous forme [horodatage epoch ou delta secondes, open, high, low, close], dans l’ordre chronologique. Les horodatages delta sont relatifs à la bougie précédente. M30 est prioritaire; H4/H1/M15 et macro sont des contextes facultatifs, jamais inventés. Étudie tendance, consolidation, BOS/CHoCH, liquidité, supports/résistances, EMA, RSI, MACD, Bollinger et ATR uniquement si fournis. BUY/SELL seulement avec zone de mitigation, entrée, SL structurel et 1-3 TP cohérents; activation après mitigation puis confirmation M5. WAIT si M30 réellement indécis ou données M30 essentielles invalides/périmées. Score 0-100 = confluence, jamais probabilité de gain; facteurs vérifiés pondérés somme 100. estimatedWinRate=null si non démontrable. Aucun ordre exécuté. JSON: {decision:"BUY|SELL|WAIT",summary,marketReading,noScenarioReason,watchDirectives:[{condition,expectedReaction,confirmation,invalidation}],buy,sell,risks:[],missingData:[]}. Scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType,triggerPrice,limitPrice,confirmationScore,scoreComponents:[{label,passed,weight,reasoning}],estimatedWinRate,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}.'};
+   if(role==='openrouter')return {...message,content:'Tu es le contradicteur indépendant AUREVIA. Compare les deux lectures fournies sans complaisance. Repère contradictions, invalidations, risques et éventuelles erreurs de niveaux. Réponds uniquement en JSON valide, sans inventer de données. Format: {decision:"BUY|SELL|WAIT",verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'};
+   return {...message,content:content.length>5000?content.slice(0,3500)+'\n[Instructions compactées]\n'+content.slice(-1200):content};
   }
-  let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?7000:12000)};}
-  if(Array.isArray(data.candles)){
-   // Garder les 250 bougies M30, avec timestamps epoch et OHLC compactés pour réduire fortement le payload.
-   data.candles=data.candles.slice(-250).map(c=>{const n=v=>Number.isFinite(Number(v))?Number(Number(v).toPrecision(aggressive?5:7)):null;const t=Date.parse(c.t);return [Number.isFinite(t)?Math.floor(t/1000):c.t,n(c.o),n(c.h),n(c.l),n(c.c)];});
-  }
-  if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(aggressive?-4:-8);
-  if(aggressive){
-   for(const key of ['indicators','structure','volumeProfile','fibonacci']){
-    if(data[key]&&typeof data[key]==='object'){
-     const entries=Object.entries(data[key]).slice(0,12);
-     data[key]=Object.fromEntries(entries);
-    }
+  let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?2500:6000)};}
+  if(role==='openrouter'&&data.marketSummary){
+   data=compactCriticPayload(data,aggressive);
+  }else if(Array.isArray(data.candles)){
+   // La requête initiale Cloudflare garde le schéma OHLC objet. Seul le retry Groq utilise les tuples.
+   if(role==='groq'&&aggressive){
+    data.candles=compactCandleHistory(data.candles,{precision:7,withTimestamps:true});
+    const original=data;
+    data={
+     instrument:original.instrument,decisionTimeframe:'M30',
+     candleEncoding:'Exactly 250 chronological M30 OHLC candles. Row 1: [epoch seconds, open, high, low, close]. Following rows: [delta seconds from prior candle, open, high, low, close].',
+     candles:original.candles,
+     indicators:boundedValue(original.indicators,{maxDepth:3,arrayLimit:4,stringLimit:160}),
+     structure:boundedValue(original.structure,{maxDepth:3,arrayLimit:4,stringLimit:160}),
+     patterns:Array.isArray(original.patterns)?original.patterns.slice(-5):[],
+     volumeProfile:boundedValue(original.volumeProfile,{maxDepth:2,arrayLimit:3,stringLimit:120}),
+     fibonacci:boundedValue(original.fibonacci,{maxDepth:2,arrayLimit:3,stringLimit:120}),
+     price:original.price,previousClose:original.previousClose,
+     context:{timeframes:boundedValue(original.context?.timeframes,{maxDepth:3,arrayLimit:3,stringLimit:140}),
+      macro:original.context?.macro?{dxy:boundedValue(original.context.macro.dxy,{maxDepth:1,arrayLimit:2,stringLimit:120}),notice:String(original.context.macro.notice||'').slice(0,120)}:null}
+    };
+   }else{
+    if(Array.isArray(data.patterns))data.patterns=data.patterns.slice(-5);
+    data.indicators=boundedValue(data.indicators,{maxDepth:3,arrayLimit:5,stringLimit:220});
+    data.structure=boundedValue(data.structure,{maxDepth:3,arrayLimit:5,stringLimit:220});
+    data.patterns=boundedValue(data.patterns,{maxDepth:2,arrayLimit:4,stringLimit:160});
+    data.volumeProfile=boundedValue(data.volumeProfile,{maxDepth:2,arrayLimit:3,stringLimit:120});
+    data.fibonacci=boundedValue(data.fibonacci,{maxDepth:2,arrayLimit:3,stringLimit:120});
+    data.context=boundedValue(data.context,{maxDepth:3,arrayLimit:4,stringLimit:180});
    }
-  }
-  if(data.context?.timeframes){
-   for(const [tf,frame] of Object.entries(data.context.timeframes)){
-    if(frame&&typeof frame==='object')data.context.timeframes[tf]={available:frame.available,bias:frame.bias,ema20:frame.ema20,ema50:frame.ema50,ema200:frame.ema200,rsi14:frame.rsi14,macd:frame.macd,breaks:(frame.breaks||[]).slice(aggressive?-1:-3),sweeps:(frame.sweeps||[]).slice(aggressive?-1:-2),supports:(frame.supports||[]).slice(aggressive?-2:-3),resistances:(frame.resistances||[]).slice(aggressive?-2:-3)};
-   }
-  }
-  if(data.context?.macro&&typeof data.context.macro==='object'){
-   const m=data.context.macro;
-   data.context.macro={dxy:m.dxy?{price:m.dxy.price,asOf:m.dxy.asOf,usableForDirectionalBias:m.dxy.usableForDirectionalBias,change:m.dxy.change}:null,fred:m.fred?{availableSeries:m.fred.availableSeries,totalSeries:m.fred.totalSeries}:null,notice:m.notice};
   }
   return {...message,content:JSON.stringify(data)};
  });
@@ -57,7 +125,7 @@ async function ask(p,messages,timeout=18000,options={}){
  const selected=compactRoleMessages(messages,p.id,aggressive);
  const body={model:p.model,messages:selected,temperature:0.2,stream:false};
  if(p.id==='groq'){
-  body.max_completion_tokens=aggressive?1200:1800;
+  body.max_completion_tokens=aggressive?2200:1800;
   if(p.model.startsWith('openai/gpt-oss-')){body.reasoning_effort='low';body.include_reasoning=false;body.response_format={type:'json_object'};}
  }else if(p.id==='cloudflare'){body.max_tokens=aggressive?1200:1600;}
  else {body.max_tokens=aggressive?2400:1800;if(p.id==='openrouter')body.response_format={type:'json_object'};}
@@ -75,17 +143,24 @@ async function ask(p,messages,timeout=18000,options={}){
   const networkDiagnostics={kind:timedOut?'TIMEOUT':'NETWORK_FAILURE',errorName,causeCode,elapsedMs:Date.now()-started,timeoutMs:timeout};
   throw Object.assign(new Error(p.name+' '+(timedOut?'délai dépassé':'erreur réseau')+(causeCode?' ('+causeCode+')':'')),{code:timedOut?'PROVIDER_TIMEOUT':'PROVIDER_NETWORK_ERROR',networkDiagnostics});
  }
- const j=await r.json().catch(()=>({}));
- const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(JSON.stringify(j),'utf8'),httpStatus:r.status,latencyMs:Date.now()-started,compacted:aggressive};
+ const responseText=await r.text();
+ let j={};try{j=JSON.parse(responseText);}catch{}
+ const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(responseText,'utf8'),httpStatus:r.status,contentType:r.headers.get('content-type')||null,latencyMs:Date.now()-started,compacted:aggressive,responseIsJson:Boolean(responseText.trim().startsWith('{')||responseText.trim().startsWith('['))};
  if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
+ if(!diagnostics.responseIsJson)throw Object.assign(new Error(p.name+' réponse HTTP non JSON'),{code:'NON_JSON_PROVIDER_RESPONSE',diagnostics});
  const choice=j?.choices?.[0],message=choice?.message;
- const extractText=value=>typeof value==='string'?value:Array.isArray(value)?value.map(part=>typeof part==='string'?part:(part?.text||part?.content||'')).join('\\n'):'';
- const content=extractText(message?.content)||extractText(choice?.text)||extractText(j?.output_text);
- const reasoning=[extractText(message?.reasoning),extractText(message?.reasoning_details),extractText(message?.analysis)].filter(Boolean).join('\\n');
+ const extractText=value=>{
+  if(typeof value==='string')return value;
+  if(Array.isArray(value))return value.map(part=>typeof part==='string'?part:extractText(part?.text??part?.content??part?.summary??'')).filter(Boolean).join('\n');
+  if(value&&typeof value==='object')return extractText(value.text??value.content??value.summary??'');
+  return '';
+ };
+ const content=extractText(message?.content)||extractText(choice?.text)||extractText(j?.output_text)||extractText(j?.output);
+ const reasoning=[extractText(message?.reasoning),extractText(message?.reasoning_details),extractText(message?.analysis),extractText(j?.reasoning),extractText(j?.reasoning_details)].filter(Boolean).join('\n');
  const output=content.trim()?content:reasoning.trim();
- if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(reasoning),choiceCount:Array.isArray(j?.choices)?j.choices.length:0,hasMessage:Boolean(message)}});
+ if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:choice?.finish_reason==='length'?'OUTPUT_TRUNCATED':'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(reasoning),choiceCount:Array.isArray(j?.choices)?j.choices.length:0,hasMessage:Boolean(message),contentLength:content.length,reasoningLength:reasoning.length}});
  try{return {...parseJson(output),_providerDiagnostics:{...diagnostics,contentSource:content.trim()?'content':'reasoning'}};}
- catch(e){throw Object.assign(new Error(p.name+' réponse non JSON exploitable'),{code:'INVALID_PROVIDER_JSON',diagnostics});}
+ catch(e){throw Object.assign(new Error(p.name+' réponse non JSON exploitable'),{code:choice?.finish_reason==='length'?'OUTPUT_TRUNCATED':'INVALID_PROVIDER_JSON',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,outputLength:output.length}});}
 }
 
 const base='Tu es une IA d’AUREVIA COPILOT. Réponds en français et en JSON valide. N’invente aucun cours, indicateur, niveau ni donnée absente. BUY, SELL ou WAIT sont les seules décisions. Les scores sur 100 mesurent la qualité de lecture/confluence, jamais une probabilité de gain.';
@@ -107,14 +182,23 @@ export async function runAureviaCollaboration({messages}){
  };
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const analysisStarted=Date.now();
- const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=3500,MAX_ANALYSIS_BUDGET_MS=25000;
+ const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=5500,MAX_ANALYSIS_BUDGET_MS=25000;
  const [groqResult,cloudflareResult]=await Promise.all([
-  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413)return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,remaining),{aggressive:true});}}):
+  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413&&e?.code!=='OUTPUT_TRUNCATED')return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,Math.max(700,remaining-500)),{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
-  runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>ask(cloudflare,[
-   {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
-   ...messages.filter(m=>m.role!=='system')
-  ],CLOUDFLARE_TIMEOUT_MS))
+  runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>{
+   const auditMessages=[
+    {role:'system',content:base+' Tu es le contrôleur indépendant AUREVIA. Effectue ta propre lecture des 250 bougies M30 et des contextes fournis, sans copier une conclusion externe. Identifie biais, structure, zones, invalidations et risques. Tu dois aussi pouvoir servir d’analyste de secours si Groq échoue. JSON: {decision,summary,marketReading,marketReadingScore,marketReadingFactors,buy,sell,riskLevel:"LOW|MODERATE|HIGH|CRITICAL",veto:false,vetoReason,criticalBlockers:[],risks:[],missingData:[],agreements:[],disagreements:[],noScenarioReason,watchDirectives}.'},
+    ...messages.filter(m=>m.role!=='system')
+   ];
+   try{return await ask(cloudflare,auditMessages,CLOUDFLARE_TIMEOUT_MS);}
+   catch(e){
+    if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON','OUTPUT_TRUNCATED'].includes(e?.code)&&e?.providerStatus!==413)throw e;
+    const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);
+    if(remaining<1800)throw e;
+    return await ask(cloudflare,auditMessages,Math.min(4500,Math.max(700,remaining-500)),{aggressive:true});
+   }
+  })
  ]);
  results.groq=groqResult;results.cloudflare=cloudflareResult;
  const groqOk=groqResult.ok,cloudflareOk=cloudflareResult.ok;
@@ -126,7 +210,7 @@ export async function runAureviaCollaboration({messages}){
   results.openrouter=await runTimed(openrouter,'ANALYSTE_CONTREDICTEUR',async()=>{const criticMessages=[
    {role:'system',content:base+' Tu es l’analyste contradicteur. Compare les analyses indépendantes de Groq et Cloudflare lorsqu’elles existent. Recherche faiblesses, contradictions, confirmations, invalidations et risques. Ne valide pas par complaisance. JSON: {decision,verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
    {role:'user',content:JSON.stringify({marketSummary:{instrument:market.instrument,timeframe:market.timeframe,candleCountM30,latestCandles:(market.candles||[]).slice(-12).map(c=>[c.t,c.o,c.h,c.l,c.c]),indicators:market.indicators,structure:market.structure,patterns:(market.patterns||[]).slice(-5),context:{timeframes:market.context?.timeframes,macro:market.context?.macro?{dxy:market.context.macro.dxy,notice:market.context.macro.notice}:null}},groqAnalysis:groqOk?{decision:groqResult.decision,summary:String(groqResult.summary||'').slice(0,1200),marketReading:String(groqResult.marketReading||'').slice(0,4500),buy:groqResult.buy?{direction:groqResult.buy.direction,entryZone:groqResult.buy.entryZone,entry:groqResult.buy.entry,stopLoss:groqResult.buy.stopLoss,takeProfits:groqResult.buy.takeProfits,reason:String(groqResult.buy.reason||'').slice(0,900)}:null,sell:groqResult.sell?{direction:groqResult.sell.direction,entryZone:groqResult.sell.entryZone,entry:groqResult.sell.entry,stopLoss:groqResult.sell.stopLoss,takeProfits:groqResult.sell.takeProfits,reason:String(groqResult.sell.reason||'').slice(0,900)}:null,risks:groqResult.risks,missingData:groqResult.missingData}:null,cloudflareIndependentAnalysis:cloudflareOk?{decision:cloudflareResult.decision,summary:String(cloudflareResult.summary||'').slice(0,1200),marketReading:String(cloudflareResult.marketReading||'').slice(0,4500),buy:cloudflareResult.buy?{direction:cloudflareResult.buy.direction,entryZone:cloudflareResult.buy.entryZone,entry:cloudflareResult.buy.entry,stopLoss:cloudflareResult.buy.stopLoss,takeProfits:cloudflareResult.buy.takeProfits,reason:String(cloudflareResult.buy.reason||'').slice(0,900)}:null,sell:cloudflareResult.sell?{direction:cloudflareResult.sell.direction,entryZone:cloudflareResult.sell.entryZone,entry:cloudflareResult.sell.entry,stopLoss:cloudflareResult.sell.stopLoss,takeProfits:cloudflareResult.sell.takeProfits,reason:String(cloudflareResult.sell.reason||'').slice(0,900)}:null,riskLevel:cloudflareResult.riskLevel,veto:cloudflareResult.veto,vetoReason:cloudflareResult.vetoReason,criticalBlockers:cloudflareResult.criticalBlockers,risks:cloudflareResult.risks,missingData:cloudflareResult.missingData}:null,selectedPrimary:leadRole})}
-  ];const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<1500)throw Object.assign(new Error('Budget temps restant insuffisant pour la contre-analyse OpenRouter.'),{code:'ANALYSIS_TIME_BUDGET'});try{return await ask(openrouter,criticMessages,Math.min(CRITIC_TIMEOUT_MS,remaining));}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code))throw e;const retryRemaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(retryRemaining<1500)throw e;return await ask(openrouter,criticMessages,Math.min(RETRY_TIMEOUT_MS,retryRemaining),{aggressive:true});}});
+  ];const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<1500)throw Object.assign(new Error('Budget temps restant insuffisant pour la contre-analyse OpenRouter.'),{code:'ANALYSIS_TIME_BUDGET'});try{return await ask(openrouter,criticMessages,Math.min(CRITIC_TIMEOUT_MS,Math.max(700,remaining-500)));}catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON','OUTPUT_TRUNCATED'].includes(e?.code)&&e?.providerStatus!==413)throw e;const retryRemaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(retryRemaining<1800)throw e;return await ask(openrouter,criticMessages,Math.min(4500,retryRemaining),{aggressive:true});}});
  }else results.openrouter={ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR',error:'Non configuré',inputCandleCountM30:candleCountM30};
  const audit=cloudflareOk?cloudflareResult:null,critic=results.openrouter?.ok?results.openrouter:null;
  const blockers=[...(audit?.criticalBlockers||[]),...(critic?.criticalBlockers||[])].map(x=>clean(x,240)).filter(Boolean);
