@@ -143,9 +143,11 @@ async function ask(p,messages,timeout=18000,options={}){
   const networkDiagnostics={kind:timedOut?'TIMEOUT':'NETWORK_FAILURE',errorName,causeCode,elapsedMs:Date.now()-started,timeoutMs:timeout};
   throw Object.assign(new Error(p.name+' '+(timedOut?'délai dépassé':'erreur réseau')+(causeCode?' ('+causeCode+')':'')),{code:timedOut?'PROVIDER_TIMEOUT':'PROVIDER_NETWORK_ERROR',networkDiagnostics});
  }
- const j=await r.json().catch(()=>({}));
- const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(JSON.stringify(j),'utf8'),httpStatus:r.status,latencyMs:Date.now()-started,compacted:aggressive};
+ const responseText=await r.text();
+ let j={};try{j=JSON.parse(responseText);}catch{}
+ const diagnostics={requestBytes:Buffer.byteLength(serialized,'utf8'),responseBytes:Buffer.byteLength(responseText,'utf8'),httpStatus:r.status,contentType:r.headers.get('content-type')||null,latencyMs:Date.now()-started,compacted:aggressive,responseIsJson:Boolean(responseText.trim().startsWith('{')||responseText.trim().startsWith('['))};
  if(!r.ok)throw Object.assign(new Error(safeProviderError(r.status,j)),{providerStatus:r.status,diagnostics});
+ if(!diagnostics.responseIsJson)throw Object.assign(new Error(p.name+' réponse HTTP non JSON'),{code:'NON_JSON_PROVIDER_RESPONSE',diagnostics});
  const choice=j?.choices?.[0],message=choice?.message;
  const extractText=value=>{
   if(typeof value==='string')return value;
@@ -156,9 +158,9 @@ async function ask(p,messages,timeout=18000,options={}){
  const content=extractText(message?.content)||extractText(choice?.text)||extractText(j?.output_text)||extractText(j?.output);
  const reasoning=[extractText(message?.reasoning),extractText(message?.reasoning_details),extractText(message?.analysis),extractText(j?.reasoning),extractText(j?.reasoning_details)].filter(Boolean).join('\n');
  const output=content.trim()?content:reasoning.trim();
- if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(reasoning),choiceCount:Array.isArray(j?.choices)?j.choices.length:0,hasMessage:Boolean(message)}});
+ if(!output.trim())throw Object.assign(new Error(p.name+' réponse vide (finish_reason: '+String(choice?.finish_reason||'inconnu')+')'),{code:choice?.finish_reason==='length'?'OUTPUT_TRUNCATED':'EMPTY_PROVIDER_RESPONSE',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,hasReasoning:Boolean(reasoning),choiceCount:Array.isArray(j?.choices)?j.choices.length:0,hasMessage:Boolean(message),contentLength:content.length,reasoningLength:reasoning.length}});
  try{return {...parseJson(output),_providerDiagnostics:{...diagnostics,contentSource:content.trim()?'content':'reasoning'}};}
- catch(e){throw Object.assign(new Error(p.name+' réponse non JSON exploitable'),{code:'INVALID_PROVIDER_JSON',diagnostics});}
+ catch(e){throw Object.assign(new Error(p.name+' réponse non JSON exploitable'),{code:choice?.finish_reason==='length'?'OUTPUT_TRUNCATED':'INVALID_PROVIDER_JSON',diagnostics:{...diagnostics,finishReason:choice?.finish_reason||null,outputLength:output.length}});}
 }
 
 const base='Tu es une IA d’AUREVIA COPILOT. Réponds en français et en JSON valide. N’invente aucun cours, indicateur, niveau ni donnée absente. BUY, SELL ou WAIT sont les seules décisions. Les scores sur 100 mesurent la qualité de lecture/confluence, jamais une probabilité de gain.';
@@ -182,7 +184,7 @@ export async function runAureviaCollaboration({messages}){
  const analysisStarted=Date.now();
  const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=5500,MAX_ANALYSIS_BUDGET_MS=25000;
  const [groqResult,cloudflareResult]=await Promise.all([
-  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413)return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,remaining),{aggressive:true});}}):
+  groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,PRIMARY_TIMEOUT_MS);}catch(e){if(e?.providerStatus!==413&&e?.code!=='OUTPUT_TRUNCATED')return Promise.reject(e);const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);if(remaining<RETRY_TIMEOUT_MS)throw e;return await ask(groq,messages,Math.min(RETRY_TIMEOUT_MS,remaining),{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
   runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>{
    const auditMessages=[
@@ -191,7 +193,7 @@ export async function runAureviaCollaboration({messages}){
    ];
    try{return await ask(cloudflare,auditMessages,CLOUDFLARE_TIMEOUT_MS);}
    catch(e){
-    if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON'].includes(e?.code)&&e?.providerStatus!==413)throw e;
+    if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON','OUTPUT_TRUNCATED'].includes(e?.code)&&e?.providerStatus!==413)throw e;
     const remaining=MAX_ANALYSIS_BUDGET_MS-(Date.now()-analysisStarted);
     if(remaining<1800)throw e;
     return await ask(cloudflare,auditMessages,Math.min(4500,remaining),{aggressive:true});
