@@ -32,7 +32,7 @@ export async function handler(event){
    }
    if(!Number.isFinite(age)||age< -5000||age>7*24*60*60*1000)return json(502,{error:'La dernière cotation est trop ancienne ou son horodatage est invalide.',code:'QUOTE_STALE',quoteAt:Number.isFinite(quoteAt)?new Date(quoteAt).toISOString():null});
    const freshness=age<=MAX_QUOTE_AGE_MS?'recent':'last_close';
-   const value={symbol,price,quoteAt:new Date(quoteAt).toISOString(),ageSeconds:Math.max(0,Math.floor(age/1000)),fetchedAt:new Date().toISOString(),source:'Twelve Data Quote',interval:'1min',freshness,marketOpen:marketStatus.tradable,marketStatus:marketStatus.tradable?'OPEN':(marketStatus.reason||'CLOSED'),displayLabel:freshness==='recent'?'Cours récent':'Dernière cotation disponible · marché fermé ou sans nouvelle cotation'};
+   const value={symbol,price,quoteAt:new Date(quoteAt).toISOString(),ageSeconds:Math.max(0,Math.floor(age/1000)),fetchedAt:new Date().toISOString(),source:'Twelve Data Quote',interval:'1min',freshness,marketOpen:freshness==='recent'&&marketStatus.tradable,marketStatus:freshness!=='recent'?'LAST_QUOTE':(marketStatus.tradable?'OPEN':(marketStatus.reason||'CLOSED')),displayLabel:freshness==='recent'?'Cours récent':'Dernière cotation disponible · marché fermé ou sans nouvelle cotation'};
    cache.set(symbol,{at:Date.now(),value});return json(200,value);
   }catch(error){return json(502,{error:error.name==='TimeoutError'?'Délai Twelve Data dépassé.':'Impossible de récupérer le cours Twelve Data.'});}
  })();
