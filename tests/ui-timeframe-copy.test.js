@@ -8,7 +8,7 @@ test('aucune documentation ne présente M1 comme unité de confirmation d’entr
  assert.doesNotMatch(html,/M1\s*·\s*Entrée/);
  assert.doesNotMatch(html,/M5\s*\/\s*M1\s*—\s*Précision/);
  assert.doesNotMatch(html,/affinage visuel M5\/M1/);
- assert.match(html,/confirmation IA sur M5, après mitigation de la zone M15/);
+ assert.match(html,/confirmation IA sur M5, après mitigation de la zone M30/);
  assert.match(html,/M1 reste une vue facultative et ne confirme jamais l’entrée/);
 });
 
