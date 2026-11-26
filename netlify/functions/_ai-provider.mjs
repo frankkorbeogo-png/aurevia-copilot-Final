@@ -1,5 +1,5 @@
-// Registre IA serveur AUREVIA : Gemini > OpenRouter > Cloudflare > Groq pour le fallback générique.
-// Les collaborations M15/M5 définissent leur propre rôle et ordre de contrôle par fournisseur.
+// Registre IA serveur AUREVIA : Gemini > OpenRouter > Cloudflare > Groq > Z.ai (GLM-4.7-Flash gratuit) pour le fallback générique.
+// La collaboration M30 réunit cinq analystes ; la confirmation d’entrée M5 conserve ses trois rôles de contrôle.
 const env = (name) => {
   let value = '';
   try { value = globalThis.Netlify?.env?.get?.(name) || ''; } catch {}
