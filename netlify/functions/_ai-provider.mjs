@@ -1,5 +1,5 @@
-// Registre IA serveur AUREVIA : Gemini > OpenRouter > Cloudflare > Groq pour le fallback générique.
-// Les collaborations M15/M5 définissent leur propre rôle et ordre de contrôle par fournisseur.
+// Registre IA serveur AUREVIA : Gemini > OpenRouter > Cloudflare > Groq > Z.ai (GLM-4.7-Flash gratuit) pour le fallback générique.
+// La collaboration M30 réunit cinq analystes ; la confirmation d’entrée M5 conserve ses trois rôles de contrôle.
 const env = (name) => {
   let value = '';
   try { value = globalThis.Netlify?.env?.get?.(name) || ''; } catch {}
@@ -7,7 +7,7 @@ const env = (name) => {
 };
 const PROVIDER_TIMEOUT_MS = 8500;
 const TOTAL_BUDGET_MS = 28000;
-const PROVIDER_TIMEOUTS = { gemini: 8500, cloudflare: 9000, groq: 7000 };
+const PROVIDER_TIMEOUTS = { gemini: 8500, cloudflare: 9000, groq: 7000, zai: 8500 };
 
 export function configuredAIProviders() {
   const providers = [];
@@ -30,6 +30,12 @@ export function configuredAIProviders() {
     id: 'groq', name: 'Groq', key: env('GROQ_API_KEY'),
     model: env('GROQ_MODEL') || 'openai/gpt-oss-120b',
     url: 'https://api.groq.com/openai/v1/chat/completions'
+  });
+  if (env('ZAI_API_KEY')) providers.push({
+    id: 'zai', name: 'Z.ai · GLM-4.7-Flash', key: env('ZAI_API_KEY'),
+    // Modèle explicitement fixé au modèle gratuit documenté; aucun override payant.
+    model: 'glm-4.7-flash',
+    url: 'https://api.z.ai/api/paas/v4/chat/completions'
   });
   return providers;
 }

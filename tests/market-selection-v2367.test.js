@@ -65,5 +65,5 @@ test('WTI et les instruments retirés ne figurent plus dans les sélecteurs acti
   assert.equal(MARKET_INSTRUMENTS.WTIUSD, undefined);
   assert.doesNotMatch(html, /WTI\/USD|WTIUSD|US30|NAS100|SPX500/);
   assert.doesNotMatch(app, /TVC:USOIL|PEPPERSTONE:US30|NASDAQ:NDX|SP:SPX/);
-  assert.match(app, /TVC:DXY/);
+  assert.match(app, /TVC%3ADXY|TVC:DXY/);
 });

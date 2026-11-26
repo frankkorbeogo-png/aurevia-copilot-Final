@@ -962,7 +962,7 @@ function bindEvents(){
     $('sidebar').classList.remove('open');
     if(page==='marches'){mountTradingView();mountDxyChart();mountTickerTape();}
     if(economicCalendarCleanup&&page!=='actualites'){economicCalendarCleanup();economicCalendarCleanup=null;}
-    if(page==='actualites'&&!economicCalendarCleanup){economicCalendarCleanup=initEconomicCalendar($('calendarStandalone'),getAnalysisAccessToken);}
+    if(page==='actualites'&&!economicCalendarCleanup){economicCalendarCleanup=initEconomicCalendar($('calendarStandalone'));}
     if(page==='positions')renderPositions();
     if(page==='dxy'){mountStandaloneDxy();refreshDxyOverview();}
     if(page==='telegram'){loadTelegramUi();refreshTelegramHomeNotice();}

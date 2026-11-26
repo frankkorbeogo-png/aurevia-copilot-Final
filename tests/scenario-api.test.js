@@ -40,7 +40,7 @@ test('les interfaces et le bandeau TradingView n’affichent plus les indices/é
  const app=await readFile(new URL('../app.js',import.meta.url),'utf8');
  assert.doesNotMatch(html,/US30|NAS100|SPX500|WTIUSD|WTI\/USD|optgroup label="Énergie"/);
  assert.doesNotMatch(app,/PEPPERSTONE:US30|NASDAQ:NDX|SP:SPX|TVC:USOIL/);
- assert.match(app,/TVC:DXY/);
+ assert.match(app,/TVC%3ADXY|TVC:DXY/);
 });
 
 test('scenario-api valide strictement les niveaux des huit types d’ordres côté serveur',async()=>{

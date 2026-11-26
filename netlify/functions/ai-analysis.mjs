@@ -50,8 +50,9 @@ export async function handler(event){
  let ctx;try{ctx=await verifyBearerUser(event);await assertActiveSession(ctx);}catch(e){return json(e.statusCode||401,{error:e.message||'Session invalide.'});}
  const {instrument,primary,context={}}=body;
  if(!allowed.has(instrument)||!primary||!Array.isArray(primary.candles)||primary.candles.length!==250)return json(400,{error:'AUREVIA exige exactement 250 bougies M30 clôturées pour l’analyse détaillée.',code:'M30_HISTORY_INCOMPLETE',receivedCandleCountM30:Array.isArray(primary?.candles)?primary.candles.length:0,requiredCandleCountM30:250});
- const m30=context?.timeframes?.M30,m30Stamp=Date.parse(m30?.lastCandleTime||'');
- const m30ClosedAt=m30Stamp+30*60000,m30Age=Date.now()-m30ClosedAt;
+ const m30=context?.timeframes?.M30;
+ if(m30?.available!==true)return json(409,{error:'Le contexte technique M30 est absent ou incomplet.',code:'M30_CONTEXT_REQUIRED'});
+ const m30Stamp=Date.parse(m30?.lastCandleTime||''),m30ClosedAt=m30Stamp+30*60000,m30Age=Date.now()-m30ClosedAt;
  if(!Number.isFinite(m30Stamp)||!Number.isFinite(m30Age)||m30Age< -5*60000||m30Age>65*60000)
   return json(409,{error:'Horodatage de la dernière bougie M30 invalide ou trop ancien.',code:'M30_CONTEXT_STALE'});
  const marketStatus=getMarketStatus(instrument);if(!marketStatus.tradable)return json(409,{error:'Marché fermé pour le week-end. Aucune directive de trading ne peut être générée avant la réouverture.',code:'MARKET_CLOSED',marketStatus});

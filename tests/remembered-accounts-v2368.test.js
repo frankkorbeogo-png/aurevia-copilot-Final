@@ -27,9 +27,10 @@ test('les mots de passe et jetons ne sont jamais stockés dans la liste mémoris
 });
 test('la déconnexion conserve les comptes mémorisés tandis que la suppression définitive retire le compte local',async()=>{
  const s=await read('auth.js');
- const signOut=s.slice(s.indexOf("$('signOutBtn')"),s.indexOf("$('deleteOwnAccountBtn')"));
- assert.doesNotMatch(signOut,/removeItem\(REMEMBERED_ACCOUNTS_KEY/);
- assert.match(signOut,/renderRememberedAccounts\(\)/);
+ assert.match(s,/signOutButton\.addEventListener\('click',performSignOut\)/);
+ assert.match(s,/async function performSignOut/);
+ assert.doesNotMatch(s,/removeItem\(REMEMBERED_ACCOUNTS_KEY/);
+ assert.match(s,/renderRememberedAccounts\(\)/);
  assert.match(s,/saveRememberedAccounts\(getRememberedAccounts\(\)\.filter\(x=>x\.email!==String\(email\)\.toLowerCase\(\)\)\)/);
 });
 
