@@ -77,12 +77,13 @@ test('les horaires des sessions sont affichés en heure du Burkina Faso avec DST
   assert.match(app, /America\/New_York/);
 });
 
-test('M15 est prioritaire et les unités de contexte sont chargées après lui', async () => {
+test('M30 est prioritaire et M15/H4/H1 sont chargés ensuite comme contextes', async () => {
   const analysis = await readFile(new URL('../analysis.js', import.meta.url), 'utf8');
-  assert.match(analysis, /frames\.M15=await fetchFrame/);
-  assert.match(analysis, /if\(frames\.M15\)/);
+  assert.match(analysis, /frames\.M30=await fetchFrame/);
+  assert.match(analysis, /if\(frames\.M30\)/);
   assert.match(analysis, /Promise\.allSettled/);
   assert.match(analysis, /requiredMissing/);
+  assert.match(analysis, /decisionTimeframe:'M30'/);
   assert.doesNotMatch(analysis, /M5:'5min'/);
 });
 
