@@ -1,7 +1,7 @@
 import { configuredAIProviders } from './_ai-provider.mjs';
 import {validateM5AIConsensus} from '../../m5-entry-validation.js';
 
-const clean=(v,n=900)=>String(v??'').replace(/[\\r\\n\\t]+/g,' ').slice(0,n);
+const clean=(v,n=900)=>String(v??'').replace(/[\r\n\t]+/g,' ').slice(0,n);
 const clamp=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(100,Math.round(Number(v)))):null;
 export function parseJson(s){
  const raw=String(s||'').trim().replace(/^\uFEFF/,'').replace(/^\x60{3}(?:json)?\s*/i,'').replace(/\s*\x60{3}$/,'');
@@ -113,7 +113,7 @@ export function compactRoleMessages(messages,role,aggressive=false){
  });
 }
 function safeProviderError(status,payload){
- const raw=String(payload?.error?.message||payload?.message||'').replace(/[\\r\\n\\t]+/g,' ').replace(/Bearer\\s+\\S+/gi,'Bearer [masqué]').slice(0,140);
+ const raw=String(payload?.error?.message||payload?.message||'').replace(/[\r\n\t]+/g,' ').replace(/Bearer\\s+\\S+/gi,'Bearer [masqué]').slice(0,140);
  if(status===413)return 'Requête trop volumineuse (HTTP 413)';
  if(status===429)return 'Limite ou quota fournisseur atteint (HTTP 429)';
  if(status===401||status===403)return 'Authentification ou permission refusée (HTTP '+status+')';
