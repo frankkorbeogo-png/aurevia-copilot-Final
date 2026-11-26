@@ -24,7 +24,7 @@ test('Z.ai is fixed to the free GLM-4.7-Flash model and receives the same 250 M3
   const providers = configuredAIProviders();
   const zai = providers.find(provider => provider.id === 'zai');
   assert.ok(zai, 'Z.ai provider should be registered from ZAI_API_KEY');
-  assert.equal(zai.model, 'GLM-4.7-Flash');
+  assert.equal(zai.model, 'glm-4.7-flash');
   assert.equal(zai.url, 'https://api.z.ai/api/paas/v4/chat/completions');
 
   const requests = [];
@@ -77,7 +77,7 @@ test('Z.ai is fixed to the free GLM-4.7-Flash model and receives the same 250 M3
     }
     const zaiRequest = requests.find(request => request.url === zai.url);
     assert.ok(zaiRequest);
-    assert.equal(zaiRequest.model, 'GLM-4.7-Flash');
+    assert.equal(zaiRequest.model, 'glm-4.7-flash');
   } finally {
     globalThis.fetch = originalFetch;
     for (const key of envKeys) {
