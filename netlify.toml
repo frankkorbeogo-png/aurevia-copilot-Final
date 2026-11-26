@@ -110,10 +110,5 @@ schedule = "* * * * *"
   to = "/.netlify/functions/macro-context"
   status = 200
 
-[[redirects]]
-  from = "/api/economic-calendar"
-  to = "/.netlify/functions/economic-calendar"
-  status = 200
-
 [functions."global-news-sync"]
   schedule = "0 * * * *"
