@@ -33,13 +33,15 @@ test('Z.ai is fixed to the free GLM-4.7-Flash model and receives the same 250 M3
     const body = JSON.parse(options.body);
     requests.push({ url: String(url), model: body.model, messages: body.messages });
     const isCloudflare = String(url).includes('api.cloudflare.com');
+    const isGemini = String(url).includes('generativelanguage.googleapis.com');
+    const isZai = String(url).includes('api.z.ai');
     const answer = {
       decision: 'BUY',
       verdict: 'CONFIRME',
       summary: 'Mock independent review',
       marketReading: 'Mock M30 reading',
-      agreements: [],
-      disagreements: [],
+      agreements: isGemini ? ['Gemini confirms the structural context'] : [],
+      disagreements: isZai ? ['Z.ai questions the entry timing'] : [],
       criticalBlockers: [],
       risks: [],
       missingData: [],
@@ -69,6 +71,8 @@ test('Z.ai is fixed to the free GLM-4.7-Flash model and receives the same 250 M3
 
     assert.equal(result.data.collaboration.allFiveResponded, true);
     assert.equal(result.provider, 'AUREVIA · 5 IA');
+    assert.ok(result.data.collaboration.agreements.includes('Gemini confirms the structural context'));
+    assert.ok(result.data.collaboration.disagreements.includes('Z.ai questions the entry timing'));
     assert.equal(requests.length, 5);
     for (const request of requests) {
       const userMessage = request.messages.find(message => message.role === 'user');
