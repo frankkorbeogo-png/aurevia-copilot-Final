@@ -113,7 +113,7 @@ export function compactRoleMessages(messages,role,aggressive=false){
  });
 }
 function safeProviderError(status,payload){
- const raw=String(payload?.error?.message||payload?.message||'').replace(/[\r\n\t]+/g,' ').replace(/Bearer\\s+\\S+/gi,'Bearer [masqué]').slice(0,140);
+ const raw=String(payload?.error?.message||payload?.message||'').replace(/[\r\n\t]+/g,' ').replace(/Bearer\s+\S+/gi,'Bearer [masqué]').slice(0,140);
  if(status===413)return 'Requête trop volumineuse (HTTP 413)';
  if(status===429)return 'Limite ou quota fournisseur atteint (HTTP 429)';
  if(status===401||status===403)return 'Authentification ou permission refusée (HTTP '+status+')';
