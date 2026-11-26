@@ -75,7 +75,7 @@ export function compactRoleMessages(messages,role,aggressive=false){
    const content=String(message.content||'');
    if(!aggressive)return {...message,content};
    if(role==='groq')return {...message,content:'AUREVIA COPILOT. Analyse en français, JSON valide, aucune invention. Décision BUY/SELL/WAIT fondée sur exactement 250 bougies M30 clôturées fournies sous forme [horodatage epoch ou delta secondes, open, high, low, close], dans l’ordre chronologique. Les horodatages delta sont relatifs à la bougie précédente. M30 est prioritaire; H4/H1/M15 et macro sont des contextes facultatifs, jamais inventés. Étudie tendance, consolidation, BOS/CHoCH, liquidité, supports/résistances, EMA, RSI, MACD, Bollinger et ATR uniquement si fournis. BUY/SELL seulement avec zone de mitigation, entrée, SL structurel et 1-3 TP cohérents; activation après mitigation puis confirmation M5. WAIT si M30 réellement indécis ou données M30 essentielles invalides/périmées. Score 0-100 = confluence, jamais probabilité de gain; facteurs vérifiés pondérés somme 100. estimatedWinRate=null si non démontrable. Aucun ordre exécuté. JSON: {decision:"BUY|SELL|WAIT",summary,marketReading,noScenarioReason,watchDirectives:[{condition,expectedReaction,confirmation,invalidation}],buy,sell,risks:[],missingData:[]}. Scénario: {direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],orderType,triggerPrice,limitPrice,confirmationScore,scoreComponents:[{label,passed,weight,reasoning}],estimatedWinRate,probabilityRationale,reason,humanReasoning,activationConditions:[],entryTrigger,invalidation}.'};
-   if(role==='openrouter')return {...message,content:'Tu es le troisième analyste indépendant AUREVIA. Analyse directement et indépendamment les 250 bougies M30 et les contextes fournis. N’attends pas les autres IA et ne prétends pas les avoir comparées. Cherche activement les faiblesses et les raisons de contredire un scénario fragile. Réponds uniquement en JSON valide, sans inventer de données. Format: {decision:"BUY|SELL|WAIT",verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",summary,marketReading,agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'};
+   if(role==='openrouter'||role==='gemini'||role==='zai')return {...message,content:'Tu es un analyste indépendant AUREVIA COPILOT. Analyse directement les 250 bougies M30 et tous les contextes fournis. N’attends pas les autres IA et ne prétends pas les avoir comparées. Donne ton biais, ta lecture structurelle, les zones, invalidations et risques. Cherche activement les raisons de contredire un BUY/SELL fragile. Réponds en français et uniquement en JSON valide, sans inventer de données. Format: {decision:"BUY|SELL|WAIT",verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",summary,marketReading,agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'};
    return {...message,content:content.length>5000?content.slice(0,3500)+'\n[Instructions compactées]\n'+content.slice(-1200):content};
   }
   let data;try{data=JSON.parse(String(message.content||''));}catch{return {...message,content:String(message.content||'').slice(0,aggressive?2500:6000)};}
@@ -168,13 +168,13 @@ const dir=x=>['BUY','SELL','WAIT'].includes(String(x?.decision||'').toUpperCase(
 const arr=x=>Array.isArray(x)?x.slice(0,10).map(v=>clean(v,240)).filter(Boolean):[];
 export async function runAureviaCollaboration({messages}){
  const ps=Object.fromEntries(configuredAIProviders().map(p=>[p.id,p]));
- const groq=ps.groq,openrouter=ps.openrouter,cloudflare=ps.cloudflare;
+ const groq=ps.groq,gemini=ps.gemini,openrouter=ps.openrouter,cloudflare=ps.cloudflare,zai=ps.zai;
  if(!cloudflare)throw Object.assign(new Error('Cloudflare est indispensable comme contrôleur indépendant et solution de secours, mais n’est pas configuré.'),{code:'CLOUDFLARE_NOT_CONFIGURED'});
  const raw=messages.find(m=>m.role==='user')?.content||'{}';let market={};try{market=JSON.parse(raw);}catch{}
  const candleCountM30=Array.isArray(market.candles)?market.candles.length:0;
  const info={instrument:market.instrument||null,candleCountM30};
  if(candleCountM30!==250)throw Object.assign(new Error('Le pipeline IA exige exactement 250 bougies M30.'),{code:'M30_HISTORY_INCOMPLETE',receivedCandleCountM30:candleCountM30,requiredCandleCountM30:250});
- const results={groq:null,openrouter:null,cloudflare:null};
+ const results={groq:null,gemini:null,openrouter:null,cloudflare:null,zai:null};
  const runTimed=async(provider,role,call)=>{
   const started=Date.now();
   try{const result=await call();return {ok:true,provider:provider.name,model:provider.model,role,inputCandleCountM30:candleCountM30,latencyMs:Date.now()-started,...result};}
@@ -183,14 +183,17 @@ export async function runAureviaCollaboration({messages}){
  // Deux lectures indépendantes sur le même historique : elles s'exécutent en parallèle.
  const analysisStarted=Date.now();
  const PRIMARY_TIMEOUT_MS=8500,CLOUDFLARE_TIMEOUT_MS=11500,CRITIC_TIMEOUT_MS=7000,RETRY_TIMEOUT_MS=5500,MAX_ANALYSIS_BUDGET_MS=25000;
- const openrouterPromise=openrouter?runTimed(openrouter,'ANALYSTE_CONTREDICTEUR_INDEPENDANT',async()=>{
+ const independentRun=(provider,role)=>provider?runTimed(provider,'ANALYSTE_INDEPENDANT_'+role.toUpperCase(),async()=>{
   const independentMessages=[
-   {role:'system',content:base+' Tu es le troisième analyste indépendant AUREVIA. Analyse directement les 250 bougies M30 et les contextes fournis, sans attendre ni copier les autres IA. Cherche aussi activement les raisons de contredire un BUY/SELL fragile. Donne ton propre biais, ta lecture structurelle, les zones, invalidations, risques et scénarios. JSON: {decision:"BUY|SELL|WAIT",verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",summary,marketReading,agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
+   {role:'system',content:base+' Tu es un analyste indépendant AUREVIA. Analyse directement les 250 bougies M30 et les contextes fournis, sans attendre ni copier les autres IA. Cherche aussi activement les raisons de contredire un BUY/SELL fragile. Donne ton propre biais, ta lecture structurelle, les zones, invalidations, risques et scénarios. JSON: {decision:"BUY|SELL|WAIT",verdict:"CONFIRME|NUANCE|CONTESTE",alternativeDecision:"BUY|SELL|WAIT",summary,marketReading,agreements:[],disagreements:[],criticalBlockers:[],reasoning,marketReadingScore,buyConfirmationScore,sellConfirmationScore,alternativeScenario:null|{direction,entryZone:{low,high},entry,stopLoss,takeProfits:[],reason}}.'},
    ...messages.filter(m=>m.role!=='system')
   ];
-  return await ask(openrouter,independentMessages,11000);
- }):Promise.resolve({ok:false,provider:'OpenRouter',role:'ANALYSTE_CONTREDICTEUR_INDEPENDANT',error:'Non configuré',inputCandleCountM30:candleCountM30});
- const [groqResult,cloudflareResult,openrouterResult]=await Promise.all([
+  return await ask(provider,independentMessages,11000);
+ }):Promise.resolve({ok:false,provider:provider?.name||role,role:'ANALYSTE_INDEPENDANT',error:'Non configuré',inputCandleCountM30:candleCountM30});
+ const openrouterPromise=independentRun(openrouter,'openrouter');
+ const geminiPromise=independentRun(gemini,'gemini');
+ const zaiPromise=independentRun(zai,'zai');
+ const [groqResult,cloudflareResult,openrouterResult,geminiResult,zaiResult]=await Promise.all([
   groq?runTimed(groq,'ANALYSTE_PRINCIPAL',async()=>{try{return await ask(groq,messages,11000);}catch(e){if(e?.providerStatus!==413&&e?.code!=='OUTPUT_TRUNCATED')return Promise.reject(e);return await ask(groq,messages,6500,{aggressive:true});}}):
    Promise.resolve({ok:false,provider:'Groq',role:'ANALYSTE_PRINCIPAL',error:'Non configuré',inputCandleCountM30:candleCountM30}),
   runTimed(cloudflare,'CONTROLE_INDEPENDANT',async()=>{
@@ -201,24 +204,25 @@ export async function runAureviaCollaboration({messages}){
    try{return await ask(cloudflare,auditMessages,12000);}
    catch(e){if(!['EMPTY_PROVIDER_RESPONSE','INVALID_PROVIDER_JSON','OUTPUT_TRUNCATED'].includes(e?.code)&&e?.providerStatus!==413)throw e;return await ask(cloudflare,auditMessages,6000,{aggressive:true});}
   }),
-  openrouterPromise
+  openrouterPromise,geminiPromise,zaiPromise
  ]);
- results.groq=groqResult;results.cloudflare=cloudflareResult;results.openrouter=openrouterResult;
+ results.groq=groqResult;results.cloudflare=cloudflareResult;results.openrouter=openrouterResult;results.gemini=geminiResult;results.zai=zaiResult;
  const groqOk=groqResult.ok,cloudflareOk=cloudflareResult.ok;
  if(!groqOk&&!cloudflareOk)throw Object.assign(new Error('Groq et Cloudflare sont indisponibles : aucune analyse fiable ne peut être produite.'),{code:'AI_PRIMARY_AND_FALLBACK_FAILED',attempts:[groqResult,cloudflareResult,openrouterResult]});
  const lead=groqOk?groqResult:cloudflareResult;
  const leadProvider=groqOk?groq:cloudflare;
  const leadRole=groqOk?'ANALYSTE_PRINCIPAL':'ANALYSTE_SECOURS';
  const audit=cloudflareOk?cloudflareResult:null,critic=results.openrouter?.ok?results.openrouter:null;
- const blockers=[...(audit?.criticalBlockers||[]),...(critic?.criticalBlockers||[])].map(x=>clean(x,240)).filter(Boolean);
+ const independent=[critic,geminiResult.ok?geminiResult:null,zaiResult.ok?zaiResult:null].filter(Boolean);
+ const blockers=[...(audit?.criticalBlockers||[]),...independent.flatMap(x=>Array.isArray(x.criticalBlockers)?x.criticalBlockers:[])].map(x=>clean(x,240)).filter(Boolean);
  let decision=dir(lead),reason='Analyse principale conservée après les contrôles disponibles.';
  if(audit?.veto===true||audit?.riskLevel==='CRITICAL'){decision='WAIT';reason='WAIT : veto du contrôle indépendant Cloudflare — '+clean(audit.vetoReason||'risque critique',220);}
  else if(blockers.length){decision='WAIT';reason='WAIT : points critiques relevés — '+blockers.slice(0,3).join(' · ');}
- else if(critic?.verdict==='CONTESTE'&&['BUY','SELL'].includes(dir(lead))&&dir(critic)!==dir(lead)){decision=dir(critic)==='WAIT'?'WAIT':dir(critic);reason='Scénario principal contesté par OpenRouter après comparaison indépendante.';}
- const providers={groq:groqResult,openrouter:results.openrouter,cloudflare:cloudflareResult};
- const allThree=Boolean(groqOk&&results.openrouter?.ok&&cloudflareOk);
- const fallbackUsed=!groqOk||!results.openrouter?.ok||!cloudflareOk;
- return {data:{...lead,decision,collaboration:{mode:'PARALLEL_PRIMARY_AND_INDEPENDENT_REVIEW',...info,providerOrder:['Groq + OpenRouter + Cloudflare en parallèle sur le même historique M30'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers,allThreeResponded:allThree,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,independentCloudflareDecision:audit?dir(audit):null,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Groq, OpenRouter et Cloudflare analysent indépendamment le même historique de 250 bougies M30 en parallèle ; la synthèse confronte ensuite leurs résultats et conserve le veto Cloudflare. Les scores sont qualitatifs et non des probabilités. Toute indisponibilité fournisseur dégrade la collaboration.'}},provider:'AUREVIA · 3 IA',model:leadProvider.model,attempts:Object.values(providers).filter(x=>x&&!x.ok)};
+ else if(independent.some(x=>x.verdict==='CONTESTE'&&['BUY','SELL'].includes(dir(lead))&&dir(x)!==dir(lead))){decision='WAIT';reason='WAIT : au moins un analyste indépendant conteste le scénario principal.';}
+ const providers={groq:groqResult,gemini:geminiResult,openrouter:results.openrouter,cloudflare:cloudflareResult,zai:zaiResult};
+ const allFive=Boolean(groqOk&&geminiResult.ok&&results.openrouter?.ok&&cloudflareOk&&zaiResult.ok);
+ const fallbackUsed=Object.values(providers).some(x=>!x?.ok);
+ return {data:{...lead,decision,collaboration:{mode:'PARALLEL_PRIMARY_AND_INDEPENDENT_REVIEW',...info,providerOrder:['Groq','Gemini','OpenRouter','Cloudflare','Z.ai · GLM-4.7-Flash'],primaryProvider:leadProvider.name,primaryRole:leadRole,providers,allFiveResponded:allFive,fallbackUsed,decisionBeforeReview:dir(lead),decisionAfterReview:decision,synthesisReason:reason,agreements:critic?.agreements||[],disagreements:critic?.disagreements||[],criticalBlockers:blockers,independentCloudflareDecision:audit?dir(audit):null,marketReadingScore:clamp(lead.marketReadingScore),marketReadingFactors:arr(lead.marketReadingFactors),buyConfirmationScore:clamp(lead.buy?.confirmationScore),sellConfirmationScore:clamp(lead.sell?.confirmationScore),disclaimer:'Groq, Gemini, OpenRouter, Cloudflare et Z.ai analysent indépendamment le même historique de 250 bougies M30 en parallèle. Les points critiques et désaccords directionnels imposent WAIT. Les scores sont qualitatifs et non des probabilités. Toute indisponibilité fournisseur dégrade la collaboration.'}},provider:'AUREVIA · 5 IA',model:leadProvider.model,attempts:Object.values(providers).filter(x=>x&&!x.ok)};
 }
 
 export async function runAureviaM5Confirmation({scenario, candles, indicators, structure}) {
