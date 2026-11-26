@@ -7,7 +7,7 @@ const env = (name) => {
 };
 const PROVIDER_TIMEOUT_MS = 8500;
 const TOTAL_BUDGET_MS = 28000;
-const PROVIDER_TIMEOUTS = { gemini: 8500, cloudflare: 9000, groq: 7000 };
+const PROVIDER_TIMEOUTS = { gemini: 8500, cloudflare: 9000, groq: 7000, zai: 8500 };
 
 export function configuredAIProviders() {
   const providers = [];
@@ -34,7 +34,7 @@ export function configuredAIProviders() {
   if (env('ZAI_API_KEY')) providers.push({
     id: 'zai', name: 'Z.ai · GLM-4.7-Flash', key: env('ZAI_API_KEY'),
     // Modèle explicitement fixé au modèle gratuit documenté; aucun override payant.
-    model: 'GLM-4.7-Flash',
+    model: 'glm-4.7-flash',
     url: 'https://api.z.ai/api/paas/v4/chat/completions'
   });
   return providers;
