@@ -14,21 +14,20 @@ test('une réponse 429 déclenche une temporisation locale avant une nouvelle te
   assert.match(source,/if\(r\.status===429\)/);
   assert.match(source,/Temporisation du fournisseur/);
 });
-test('M15 et M30 sont requis, H4 et H1 restent optionnels',()=>{
-  assert.match(source,/frames\.M15=await fetchFrame/);
-  assert.match(source,/if\(frames\.M15\)/);
+test('M30 est requis, M15/H4/H1 restent des unités de contexte optionnelles',()=>{
+  assert.match(source,/frames\.M30=await fetchFrame/);
+  assert.match(source,/if\(frames\.M30\)/);
   assert.match(source,/Promise\.allSettled/);
   assert.match(source,/requiredMissing/);
   assert.match(source,/allRequiredAvailable/);
-  assert.match(source,/analyses\.M15\?\.last/);
   assert.match(source,/analyses\.M30\?\.last/);
-  assert.match(source,/\['M15','M30'\]/);
+  assert.match(source,/FRAMES\.M15/);
   assert.doesNotMatch(source,/M5:'5min'/);
 });
 test('les erreurs réseau sont affichées comme indisponibilité et non comme simple signal WAIT',()=>{
   assert.match(source,/Erreur technique pendant l’analyse/);
   assert.match(source,/aucune entrée ne sera proposée sans données valides/i);
 });
-test('une unité optionnelle périmée est exclue des indicateurs et du déclencheur',()=>{
-  assert.match(source,/if\(stale\.includes\(tf\)&&tf!=='M15'\)continue/);
+test('une unité de contexte optionnelle périmée est exclue des indicateurs',()=>{
+  assert.match(source,/if\(stale\.includes\(tf\)\)continue/);
 });
