@@ -21,7 +21,7 @@ test('M30 est requis, M15/H4/H1 restent des unités de contexte optionnelles',()
   assert.match(source,/requiredMissing/);
   assert.match(source,/allRequiredAvailable/);
   assert.match(source,/analyses\.M30\?\.last/);
-  assert.match(source,/FRAMES\.M15/);
+  assert.match(source,/M15:'15min'/);
   assert.doesNotMatch(source,/M5:'5min'/);
 });
 test('les erreurs réseau sont affichées comme indisponibilité et non comme simple signal WAIT',()=>{
