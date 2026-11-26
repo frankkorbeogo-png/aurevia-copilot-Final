@@ -13,7 +13,7 @@ test('les contextes secondaires sont compactés et la sortie IA est plafonnée',
   assert.match(source, /compactAIContext\(primary\.indicators/);
   assert.ok(source.includes('compactMacroContext(context.macro'));
   const collaboration = await readFile(new URL('../netlify/functions/ai-collaboration.mjs', import.meta.url), 'utf8');
-  assert.match(collaboration, /body\.max_tokens=1500/);
+  assert.match(collaboration, /body\.max_tokens=aggressive\?1200:1600/);
 });
 test('le client charge 251 bougies M30 pour conserver 250 clôturées et transmet exactement 250 au serveur', async () => {
   const client = await readFile(new URL('../analysis.js', import.meta.url), 'utf8');
