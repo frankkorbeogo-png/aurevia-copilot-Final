@@ -31,6 +31,12 @@ export function configuredAIProviders() {
     model: env('GROQ_MODEL') || 'openai/gpt-oss-120b',
     url: 'https://api.groq.com/openai/v1/chat/completions'
   });
+  if (env('ZAI_API_KEY')) providers.push({
+    id: 'zai', name: 'Z.ai · GLM-4.7-Flash', key: env('ZAI_API_KEY'),
+    // Modèle explicitement fixé au modèle gratuit documenté; aucun override payant.
+    model: 'GLM-4.7-Flash',
+    url: 'https://api.z.ai/api/paas/v4/chat/completions'
+  });
   return providers;
 }
 
