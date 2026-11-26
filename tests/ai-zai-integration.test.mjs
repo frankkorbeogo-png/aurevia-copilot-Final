@@ -73,8 +73,8 @@ test('Z.ai is fixed to the free GLM-4.7-Flash model and receives the same 250 M3
     assert.equal(result.provider, 'AUREVIA · 5 IA');
     assert.deepEqual(result.data.collaboration.providers.gemini.agreements, ['Gemini confirms the structural context']);
     assert.deepEqual(result.data.collaboration.providers.zai.disagreements, ['Z.ai questions the entry timing']);
-    assert.ok(result.data.collaboration.agreements.includes('Gemini confirms the structural context'));
-    assert.ok(result.data.collaboration.disagreements.includes('Z.ai questions the entry timing'));
+    assert.deepEqual(result.data.collaboration.agreements, ['Gemini confirms the structural context']);
+    assert.deepEqual(result.data.collaboration.disagreements, ['Z.ai questions the entry timing']);
     assert.equal(requests.length, 5);
     for (const request of requests) {
       const userMessage = request.messages.find(message => message.role === 'user');
