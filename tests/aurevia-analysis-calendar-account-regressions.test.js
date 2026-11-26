@@ -61,8 +61,8 @@ test('M30 est l’unité principale et transmet exactement 250 bougies clôturé
   assert.match(endpoint, /decisionTimeframe:'M30'/);
   assert.match(endpoint, /candleCountM30:candles\.length/);
   assert.match(endpoint, /250 bougies clôturées/);
-  assert.match(collaboration, /inputCandleCountM30:info\.candleCountM30/);
-  assert.match(collaboration, /candleCountM30=Array\.isArray\(market\.candles\)/);
+  assert.match(collaboration, /inputCandleCountM30:candleCountM30/);
+  assert.match(collaboration, /const candleCountM30=Array\.isArray\(market\.candles\)/);
 });
 test('M15 reste un affinage facultatif et M5 conserve la confirmation d’entrée', async () => {
   const endpoint = await read('netlify/functions/ai-analysis.mjs'), collaboration = await read('netlify/functions/ai-collaboration.mjs'), index = await read('index.html');
